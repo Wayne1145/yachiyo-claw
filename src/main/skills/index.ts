@@ -1,0 +1,6 @@
+export { discoverSkills } from './discovery'
+export type { DetectedSkill } from './github-fetcher'
+export { detectSkillsInRepo, downloadSkillFiles, fetchFileContent, getLatestCommitHash } from './github-fetcher'
+export { checkForUpdates, deleteSkill, installSkillFromGitHub, installSkillFromMarketplace } from './installer'
+export { registerSkillsHandlers } from './ipc-handlers'
+export { parseSkillFile } from './parser'

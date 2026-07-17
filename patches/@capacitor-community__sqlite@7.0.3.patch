@@ -1,0 +1,362 @@
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLite.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLite.java
+index 17294270ace3731844d9577a8ac3b31718e355fb..1b91be78432d2a71d0d8f3e5a5726ae6314e2d36 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLite.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLite.java
+@@ -6,7 +6,6 @@ import static com.getcapacitor.community.database.sqlite.SQLite.UtilsSQLCipher.S
+ 
+ import android.content.Context;
+ import android.content.SharedPreferences;
+-import android.util.Log;
+ import android.widget.Toast;
+ import androidx.biometric.BiometricManager;
+ import androidx.biometric.BiometricPrompt;
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLitePlugin.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLitePlugin.java
+index 8545d21908266111a15a0ce5524aef6203a49d03..ed9087650b3c40cb9f6e70eb7a16889497404f89 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLitePlugin.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/CapacitorSQLitePlugin.java
+@@ -1,7 +1,6 @@
+ package com.getcapacitor.community.database.sqlite;
+ 
+ import android.content.Context;
+-import android.util.Log;
+ import com.getcapacitor.JSArray;
+ import com.getcapacitor.JSObject;
+ import com.getcapacitor.Plugin;
+@@ -1542,7 +1541,6 @@ public class CapacitorSQLitePlugin extends Plugin {
+             Thread myHttpThread = new Thread(setHTTPRunnable);
+             myHttpThread.start();
+             while (myHttpThread.isAlive());
+-            System.out.println("Thread Exiting!");
+         } else {
+             rHandler.retResult(call, null, loadMessage);
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/Log.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/Log.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..5855f4e6b7e07fb6be5824c7cea07e62d01aa712
+--- /dev/null
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/Log.java
+@@ -0,0 +1,32 @@
++package com.getcapacitor.community.database.sqlite;
++
++/**
++ * Privacy boundary for the upstream SQLite plugin.
++ *
++ * <p>The upstream implementation logs SQL errors, row values, database paths, and biometric
++ * details. Yachiyo Claw keeps every level silent in both debug and release builds.</p>
++ */
++public final class Log {
++
++    private Log() {}
++
++    public static int v(String tag, String message) {
++        return 0;
++    }
++
++    public static int d(String tag, String message) {
++        return 0;
++    }
++
++    public static int i(String tag, String message) {
++        return 0;
++    }
++
++    public static int e(String tag, String message) {
++        return 0;
++    }
++
++    public static int e(String tag, String message, Throwable error) {
++        return 0;
++    }
++}
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/RetHandler.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/RetHandler.java
+index 2c65d6db3ded79183e70ce3c5036f0793af35da9..70acbbe2ff34810eb3ac266b684a6f5e9bf65506 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/RetHandler.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/RetHandler.java
+@@ -1,6 +1,5 @@
+ package com.getcapacitor.community.database.sqlite;
+ 
+-import android.util.Log;
+ import com.getcapacitor.JSArray;
+ import com.getcapacitor.JSObject;
+ import com.getcapacitor.PluginCall;
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/Database.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/Database.java
+index ecce9267bffb1c1e524d6f0b021e4c1b6aea364b..fa8d1b03bb06e8bcf9c3f4f159247694056764df 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/Database.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/Database.java
+@@ -14,7 +14,7 @@ import android.content.Context;
+ import android.content.SharedPreferences;
+ import android.database.DatabaseUtils;
+ import android.os.Build;
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import androidx.sqlite.db.SimpleSQLiteQuery;
+ import androidx.sqlite.db.SupportSQLiteDatabase;
+ import androidx.sqlite.db.SupportSQLiteStatement;
+@@ -102,10 +102,7 @@ public class Database {
+         this._uSecret = isEncryption ? new UtilsSecret(context, sharedPreferences) : null;
+         InitializeSQLCipher();
+         if (!Objects.requireNonNull(this._file.getParentFile()).exists()) {
+-            boolean dirCreated = this._file.getParentFile().mkdirs();
+-            if (!dirCreated) {
+-                System.out.println("Failed to create parent directories.");
+-            }
++            this._file.getParentFile().mkdirs();
+         }
+         Log.v(TAG, "&&& file path " + this._file.getAbsolutePath());
+     }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/ImportFromJson.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/ImportFromJson.java
+index 4c841bcbc7e911e56f0f2e424fcede3e751bdbae..b41f174dfff34d3d670934e2aedfd8f01158b572 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/ImportFromJson.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/ImportFromJson.java
+@@ -1,6 +1,5 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
+ import androidx.sqlite.db.SupportSQLiteDatabase;
+ import com.getcapacitor.JSArray;
+ import com.getcapacitor.JSObject;
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonColumn.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonColumn.java
+index 17b4f5e21e1debda36cc5997e7e4eaaf5ad5c6c7..cdb9d1f1f9dbd776917d77c30b593eac7d4cfac9 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonColumn.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonColumn.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -99,7 +99,6 @@ public class JsonColumn {
+                     }
+                 }
+             } catch (JSONException e) {
+-                e.printStackTrace();
+                 return false;
+             }
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonIndex.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonIndex.java
+index 294b24a4dc7a0f693db1ad01d4a504caf37aea92..6b8f10fcac27e95553068911a72993d927738e7f 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonIndex.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonIndex.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -84,7 +84,6 @@ public class JsonIndex {
+                     }
+                 }
+             } catch (JSONException e) {
+-                e.printStackTrace();
+                 return false;
+             }
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonSQLite.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonSQLite.java
+index efa4a812dbf35a0263081cfa1d3c283dd9351a4f..894ffe2f8d1267ba8a8b8dc09e874c6881369402 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonSQLite.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonSQLite.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSArray;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+@@ -193,7 +193,6 @@ public class JsonSQLite {
+                     continue;
+                 }
+             } catch (JSONException e) {
+-                e.printStackTrace();
+                 return false;
+             }
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTable.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTable.java
+index 0243b6de8fe6f1074cc0a48d3221e53e4f64a9c7..4457b2ddae5945d2998b820c3c03cc2442b931f4 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTable.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTable.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -153,7 +153,6 @@ public class JsonTable {
+                     }
+                 }
+             } catch (JSONException e) {
+-                e.printStackTrace();
+                 return false;
+             }
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTrigger.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTrigger.java
+index 9a0d7598cdd896dd5406f12915989ce8cc074095..47d0380d0c196a999379425f3c8a7700df174aef 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTrigger.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonTrigger.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -99,7 +99,6 @@ public class JsonTrigger {
+                     }
+                 }
+             } catch (JSONException e) {
+-                e.printStackTrace();
+                 return false;
+             }
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonView.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonView.java
+index ef1f90d2e544798a36487c4d6156ac466d43866f..a843fd4964adabe055a1339059f13a00a7587fd5 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonView.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/JsonView.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite.ImportExportJson;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -64,7 +64,6 @@ public class JsonView {
+                     }
+                 }
+             } catch (JSONException e) {
+-                e.printStackTrace();
+                 return false;
+             }
+         }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/UtilsEncryption.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/UtilsEncryption.java
+index df2fd7165d086e27272820658d2cd64205181825..2e323bc004d2a7a244eaa2e9884bad9188d082a7 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/UtilsEncryption.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/ImportExportJson/UtilsEncryption.java
+@@ -54,7 +54,6 @@ public class UtilsEncryption {
+ 
+             return Base64.encodeToString(combined, Base64.DEFAULT);
+         } catch (Exception e) {
+-            e.printStackTrace();
+             throw new Exception("encryptJSONObject: " + e.getMessage());
+         }
+     }
+@@ -90,7 +89,6 @@ public class UtilsEncryption {
+             byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
+             return new JSObject(new String(decryptedBytes, "UTF-8"));
+         } catch (Exception e) {
+-            e.printStackTrace();
+             throw new Exception("decryptJSONObject: " + e.getMessage());
+         }
+     }
+@@ -104,7 +102,6 @@ public class UtilsEncryption {
+             secureRandom.nextBytes(salt);
+             return salt;
+         } catch (NoSuchAlgorithmException e) {
+-            e.printStackTrace();
+         }
+         return null;
+     }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsBiometric.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsBiometric.java
+index 8594372660955bc7dc5464904728557885fe41ca..6770632ac43f7f82bf1899c9d2ec08d92d621bfb 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsBiometric.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsBiometric.java
+@@ -1,7 +1,7 @@
+ package com.getcapacitor.community.database.sqlite.SQLite;
+ 
+ import android.content.Context;
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import android.widget.Toast;
+ import androidx.annotation.NonNull;
+ import androidx.biometric.BiometricManager;
+@@ -69,7 +69,6 @@ public class UtilsBiometric {
+             biometricPrompt.authenticate(promptInfo);
+             return;
+         } catch (Exception e) {
+-            e.printStackTrace();
+             throw new Exception(e);
+         }
+     }
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDownloadFromHTTP.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDownloadFromHTTP.java
+index 990ba242c96a0c510b2efed366009d691a61cef0..ba983487e3f25dd4ca89f2ad1ad73689f65b7aa7 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDownloadFromHTTP.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDownloadFromHTTP.java
+@@ -78,7 +78,6 @@ public class UtilsDownloadFromHTTP {
+             }
+             return new String[] { filename, extension };
+         } catch (MalformedURLException e) {
+-            e.printStackTrace();
+             throw new Exception(e.getMessage());
+         }
+     }
+@@ -125,7 +124,6 @@ public class UtilsDownloadFromHTTP {
+                     outputStream.close();
+                     inputStream.close();
+ 
+-                    System.out.println("File " + fileName + " downloaded (" + contentLength + ")");
+                 }
+             } else {
+                 String msg = "No file to download. Server replied HTTP code: " + responseCode;
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDrop.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDrop.java
+index 8342a8974a17ac1c8b85e2784a993d7f6167b0b3..24bec56b4b3862fda2b036f28398785585145134 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDrop.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsDrop.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import com.getcapacitor.JSObject;
+ import java.util.ArrayList;
+ import java.util.Dictionary;
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsFile.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsFile.java
+index eada893876dcf82892830aeec85ce33d188e8fc7..885e7c01297eabce27b6a61e344c77e90b8f7761 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsFile.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsFile.java
+@@ -2,7 +2,7 @@ package com.getcapacitor.community.database.sqlite.SQLite;
+ 
+ import android.content.Context;
+ import android.content.res.AssetManager;
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import java.io.File;
+ import java.io.FileInputStream;
+ import java.io.FileOutputStream;
+@@ -148,7 +148,6 @@ public class UtilsFile {
+                             deleteFile(databasePath, toFileName);
+                         }
+                         File newFile = new File(dbPath);
+-                        System.out.println("Unzipping to " + newFile.getAbsolutePath());
+                         FileOutputStream fos = new FileOutputStream(newFile);
+                         int len;
+                         while ((len = zis.read(buffer)) > 0) {
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsSQLite.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsSQLite.java
+index f1c3d15c0621e2fabf49d56df00d113af2372fb3..89d87252cb22aa6b3b3a60a4d4408b3b9b71eb8d 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsSQLite.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsSQLite.java
+@@ -1,6 +1,5 @@
+ package com.getcapacitor.community.database.sqlite.SQLite;
+ 
+-import android.util.Log;
+ import androidx.sqlite.db.SupportSQLiteDatabase;
+ import com.getcapacitor.JSArray;
+ import java.util.ArrayList;
+diff --git a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsUpgrade.java b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsUpgrade.java
+index 9fa66f71eff4882cdeb43d00ac4debbc87a6eaec..7577ba3ac6acd22ec44caaeb273b3339245a2352 100644
+--- a/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsUpgrade.java
++++ b/android/src/main/java/com/getcapacitor/community/database/sqlite/SQLite/UtilsUpgrade.java
+@@ -1,6 +1,6 @@
+ package com.getcapacitor.community.database.sqlite.SQLite;
+ 
+-import android.util.Log;
++import com.getcapacitor.community.database.sqlite.Log;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.Dictionary;

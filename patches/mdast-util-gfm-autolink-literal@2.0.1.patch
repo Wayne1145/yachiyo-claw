@@ -1,0 +1,30 @@
+diff --git a/lib/index.js b/lib/index.js
+index c5ca771c24dd914e342f791716a822431ee32b3a..541065ab36b44b9b1d98036aae3b96183a2a7761 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -126,13 +126,24 @@ function exitLiteralAutolink(token) {
+   this.exit(token)
+ }
+ 
++/**
++ * Email regex with lookbehind for browsers that support it (Safari 16.4+),
++ * fallback without lookbehind for older browsers (Safari 16.0-16.3).
++ */
++let defined_emailRegex
++try {
++  defined_emailRegex = new RegExp('(?<=^|\\s|\\p{P}|\\p{S})([-.\\w+]+)@([-\\w]+(?:\\.[-\\w]+)+)', 'gu')
++} catch {
++  defined_emailRegex = /([-.\w+]+)@([-\w]+(?:\.[-\w]+)+)/gu
++}
++
+ /** @type {FromMarkdownTransform} */
+ function transformGfmAutolinkLiterals(tree) {
+   findAndReplace(
+     tree,
+     [
+       [/(https?:\/\/|www(?=\.))([-.\w]+)([^ \t\r\n]*)/gi, findUrl],
+-      [/(?<=^|\s|\p{P}|\p{S})([-.\w+]+)@([-\w]+(?:\.[-\w]+)+)/gu, findEmail]
++      [defined_emailRegex, findEmail]
+     ],
+     {ignore: ['link', 'linkReference']}
+   )

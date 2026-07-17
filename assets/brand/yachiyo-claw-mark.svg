@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">Yachiyo Claw Lunar Operator mark</title>
+  <desc id="desc">An open lunar ring, a central agent node, and three execution tracks.</desc>
+  <path d="M70 31C45 18 21 34 21 54S45 90 70 77" fill="none" stroke="#087F7A" stroke-linecap="round" stroke-width="8"/>
+  <circle cx="50" cy="54" r="8" fill="#171A21"/>
+  <circle cx="50" cy="54" r="3" fill="#F7F8FA"/>
+  <path d="M72 35L84 29" fill="none" stroke="#D95461" stroke-linecap="round" stroke-width="6"/>
+  <path d="M76 54H88" fill="none" stroke="#087F7A" stroke-linecap="round" stroke-width="6"/>
+  <path d="M72 73L84 79" fill="none" stroke="#A96B16" stroke-linecap="round" stroke-width="6"/>
+</svg>

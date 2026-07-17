@@ -1,0 +1,293 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22.23.1'
+  PNPM_VERSION: '10.33.0'
+  JDK_VERSION: '21.0.11+10'
+  ANDROID_COMMAND_LINE_TOOLS_BUILD: '15859902'
+  ANDROID_APPLICATION_ID: io.github.yachiyoclaw
+  PNPM_STORE_DIR: ${{ github.workspace }}/.cache/ci-pnpm-store
+  GRADLE_USER_HOME: ${{ github.workspace }}/.cache/ci-gradle
+
+jobs:
+  android:
+    name: Check and assemble debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify workflow toolchain pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs')
+          const lock = require('./toolchain.lock.json')
+
+          function assertEqual(actual, expected, label) {
+            if (String(actual) !== String(expected)) {
+              throw new Error(`${label} mismatch: workflow=${actual}, lock=${expected}`)
+            }
+          }
+
+          assertEqual(process.version.slice(1), lock.node.version, 'Node.js')
+          assertEqual(process.env.PNPM_VERSION, lock.pnpm.version, 'pnpm')
+          assertEqual(process.env.JDK_VERSION, lock.jdk.version, 'JDK')
+
+          const commandLineToolsBuild = /commandlinetools-win-(\d+)_latest\.zip$/.exec(
+            lock.android.commandLineTools.archive
+          )?.[1]
+          assertEqual(
+            process.env.ANDROID_COMMAND_LINE_TOOLS_BUILD,
+            commandLineToolsBuild,
+            'Android command-line tools build'
+          )
+
+          const wrapperProperties = Object.fromEntries(
+            fs
+              .readFileSync('android/gradle/wrapper/gradle-wrapper.properties', 'utf8')
+              .split(/\r?\n/)
+              .filter((line) => line.includes('='))
+              .map((line) => {
+                const separator = line.indexOf('=')
+                return [line.slice(0, separator), line.slice(separator + 1)]
+              })
+          )
+          const expectedDistribution = `gradle-${lock.android.gradle.version}-bin.zip`
+          if (!wrapperProperties.distributionUrl?.endsWith(expectedDistribution)) {
+            throw new Error(`Gradle wrapper distribution does not end with ${expectedDistribution}`)
+          }
+          assertEqual(
+            wrapperProperties.distributionSha256Sum?.toUpperCase(),
+            lock.android.gradle.sha256.toUpperCase(),
+            'Gradle distribution SHA-256'
+          )
+          NODE
+
+      - name: Enable Corepack and pin pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+          test "$(pnpm --version)" = "${PNPM_VERSION}"
+
+      # This cache contains package tarballs only; it excludes npm configuration and credentials.
+      - name: Configure pnpm store
+        shell: bash
+        run: |
+          mkdir -p "${PNPM_STORE_DIR}"
+          pnpm config set store-dir "${PNPM_STORE_DIR}"
+
+      - name: Restore pnpm package cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.PNPM_STORE_DIR }}
+          key: pnpm-${{ runner.os }}-node-${{ env.NODE_VERSION }}-pnpm-${{ env.PNPM_VERSION }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JDK_VERSION }}
+
+      # setup-gradle caches dependency data and wrappers, not ~/.android or signing material.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+          gradle-home-cache-includes: |
+            caches
+            notifications
+            wrapper
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          cmdline-tools-version: ${{ env.ANDROID_COMMAND_LINE_TOOLS_BUILD }}
+          packages: ''
+
+      - name: Install locked Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          compile_sdk="$(node -p "require('./toolchain.lock.json').android.compileSdk")"
+          mapfile -t build_tools < <(
+            node -e "for (const version of require('./toolchain.lock.json').android.buildTools) console.log(version)"
+          )
+
+          packages=("platform-tools" "platforms;android-${compile_sdk}")
+          for version in "${build_tools[@]}"; do
+            packages+=("build-tools;${version}")
+          done
+          sdkmanager --install "${packages[@]}"
+
+      - name: Verify pinned Java and Android SDK revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          assert_revision() {
+            local properties="$1"
+            local expected="$2"
+            local label="$3"
+            local actual
+
+            if [[ ! -f "${properties}" ]]; then
+              echo "::error::Missing ${label} source.properties: ${properties}"
+              exit 1
+            fi
+            actual="$(sed -n 's/^Pkg\.Revision[[:space:]]*=[[:space:]]*//p' "${properties}" | tr -d '\r')"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "::error::${label} revision mismatch: expected ${expected}, got ${actual:-missing}"
+              exit 1
+            fi
+          }
+
+          expected_jdk="$(node -p "require('./toolchain.lock.json').jdk.version")"
+          actual_jdk="$(sed -n 's/^SEMANTIC_VERSION="\([^"]*\)"$/\1/p' "${JAVA_HOME}/release")"
+          if [[ "${actual_jdk}" != "${expected_jdk}" ]]; then
+            echo "::error::JDK version mismatch: expected ${expected_jdk}, got ${actual_jdk:-missing}"
+            exit 1
+          fi
+
+          command_line_tools_revision="$(node -p "require('./toolchain.lock.json').android.commandLineTools.version")"
+          platform_tools_revision="$(node -p "require('./toolchain.lock.json').android.platformTools")"
+          compile_sdk="$(node -p "require('./toolchain.lock.json').android.compileSdk")"
+          platform_revision="$(node -p "require('./toolchain.lock.json').android.platformRevision")"
+
+          assert_revision \
+            "${ANDROID_SDK_ROOT}/cmdline-tools/latest/source.properties" \
+            "${command_line_tools_revision}" \
+            "Android command-line tools"
+          assert_revision \
+            "${ANDROID_SDK_ROOT}/platform-tools/source.properties" \
+            "${platform_tools_revision}" \
+            "Android platform-tools"
+          assert_revision \
+            "${ANDROID_SDK_ROOT}/platforms/android-${compile_sdk}/source.properties" \
+            "${platform_revision}" \
+            "Android platform ${compile_sdk}"
+
+          mapfile -t build_tools < <(
+            node -e "for (const version of require('./toolchain.lock.json').android.buildTools) console.log(version)"
+          )
+          for version in "${build_tools[@]}"; do
+            assert_revision \
+              "${ANDROID_SDK_ROOT}/build-tools/${version}/source.properties" \
+              "${version}" \
+              "Android build-tools ${version}"
+          done
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit Android native log privacy
+        run: pnpm check:android-native-logs
+
+      - name: Type-check
+        run: pnpm check
+
+      - name: Test Android security and request foundations
+        run: pnpm test:android-foundation
+
+      - name: Sync Android project
+        run: pnpm mobile:sync:android
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Audit debug APK contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "${apk}"
+
+          forbidden_files="$(unzip -Z1 "${apk}" | grep -E '(\.map$|(^|/)stats\.html$)' || true)"
+          if [[ -n "${forbidden_files}" ]]; then
+            printf '%s\n' "${forbidden_files}"
+            echo "::error::Debug APK contains source maps or stats.html"
+            exit 1
+          fi
+
+          forbidden_telemetry='([a-z0-9-]+\.)*googletagmanager\.com|([a-z0-9-]+\.)*google-analytics\.com|([a-z0-9-]+\.)*plausible\.io|([a-z0-9-]+\.)*sentry\.io|plausible\.midway\.run|sentry\.midway\.run'
+          telemetry_hits="$(unzip -p "${apk}" | grep -aEio "${forbidden_telemetry}" | sort -u || true)"
+          if [[ -n "${telemetry_hits}" ]]; then
+            printf '%s\n' "${telemetry_hits}"
+            echo "::error::Debug APK contains an upstream telemetry endpoint"
+            exit 1
+          fi
+
+          build_tools="$(node -p "require('./toolchain.lock.json').android.buildTools[0]")"
+          aapt2="${ANDROID_SDK_ROOT}/build-tools/${build_tools}/aapt2"
+          apksigner="${ANDROID_SDK_ROOT}/build-tools/${build_tools}/apksigner"
+          test -x "${aapt2}"
+          test -x "${apksigner}"
+
+          permissions_output="$("${aapt2}" dump permissions "${apk}")"
+          mapfile -t actual_permissions < <(
+            printf '%s\n' "${permissions_output}" \
+              | sed -n "s/^uses-permission: name='\([^']*\)'.*/\1/p" \
+              | sort -u
+          )
+          expected_permissions=(
+            "android.permission.ACCESS_NETWORK_STATE"
+            "android.permission.INTERNET"
+            "${ANDROID_APPLICATION_ID}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+          )
+          permission_diff="$(
+            diff -u \
+              <(printf '%s\n' "${expected_permissions[@]}" | sort -u) \
+              <(printf '%s\n' "${actual_permissions[@]}" | sort -u) \
+              || true
+          )"
+          if [[ -n "${permission_diff}" ]]; then
+            printf '%s\n' "${permission_diff}"
+            echo "::error::Debug APK permission set differs from the explicit allowlist"
+            exit 1
+          fi
+
+          "${apksigner}" verify --verbose --print-certs "${apk}"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: yachiyo-claw-debug-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

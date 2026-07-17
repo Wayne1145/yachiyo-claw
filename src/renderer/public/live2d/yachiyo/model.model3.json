@@ -1,0 +1,31 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "model.moc3",
+    "Textures": [
+      "textures/texture_00.png",
+      "textures/texture_01.png"
+    ],
+    "Physics": "model.physics3.json",
+    "DisplayInfo": "model.cdi3.json",
+    "Expressions": [
+      { "Name": "zhongxin", "File": "neutral.exp3.json" },
+      { "Name": "leizhu", "File": "teardrop.exp3.json" },
+      { "Name": "mimiyan", "File": "squint.exp3.json" },
+      { "Name": "xiaomimi", "File": "smile.exp3.json" },
+      { "Name": "yanlei", "File": "tears.exp3.json" }
+    ]
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": ["ParamEyeLOpen", "ParamEyeROpen"]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": ["ParamMouthOpenY"]
+    }
+  ]
+}

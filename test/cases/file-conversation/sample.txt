@@ -1,0 +1,25 @@
+# Sample Text Document
+
+This is a sample text document for testing the file conversation feature.
+
+## Introduction
+
+The file conversation mechanism allows AI to read file contents through tools rather than receiving the content directly in the context. This approach has several advantages:
+
+1. **Token Efficiency**: Only relevant portions of files are read on demand
+2. **Large File Support**: Files too large for context can be processed in chunks
+3. **Search Capability**: The search_file_content tool enables efficient content search
+
+## Sample Data
+
+Here is some sample data that the AI should be able to find:
+
+- User ID: 12345
+- API Key: sk-test-abcdefghijklmnop
+- Server URL: https://api.example.com/v1
+
+## Conclusion
+
+This document demonstrates the basic capabilities of the file reading tools.
+
+End of document.

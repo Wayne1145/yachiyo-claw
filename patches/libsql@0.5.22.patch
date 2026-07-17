@@ -1,0 +1,50 @@
+diff --git a/index.js b/index.js
+index e24987954ec427320f51fd8037f9754b60ffa363..6c73d898462a0ecd2b0a34070bc6da9424f34350 100644
+--- a/index.js
++++ b/index.js
+@@ -23,7 +23,17 @@ function requireNative() {
+   if (target === "linux-arm-gnueabihf" && familySync() == MUSL) {
+       target = "linux-arm-musleabihf";
+   }
+-  return require(`@libsql/${target}`);
++  try {
++    return require(`@libsql/${target}`);
++  } catch (e) {
++    const isMissingTarget =
++      e?.code === "MODULE_NOT_FOUND" &&
++      typeof e?.message === "string" &&
++      e.message.includes(`@libsql/${target}`);
++    if (!isMissingTarget) throw e;
++    console.error(`[libsql] Native module @libsql/${target} not found`);
++    return {};
++  }
+ }
+ 
+ const {
+diff --git a/promise.js b/promise.js
+index 111d8257015acd8c9870433d9e863d1bc675b7d6..981082fbfea4d5ea52ad78a48e046b862ef3b003 100644
+--- a/promise.js
++++ b/promise.js
+@@ -38,7 +38,21 @@ function requireNative() {
+   if (target === "linux-arm-gnueabihf" && familySync() == MUSL) {
+       target = "linux-arm-musleabihf";
+   }
+-  return require(`@libsql/${target}`);
++  if (target === "win32-arm64-msvc") {
++    console.log("[libsql] Windows ARM64 detected - native module not available");
++    return {};
++  }
++  try {
++    return require(`@libsql/${target}`);
++  } catch (e) {
++    const isMissingTarget =
++      e?.code === "MODULE_NOT_FOUND" &&
++      typeof e?.message === "string" &&
++      e.message.includes(`@libsql/${target}`);
++    if (!isMissingTarget) throw e;
++    console.error(`[libsql] Native module @libsql/${target} not found`);
++    return {};
++  }
+ }
+ 
+ const {

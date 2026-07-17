@@ -1,0 +1,83 @@
+apply plugin: 'com.android.application'
+
+def newDreamStudioKeystore = rootProject.file('../.keys/newdreamstudio.keystore')
+def hasNewDreamStudioKeystore = newDreamStudioKeystore.exists()
+
+android {
+    namespace "io.github.yachiyoclaw"
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "io.github.yachiyoclaw"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.0.1"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (hasNewDreamStudioKeystore) {
+            newDreamStudio {
+                storeFile newDreamStudioKeystore
+                storePassword System.getenv('YACHIYO_KEYSTORE_PASSWORD') ?: 'android'
+                keyAlias 'NewDreamStudio'
+                keyPassword System.getenv('YACHIYO_KEY_PASSWORD') ?: 'android'
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            if (hasNewDreamStudioKeystore) {
+                signingConfig signingConfigs.newDreamStudio
+            }
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasNewDreamStudioKeystore) {
+                signingConfig signingConfigs.newDreamStudio
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    // Keep Shizuku and its transitive artifacts in the workspace so Android
+    // builds do not depend on Maven Central being reachable.
+    implementation files('libs/shizuku/aidl-13.1.5.aar')
+    implementation files('libs/shizuku/shared-13.1.5.aar')
+    implementation files('libs/shizuku/api-13.1.5.aar')
+    implementation files('libs/shizuku/provider-13.1.5.aar')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

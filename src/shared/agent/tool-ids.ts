@@ -1,0 +1,26 @@
+export const TOOL_IDS = {
+  SHELL_EXEC: 'device.shell.exec',
+  SCREEN_OBSERVE: 'device.screen.observe',
+  UI_FIND: 'device.ui.find',
+  UI_TAP: 'device.ui.tap',
+  UI_LONG_PRESS: 'device.ui.long_press',
+  UI_SWIPE: 'device.ui.swipe',
+  UI_TYPE_TEXT: 'device.ui.type_text',
+  NAVIGATION_BACK: 'device.navigation.back',
+  NAVIGATION_HOME: 'device.navigation.home',
+  NAVIGATION_RECENTS: 'device.navigation.recents',
+  APP_LIST: 'device.app.list',
+  APP_LAUNCH: 'device.app.launch',
+  DEVICE_STATUS_READ: 'device.status.read',
+  CLIPBOARD_READ: 'device.clipboard.read',
+  CLIPBOARD_WRITE: 'device.clipboard.write',
+  NOTIFICATION_LIST: 'device.notification.list',
+  QUICK_SETTING_SET: 'device.quick_setting.set',
+  FILE_READ: 'device.file.read',
+  FILE_WRITE: 'device.file.write',
+  SCHEDULE_CREATE: 'agent.schedule.create',
+  SCHEDULE_LIST: 'agent.schedule.list',
+  SCHEDULE_CANCEL: 'agent.schedule.cancel',
+} as const
+
+export type ToolId = (typeof TOOL_IDS)[keyof typeof TOOL_IDS]

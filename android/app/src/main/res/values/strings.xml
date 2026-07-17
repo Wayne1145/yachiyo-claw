@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Yachiyo Claw</string>
+    <string name="title_activity_main">Yachiyo Claw</string>
+    <string name="package_name">io.github.yachiyoclaw</string>
+    <string name="custom_url_scheme">yachiyoclaw</string>
+    <string name="accessibility_service_description">允许 Yachiyo Claw 在 Agent 任务中观察界面并执行点击、滑动、输入和系统导航。</string>
+</resources>

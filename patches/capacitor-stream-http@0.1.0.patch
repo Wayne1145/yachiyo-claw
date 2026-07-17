@@ -1,0 +1,454 @@
+diff --git a/android/src/main/java/com/chatbox/plugins/streamhttp/StreamHttpPlugin.java b/android/src/main/java/com/chatbox/plugins/streamhttp/StreamHttpPlugin.java
+index 19a911c5cd31293a177b4c5593c616c741c3d130..aa3206647d8028bcc2f970207a434414836c1318 100644
+--- a/android/src/main/java/com/chatbox/plugins/streamhttp/StreamHttpPlugin.java
++++ b/android/src/main/java/com/chatbox/plugins/streamhttp/StreamHttpPlugin.java
+@@ -13,20 +13,29 @@ import java.io.InputStreamReader;
+ import java.io.OutputStream;
+ import java.net.HttpURLConnection;
+ import java.net.URL;
+-import java.util.HashMap;
++import java.nio.charset.StandardCharsets;
+ import java.util.Iterator;
++import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.UUID;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.Executors;
+ 
+-import android.util.Log;
+-
+ @CapacitorPlugin(name = "StreamHttp")
+ public class StreamHttpPlugin extends Plugin {
+-    private static final String TAG = "StreamHttpPlugin";
+-    private final Map<String, HttpURLConnection> activeConnections = new HashMap<>();
+-    private final Map<String, Thread> activeThreads = new HashMap<>();
++    // Requests can carry API keys and conversation bodies, so this plugin never writes to Logcat.
++    private static final int DEFAULT_CONNECT_TIMEOUT_MS = 30_000;
++    private static final int DEFAULT_READ_TIMEOUT_MS = 0;
++    private static final int MIN_TIMEOUT_MS = 1_000;
++    private static final int MAX_CONNECT_TIMEOUT_MS = 120_000;
++    private static final int MAX_READ_TIMEOUT_MS = 3_600_000;
++
++    private final Map<String, HttpURLConnection> activeConnections = new ConcurrentHashMap<>();
++    private final Map<String, Thread> activeThreads = new ConcurrentHashMap<>();
++    private final Set<String> activeStreamIds = ConcurrentHashMap.newKeySet();
++    private final Set<String> cancelledStreamIds = ConcurrentHashMap.newKeySet();
+     private final ExecutorService executor = Executors.newCachedThreadPool();
+ 
+     @PluginMethod
+@@ -40,177 +49,223 @@ public class StreamHttpPlugin extends Plugin {
+             call.reject("URL is required");
+             return;
+         }
++        if (executor.isShutdown()) {
++            call.reject("Stream HTTP plugin is shutting down");
++            return;
++        }
+ 
++        Integer requestedConnectTimeout = call.getInt("connectTimeoutMs");
++        Integer requestedReadTimeout = call.getInt("readTimeoutMs");
++        if (isNegative(requestedConnectTimeout) || isNegative(requestedReadTimeout)) {
++            call.reject("Timeouts must be zero or positive");
++            return;
++        }
++
++        int connectTimeout = boundedTimeout(
++            requestedConnectTimeout,
++            DEFAULT_CONNECT_TIMEOUT_MS,
++            false,
++            MAX_CONNECT_TIMEOUT_MS
++        );
++        int readTimeout = boundedTimeout(requestedReadTimeout, DEFAULT_READ_TIMEOUT_MS, true, MAX_READ_TIMEOUT_MS);
+         String streamId = UUID.randomUUID().toString();
+-        
+-        executor.execute(() -> {
+-            try {
+-                URL url = new URL(urlString);
+-                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+-                
+-                // Store connection for potential cancellation
+-                synchronized (activeConnections) {
+-                    activeConnections.put(streamId, connection);
+-                    activeThreads.put(streamId, Thread.currentThread());
+-                }
++        activeStreamIds.add(streamId);
+ 
+-                // Set request method
+-                connection.setRequestMethod(method);
+-                
+-                // Set headers
+-                Iterator<String> keys = headers.keys();
+-                while (keys.hasNext()) {
+-                    String key = keys.next();
+-                    String value = headers.getString(key);
+-                    if (value != null) {
+-                        connection.setRequestProperty(key, value);
+-                    }
+-                }
++        // Resolve before scheduling work so JavaScript can bind the returned ID before any event is emitted.
++        JSObject ret = new JSObject();
++        ret.put("id", streamId);
++        call.resolve(ret);
+ 
+-                // Set timeouts
+-                connection.setConnectTimeout(30000); // 30 seconds
+-                connection.setReadTimeout(30000); // 30 seconds
+-                
+-                // Enable streaming mode for better performance
+-                connection.setChunkedStreamingMode(0);
+-                
+-                // Write body if present
+-                if (body != null && !body.isEmpty() && !method.equals("GET")) {
+-                    connection.setDoOutput(true);
+-                    try (OutputStream os = connection.getOutputStream()) {
+-                        byte[] input = body.getBytes("utf-8");
+-                        os.write(input, 0, input.length);
+-                    }
+-                }
++        executor.execute(() -> runStream(streamId, urlString, method, headers, body, connectTimeout, readTimeout));
++    }
++
++    private void runStream(
++        String streamId,
++        String urlString,
++        String method,
++        JSObject headers,
++        String body,
++        int connectTimeout,
++        int readTimeout
++    ) {
++        HttpURLConnection connection = null;
++        Thread worker = Thread.currentThread();
++        activeThreads.put(streamId, worker);
++
++        try {
++            if (isCancelled(streamId)) {
++                return;
++            }
+ 
+-                // Get response code
+-                int responseCode = connection.getResponseCode();
+-                Log.d(TAG, "Response code: " + responseCode);
++            URL url = new URL(urlString);
++            connection = (HttpURLConnection) url.openConnection();
++            activeConnections.put(streamId, connection);
++            if (isCancelled(streamId)) {
++                return;
++            }
+ 
+-                // Read response stream
+-                InputStream inputStream;
+-                if (responseCode >= 200 && responseCode < 300) {
+-                    inputStream = connection.getInputStream();
+-                } else {
+-                    inputStream = connection.getErrorStream();
++            connection.setRequestMethod(method);
++            Iterator<String> keys = headers.keys();
++            while (keys.hasNext()) {
++                String key = keys.next();
++                String value = headers.getString(key);
++                if (value != null) {
++                    connection.setRequestProperty(key, value);
+                 }
++            }
++
++            connection.setConnectTimeout(connectTimeout);
++            connection.setReadTimeout(readTimeout);
+ 
+-                if (inputStream != null) {
+-                    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, "utf-8"));
+-                    SSEParser sseParser = new SSEParser();
+-                    String line;
+-                    
+-                    while ((line = reader.readLine()) != null) {
+-                        // Check if stream was cancelled
+-                        if (!activeConnections.containsKey(streamId)) {
+-                            break;
+-                        }
+-                        
+-                        // Process line through SSE parser
+-                        String event = sseParser.processLine(line);
+-                        if (event != null) {
+-                            // Complete SSE event ready, send it
+-                            JSObject chunkData = new JSObject();
+-                            chunkData.put("id", streamId);
+-                            chunkData.put("chunk", event);
+-                            notifyListeners("chunk", chunkData);
+-                        }
+-                    }
+-                    
+-                    // Process empty line at the end to flush last event
+-                    String lastEvent = sseParser.processLine("");
+-                    if (lastEvent != null) {
+-                        JSObject chunkData = new JSObject();
+-                        chunkData.put("id", streamId);
+-                        chunkData.put("chunk", lastEvent);
+-                        notifyListeners("chunk", chunkData);
+-                    }
+-                    
+-                    // Send any remaining data
+-                    String remaining = sseParser.flush();
+-                    if (remaining != null && !remaining.isEmpty()) {
+-                        JSObject chunkData = new JSObject();
+-                        chunkData.put("id", streamId);
+-                        chunkData.put("chunk", remaining);
+-                        notifyListeners("chunk", chunkData);
+-                    }
+-                    
+-                    reader.close();
++            if (body != null && !body.isEmpty() && !method.equalsIgnoreCase("GET")) {
++                connection.setDoOutput(true);
++                connection.setChunkedStreamingMode(0);
++                try (OutputStream output = connection.getOutputStream()) {
++                    byte[] input = body.getBytes(StandardCharsets.UTF_8);
++                    output.write(input);
+                 }
++            }
+ 
+-                // Send end event
++            int responseCode = connection.getResponseCode();
++            sendResponseMetadata(streamId, responseCode, connection.getHeaderFields());
++
++            InputStream inputStream = responseCode >= 200 && responseCode < 300
++                ? connection.getInputStream()
++                : connection.getErrorStream();
++            if (inputStream != null) {
++                readResponse(streamId, inputStream);
++            }
++
++            if (!isCancelled(streamId)) {
+                 JSObject endData = new JSObject();
+                 endData.put("id", streamId);
+                 notifyListeners("end", endData);
+-
+-            } catch (IOException e) {
+-                Log.e(TAG, "Stream error: " + e.getMessage(), e);
+-                
+-                // Send error event
++            }
++        } catch (Exception error) {
++            if (!isCancelled(streamId)) {
+                 JSObject errorData = new JSObject();
+                 errorData.put("id", streamId);
+-                errorData.put("error", e.getMessage());
++                errorData.put("error", error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+                 notifyListeners("error", errorData);
+-            } finally {
+-                // Clean up
+-                synchronized (activeConnections) {
+-                    HttpURLConnection connection = activeConnections.remove(streamId);
+-                    if (connection != null) {
+-                        connection.disconnect();
+-                    }
+-                    activeThreads.remove(streamId);
++            }
++        } finally {
++            activeThreads.remove(streamId, worker);
++            if (connection != null) {
++                activeConnections.remove(streamId, connection);
++                connection.disconnect();
++            }
++            cancelledStreamIds.remove(streamId);
++            activeStreamIds.remove(streamId);
++        }
++    }
++
++    private void readResponse(String streamId, InputStream inputStream) throws IOException {
++        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
++            SSEParser parser = new SSEParser();
++            String line;
++            while (!isCancelled(streamId) && (line = reader.readLine()) != null) {
++                String event = parser.processLine(line);
++                if (event != null) {
++                    sendChunk(streamId, event);
+                 }
+             }
+-        });
+ 
+-        // Return stream ID immediately
+-        JSObject ret = new JSObject();
+-        ret.put("id", streamId);
+-        call.resolve(ret);
++            if (isCancelled(streamId)) {
++                return;
++            }
++
++            String lastEvent = parser.processLine("");
++            if (lastEvent != null) {
++                sendChunk(streamId, lastEvent);
++            }
++            String remaining = parser.flush();
++            if (remaining != null && !remaining.isEmpty()) {
++                sendChunk(streamId, remaining);
++            }
++        }
++    }
++
++    private void sendResponseMetadata(String streamId, int status, Map<String, List<String>> headerFields) {
++        JSObject responseHeaders = new JSObject();
++        for (Map.Entry<String, List<String>> header : headerFields.entrySet()) {
++            if (header.getKey() != null && header.getValue() != null) {
++                responseHeaders.put(header.getKey(), String.join(", ", header.getValue()));
++            }
++        }
++
++        JSObject responseData = new JSObject();
++        responseData.put("id", streamId);
++        responseData.put("status", status);
++        responseData.put("headers", responseHeaders);
++        notifyListeners("response", responseData);
++    }
++
++    private void sendChunk(String streamId, String chunk) {
++        if (isCancelled(streamId)) {
++            return;
++        }
++        JSObject chunkData = new JSObject();
++        chunkData.put("id", streamId);
++        chunkData.put("chunk", chunk);
++        notifyListeners("chunk", chunkData);
++    }
++
++    private boolean isCancelled(String streamId) {
++        return !activeStreamIds.contains(streamId)
++            || cancelledStreamIds.contains(streamId)
++            || Thread.currentThread().isInterrupted();
++    }
++
++    private static boolean isNegative(Integer value) {
++        return value != null && value < 0;
++    }
++
++    private static int boundedTimeout(Integer requested, int defaultValue, boolean allowInfinite, int maximum) {
++        if (requested == null) {
++            return defaultValue;
++        }
++        if (allowInfinite && requested == 0) {
++            return 0;
++        }
++        return Math.min(Math.max(requested, MIN_TIMEOUT_MS), maximum);
+     }
+ 
+     @PluginMethod
+     public void cancelStream(PluginCall call) {
+         String streamId = call.getString("id");
+-        
+         if (streamId == null) {
+             call.reject("Stream ID is required");
+             return;
+         }
+ 
+-        synchronized (activeConnections) {
+-            // Cancel the connection
+-            HttpURLConnection connection = activeConnections.remove(streamId);
+-            if (connection != null) {
+-                connection.disconnect();
+-            }
+-            
+-            // Interrupt the thread if it's still running
+-            Thread thread = activeThreads.remove(streamId);
+-            if (thread != null) {
+-                thread.interrupt();
+-            }
++        if (activeStreamIds.contains(streamId)) {
++            cancelledStreamIds.add(streamId);
++        }
++        HttpURLConnection connection = activeConnections.remove(streamId);
++        if (connection != null) {
++            connection.disconnect();
++        }
++        Thread thread = activeThreads.remove(streamId);
++        if (thread != null) {
++            thread.interrupt();
+         }
+-
+         call.resolve();
+     }
+-    
++
+     @Override
+     protected void handleOnDestroy() {
+-        // Clean up all active connections when plugin is destroyed
+-        synchronized (activeConnections) {
+-            for (HttpURLConnection connection : activeConnections.values()) {
+-                connection.disconnect();
+-            }
+-            activeConnections.clear();
+-            
+-            for (Thread thread : activeThreads.values()) {
+-                thread.interrupt();
+-            }
+-            activeThreads.clear();
++        cancelledStreamIds.addAll(activeStreamIds);
++        for (HttpURLConnection connection : activeConnections.values()) {
++            connection.disconnect();
++        }
++        activeConnections.clear();
++        for (Thread thread : activeThreads.values()) {
++            thread.interrupt();
+         }
+-        
+-        executor.shutdown();
++        activeThreads.clear();
++        executor.shutdownNow();
++        activeStreamIds.clear();
++        cancelledStreamIds.clear();
+         super.handleOnDestroy();
+     }
+ }
+diff --git a/dist/esm/definitions.d.ts b/dist/esm/definitions.d.ts
+index ab47277ac40451a166db2d546d66ffae60e546b8..0d00ccda225d6736847749f61dcb377c6ec5f8e4 100644
+--- a/dist/esm/definitions.d.ts
++++ b/dist/esm/definitions.d.ts
+@@ -15,6 +15,30 @@ export interface StartStreamOptions {
+      * Optional request body
+      */
+     body?: string;
++    /**
++     * Initial connection timeout in milliseconds. Defaults to 30000 and is capped at 120000.
++     */
++    connectTimeoutMs?: number;
++    /**
++     * Read timeout in milliseconds. Defaults to 0 (no timeout) and is capped at 3600000 when non-zero.
++     */
++    readTimeoutMs?: number;
++}
++export interface StreamResponseEvent {
++    id: string;
++    status: number;
++    headers: Record<string, string>;
++}
++export interface StreamChunkEvent {
++    id: string;
++    chunk: string;
++}
++export interface StreamEndEvent {
++    id: string;
++}
++export interface StreamErrorEvent {
++    id: string;
++    error: string;
+ }
+ export interface StreamHttpPlugin {
+     /**
+@@ -39,11 +63,11 @@ export interface StreamHttpPlugin {
+      * @param listenerFunc Callback function for the event
+      * @returns Promise with remove function
+      */
+-    addListener(eventName: 'chunk' | 'end' | 'error', listenerFunc: (data: {
+-        id: string;
+-        chunk?: string;
+-        error?: string;
+-    }) => void): Promise<{
+-        remove: () => void;
+-    }>;
++    addListener(eventName: 'response', listenerFunc: (data: StreamResponseEvent) => void): Promise<StreamListenerHandle>;
++    addListener(eventName: 'chunk', listenerFunc: (data: StreamChunkEvent) => void): Promise<StreamListenerHandle>;
++    addListener(eventName: 'end', listenerFunc: (data: StreamEndEvent) => void): Promise<StreamListenerHandle>;
++    addListener(eventName: 'error', listenerFunc: (data: StreamErrorEvent) => void): Promise<StreamListenerHandle>;
++}
++export interface StreamListenerHandle {
++    remove: () => void | Promise<void>;
+ }

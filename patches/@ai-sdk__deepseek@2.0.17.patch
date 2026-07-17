@@ -1,0 +1,90 @@
+diff --git a/dist/index.js b/dist/index.js
+index cb422ca7fcb77592cc66e43bd7ab526f0119afea..34380442ee86173839c759aac5dd3b694935c000 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -37,9 +37,11 @@ var import_provider_utils2 = require("@ai-sdk/provider-utils");
+ // src/chat/convert-to-deepseek-chat-messages.ts
+ function convertToDeepSeekChatMessages({
+   prompt,
+-  responseFormat
++  responseFormat,
++  modelId
+ }) {
+   var _a;
++  const isDeepSeekV4 = typeof modelId === "string" && modelId.includes("deepseek-v4");
+   const messages = [];
+   const warnings = [];
+   if ((responseFormat == null ? void 0 : responseFormat.type) === "json") {
+@@ -104,7 +106,7 @@ function convertToDeepSeekChatMessages({
+               break;
+             }
+             case "reasoning": {
+-              if (index <= lastUserMessageIndex) {
++              if (index <= lastUserMessageIndex && !isDeepSeekV4) {
+                 break;
+               }
+               if (reasoning == null) {
+@@ -130,7 +132,7 @@ function convertToDeepSeekChatMessages({
+         messages.push({
+           role: "assistant",
+           content: text,
+-          reasoning_content: reasoning,
++          reasoning_content: reasoning != null ? reasoning : isDeepSeekV4 ? "" : void 0,
+           tool_calls: toolCalls.length > 0 ? toolCalls : void 0
+         });
+         break;
+@@ -441,7 +443,8 @@ var DeepSeekChatLanguageModel = class {
+     })) != null ? _a : {};
+     const { messages, warnings } = convertToDeepSeekChatMessages({
+       prompt,
+-      responseFormat
++      responseFormat,
++      modelId: this.modelId
+     });
+     if (topK != null) {
+       warnings.push({ type: "unsupported", feature: "topK" });
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 291e915aa210df10946a6a83985c9a522f55cb8c..b28b83090f6039d16fc60af7ec51490af87d8dc5 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -26,9 +26,11 @@ import {
+ // src/chat/convert-to-deepseek-chat-messages.ts
+ function convertToDeepSeekChatMessages({
+   prompt,
+-  responseFormat
++  responseFormat,
++  modelId
+ }) {
+   var _a;
++  const isDeepSeekV4 = typeof modelId === "string" && modelId.includes("deepseek-v4");
+   const messages = [];
+   const warnings = [];
+   if ((responseFormat == null ? void 0 : responseFormat.type) === "json") {
+@@ -93,7 +95,7 @@ function convertToDeepSeekChatMessages({
+               break;
+             }
+             case "reasoning": {
+-              if (index <= lastUserMessageIndex) {
++              if (index <= lastUserMessageIndex && !isDeepSeekV4) {
+                 break;
+               }
+               if (reasoning == null) {
+@@ -119,7 +121,7 @@ function convertToDeepSeekChatMessages({
+         messages.push({
+           role: "assistant",
+           content: text,
+-          reasoning_content: reasoning,
++          reasoning_content: reasoning != null ? reasoning : isDeepSeekV4 ? "" : void 0,
+           tool_calls: toolCalls.length > 0 ? toolCalls : void 0
+         });
+         break;
+@@ -430,7 +432,8 @@ var DeepSeekChatLanguageModel = class {
+     })) != null ? _a : {};
+     const { messages, warnings } = convertToDeepSeekChatMessages({
+       prompt,
+-      responseFormat
++      responseFormat,
++      modelId: this.modelId
+     });
+     if (topK != null) {
+       warnings.push({ type: "unsupported", feature: "topK" });

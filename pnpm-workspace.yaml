@@ -1,0 +1,36 @@
+packages:
+  - .
+  - release/app
+
+# Supply chain security: only install packages published at least 7 days ago
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - "@ruguoapp/*"
+
+onlyBuiltDependencies:
+  - "@parcel/watcher"
+  - "@sentry/cli"
+  - core-js
+  - core-js-pure
+  - electron
+  - esbuild
+  - msw
+  - protobufjs
+  - sharp
+  - zipfile
+
+overrides:
+  "@mastra/libsql": 0.13.2
+  "@mastra/rag": 1.0.8
+  "@tanstack/router-generator": 1.120.15
+  "@tanstack/router-plugin": 1.120.15
+  convict: ">=6.2.5"
+  fast-xml-parser: ">=5.5.7"
+  handlebars: ">=4.7.9"
+
+patchedDependencies:
+  "@ai-sdk/deepseek@2.0.17": patches/@ai-sdk__deepseek@2.0.17.patch
+  '@capacitor-community/sqlite@7.0.3': patches/@capacitor-community__sqlite@7.0.3.patch
+  capacitor-stream-http@0.1.0: patches/capacitor-stream-http@0.1.0.patch
+  "libsql@0.5.22": patches/libsql@0.5.22.patch
+  "mdast-util-gfm-autolink-literal@2.0.1": patches/mdast-util-gfm-autolink-literal@2.0.1.patch

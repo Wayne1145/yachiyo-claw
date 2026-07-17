@@ -1,0 +1,678 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { Message, Session, SessionThread } from '../../shared/types'
+
+import * as sessionActions from './sessionActions'
+
+const { uuidQueue, uuidv4Mock } = vi.hoisted(() => {
+  const queue: string[] = []
+  const mock = vi.fn(() => {
+    if (queue.length === 0) {
+      throw new Error('Mock uuid queue exhausted')
+    }
+    return queue.shift()!
+  })
+  return { uuidQueue: queue, uuidv4Mock: mock }
+})
+
+const {
+  updateSessionWithMessages,
+  updateSessionMock,
+  createSessionMock,
+  useSessionMock,
+  getSessionMock,
+  routerNavigateMock,
+} = vi.hoisted(() => ({
+  updateSessionWithMessages: vi.fn(),
+  updateSessionMock: vi.fn(),
+  createSessionMock: vi.fn(),
+  useSessionMock: vi.fn(),
+  getSessionMock: vi.fn(),
+  routerNavigateMock: vi.fn(),
+}))
+
+vi.hoisted(() => {
+  const storage = {
+    getItem: () => null,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+    clear: () => undefined,
+  }
+  const windowMock: Record<string, unknown> = {
+    electronAPI: undefined,
+    localStorage: storage,
+  }
+  ;(globalThis as unknown as { window: Record<string, unknown>; localStorage: typeof storage }).window = windowMock
+  ;(globalThis as unknown as { window: Record<string, unknown>; localStorage: typeof storage }).localStorage = storage
+  const fakeRequire = Object.assign(
+    () => {
+      throw new Error('require is not implemented in tests')
+    },
+    {
+      context: () => {
+        const loader = () => ''
+        loader.keys = () => [] as string[]
+        return loader
+      },
+    }
+  )
+  ;(globalThis as unknown as { require: typeof fakeRequire }).require = fakeRequire
+  return {}
+})
+
+vi.mock('uuid', () => ({
+  v4: uuidv4Mock,
+}))
+
+vi.mock('./chatStore', () => ({
+  updateSessionWithMessages,
+  updateSession: updateSessionMock,
+  createSession: createSessionMock,
+  getSession: getSessionMock,
+  useSession: useSessionMock,
+}))
+
+vi.mock('../platform', () => ({
+  default: {
+    type: 'web',
+    getConfig: async () => ({}),
+  },
+}))
+
+vi.mock('@/adapters', () => ({
+  createModelDependencies: async () => ({}),
+}))
+
+vi.mock('@/packages/model-calls', () => ({
+  generateImage: vi.fn(),
+  generateText: vi.fn(),
+}))
+
+vi.mock('@/packages/model-setting-utils', () => ({
+  getModelDisplayName: async () => 'mock-model',
+}))
+
+vi.mock('@/packages/token', () => ({
+  estimateTokensFromMessages: () => 0,
+}))
+
+vi.mock('@/router', () => ({
+  router: {
+    navigate: routerNavigateMock,
+  },
+}))
+
+vi.mock('@/utils/session-utils', () => ({
+  sortSessions: (sessions: unknown) => sessions,
+}))
+
+vi.mock('@/utils/track', () => ({
+  trackEvent: vi.fn(),
+}))
+
+vi.mock('@/hooks/dom', () => ({
+  focusMessageInput: vi.fn(),
+}))
+
+vi.mock('@/i18n/locales', () => ({
+  languageNameMap: {},
+}))
+
+vi.mock('@/packages/apple_app_store', () => ({}))
+
+vi.mock('@/stores/settingsStore', () => ({
+  settingsStore: {
+    getState: () => ({
+      getSettings: () => ({}),
+    }),
+  },
+  useLanguage: () => 'en',
+}))
+
+vi.mock('@/stores/uiStore', () => ({
+  uiStore: {
+    getState: () => ({
+      widthFull: false,
+      messageScrolling: null,
+      setMessageListElement: vi.fn(),
+    }),
+  },
+  useUIStore: vi.fn(),
+}))
+
+vi.mock('@/components/settings/mcp/registries', () => ({
+  MCP_ENTRIES_OFFICIAL: [],
+}))
+
+vi.mock('../components/settings/mcp/registries', () => ({
+  MCP_ENTRIES_OFFICIAL: [],
+}))
+
+function makeMessage(id: string, role: Message['role'] = 'user'): Message {
+  return {
+    id,
+    role,
+    contentParts: [],
+  }
+}
+
+function cloneSession(session: Session): Session {
+  return JSON.parse(JSON.stringify(session)) as Session
+}
+
+beforeEach(() => {
+  uuidQueue.length = 0
+  uuidv4Mock.mockClear()
+  updateSessionWithMessages.mockReset()
+  updateSessionMock.mockReset()
+  createSessionMock.mockReset()
+  useSessionMock.mockReset()
+  getSessionMock.mockReset()
+  routerNavigateMock.mockReset()
+})
+
+describe('fork actions', () => {
+  test('createNewFork moves trailing messages into a new branch', async () => {
+    uuidQueue.push('id-1', 'id-2', 'id-3')
+    const pivot = makeMessage('pivot', 'user')
+    const trailing = makeMessage('trailing', 'assistant')
+    const session: Session = {
+      id: 'session-1',
+      name: 'Test',
+      messages: [pivot, trailing],
+    }
+    const snapshot = cloneSession(session)
+
+    let updated: Session | undefined
+    updateSessionWithMessages.mockImplementation(async (sessionId, updater) => {
+      expect(sessionId).toBe(session.id)
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.createNewFork(session.id, pivot.id)
+
+    expect(updateSessionWithMessages).toHaveBeenCalledTimes(1)
+    expect(session).toEqual(snapshot)
+    expect(updated).toBeDefined()
+    expect(updated!.messages).toEqual([pivot])
+
+    const fork = updated!.messageForksHash?.[pivot.id]
+    expect(fork).toBeDefined()
+    expect(fork!.position).toBe(1)
+    expect(fork!.lists).toHaveLength(2)
+    expect(fork!.lists[0].messages).toEqual([trailing])
+    expect(fork!.lists[1].messages).toEqual([])
+  })
+
+  test('createNewFork skips update when no trailing messages', async () => {
+    uuidQueue.push('id-1')
+    const pivot = makeMessage('pivot', 'user')
+    const session: Session = {
+      id: 'session-2',
+      name: 'Test',
+      messages: [pivot],
+    }
+    const snapshot = cloneSession(session)
+    let updated: Session | undefined
+
+    updateSessionWithMessages.mockImplementation(async (sessionId, updater) => {
+      expect(sessionId).toBe(session.id)
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.createNewFork(session.id, pivot.id)
+
+    expect(updateSessionWithMessages).toHaveBeenCalledTimes(1)
+    expect(session).toEqual(snapshot)
+    expect(updated).toBe(session)
+    expect(updated?.messageForksHash).toBeUndefined()
+  })
+
+  test('switchFork rotates branch contents for root messages', async () => {
+    const pivot = makeMessage('pivot', 'user')
+    const current = makeMessage('current', 'assistant')
+    const alt = makeMessage('alt', 'assistant')
+    const session: Session = {
+      id: 'session-3',
+      name: 'Test',
+      messages: [pivot, current],
+      messageForksHash: {
+        [pivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'list-0', messages: [] },
+            { id: 'list-1', messages: [alt] },
+          ],
+          createdAt: 1,
+        },
+      },
+    }
+    const snapshot = cloneSession(session)
+    let updated: Session | undefined
+
+    updateSessionWithMessages.mockImplementation(async (_, updater) => {
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.switchFork(session.id, pivot.id, 'next')
+
+    expect(session).toEqual(snapshot)
+    expect(updated).toBeDefined()
+    expect(updated!.messages).toEqual([pivot, alt])
+
+    const fork = updated!.messageForksHash?.[pivot.id]
+    expect(fork).toBeDefined()
+    expect(fork!.position).toBe(1)
+    expect(fork!.lists[0].messages).toEqual([current])
+    expect(fork!.lists[1].messages).toEqual([])
+    expect(snapshot.messageForksHash?.[pivot.id].lists[0].messages).toEqual([])
+  })
+
+  test('switchFork updates forked thread messages', async () => {
+    const pivot = makeMessage('pivot', 'user')
+    const current = makeMessage('current', 'assistant')
+    const alternative = makeMessage('alt', 'assistant')
+    const thread: SessionThread = {
+      id: 'thread-1',
+      name: 'Thread',
+      createdAt: 1,
+      messages: [pivot, current],
+    }
+    const session: Session = {
+      id: 'session-4',
+      name: 'Test',
+      messages: [],
+      threads: [thread],
+      messageForksHash: {
+        [pivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'list-0', messages: [] },
+            { id: 'list-1', messages: [alternative] },
+          ],
+          createdAt: 1,
+        },
+      },
+    }
+    const snapshot = cloneSession(session)
+    let updated: Session | undefined
+
+    updateSessionWithMessages.mockImplementation(async (_, updater) => {
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.switchFork(session.id, pivot.id, 'next')
+
+    expect(session).toEqual(snapshot)
+    expect(updated?.threads?.[0].messages).toEqual([pivot, alternative])
+    const fork = updated?.messageForksHash?.[pivot.id]
+    expect(fork?.position).toBe(1)
+    expect(fork?.lists[0].messages).toEqual([current])
+  })
+
+  test('deleteFork promotes the next saved branch', async () => {
+    const pivot = makeMessage('pivot', 'user')
+    const current = makeMessage('current', 'assistant')
+    const nextBranch = makeMessage('next', 'assistant')
+    const session: Session = {
+      id: 'session-5',
+      name: 'Test',
+      messages: [pivot, current],
+      messageForksHash: {
+        [pivot.id]: {
+          position: 1,
+          lists: [
+            { id: 'list-0', messages: [nextBranch] },
+            { id: 'list-1', messages: [] },
+          ],
+          createdAt: 1,
+        },
+      },
+    }
+    const snapshot = cloneSession(session)
+    let updated: Session | undefined
+
+    updateSessionWithMessages.mockImplementation(async (_, updater) => {
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.deleteFork(session.id, pivot.id)
+
+    expect(session).toEqual(snapshot)
+    expect(updated!.messages).toEqual([pivot, nextBranch])
+    const fork = updated!.messageForksHash?.[pivot.id]
+    expect(fork).toBeDefined()
+    expect(fork!.position).toBe(0)
+    expect(fork!.lists).toHaveLength(1)
+    expect(fork!.lists[0].messages).toEqual([])
+  })
+
+  test('deleteFork removes entry when no branches remain', async () => {
+    const pivot = makeMessage('pivot', 'user')
+    const session: Session = {
+      id: 'session-6',
+      name: 'Test',
+      messages: [pivot],
+      messageForksHash: {
+        [pivot.id]: {
+          position: 0,
+          lists: [{ id: 'list-0', messages: [] }],
+          createdAt: 1,
+        },
+      },
+    }
+    const snapshot = cloneSession(session)
+    let updated: Session | undefined
+
+    updateSessionWithMessages.mockImplementation(async (_, updater) => {
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.deleteFork(session.id, pivot.id)
+
+    expect(session).toEqual(snapshot)
+    expect(updated!.messages).toEqual([pivot])
+    expect(updated!.messageForksHash).toBeUndefined()
+  })
+
+  test('expandFork appends all stored branches and clears fork data', async () => {
+    const pivot = makeMessage('pivot', 'user')
+    const current = makeMessage('current', 'assistant')
+    const altA = makeMessage('alt-a', 'assistant')
+    const altB = makeMessage('alt-b', 'assistant')
+    const session: Session = {
+      id: 'session-7',
+      name: 'Test',
+      messages: [pivot, current],
+      messageForksHash: {
+        [pivot.id]: {
+          position: 1,
+          lists: [
+            { id: 'list-0', messages: [altA] },
+            { id: 'list-1', messages: [] },
+            { id: 'list-2', messages: [altB] },
+          ],
+          createdAt: 1,
+        },
+      },
+    }
+    const snapshot = cloneSession(session)
+    let updated: Session | undefined
+
+    updateSessionWithMessages.mockImplementation(async (_, updater) => {
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    await sessionActions.expandFork(session.id, pivot.id)
+
+    expect(session).toEqual(snapshot)
+    expect(updated!.messages).toEqual([pivot, current, altA, altB])
+    expect(updated!.messageForksHash).toBeUndefined()
+  })
+
+  test('regenerateInNewFork creates a new fork for thread messages', async () => {
+    uuidQueue.push('fork-1', 'fork-2', 'fork-3', 'fork-4')
+    const pivot = makeMessage('pivot', 'user')
+    const target = makeMessage('target', 'assistant')
+    const thread: SessionThread = {
+      id: 'thread-2',
+      name: 'Thread',
+      createdAt: 1,
+      messages: [pivot, target],
+    }
+    const session: Session = {
+      id: 'session-8',
+      name: 'Test',
+      messages: [],
+      threads: [thread],
+    }
+    const snapshot = cloneSession(session)
+
+    getSessionMock.mockResolvedValue(session)
+
+    let updated: Session | undefined
+    updateSessionWithMessages.mockImplementation(async (_, updater) => {
+      const result = updater(session)
+      updated = result as Session
+      return result
+    })
+
+    const runGenerateMore = vi.fn().mockResolvedValue(undefined)
+
+    await sessionActions.regenerateInNewFork(session.id, target, { runGenerateMore })
+
+    expect(getSessionMock).toHaveBeenCalledWith(session.id)
+    expect(updateSessionWithMessages).toHaveBeenCalledTimes(1)
+    expect(session).toEqual(snapshot)
+
+    expect(updated).toBeDefined()
+    const fork = updated!.messageForksHash?.[pivot.id]
+    expect(fork).toBeDefined()
+    expect(fork!.lists).toHaveLength(2)
+    expect(fork!.lists[0].messages).toEqual([target])
+    expect(runGenerateMore).toHaveBeenCalledWith(session.id, pivot.id)
+  })
+
+  test('moveThreadToConversations preserves thread forks and drops unrelated ones', async () => {
+    uuidQueue.push('copied-thread-pivot', 'copied-thread-reply', 'copied-list-0', 'copied-thread-alt', 'copied-list-1')
+    const currentPivot = makeMessage('current-pivot', 'user')
+    const currentReply = makeMessage('current-reply', 'assistant')
+    const threadPivot = makeMessage('thread-pivot', 'user')
+    const threadReply = makeMessage('thread-reply', 'assistant')
+    const threadAlternative = makeMessage('thread-alt', 'assistant')
+    const thread: SessionThread = {
+      id: 'thread-1',
+      name: 'Moved Thread',
+      createdAt: 1,
+      messages: [threadPivot, threadReply],
+    }
+    const session: Session = {
+      id: 'session-move-thread',
+      name: 'Source Session',
+      messages: [currentPivot, currentReply],
+      threads: [thread],
+      messageForksHash: {
+        [currentPivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'current-list-0', messages: [] },
+            { id: 'current-list-1', messages: [makeMessage('current-alt', 'assistant')] },
+          ],
+          createdAt: 1,
+        },
+        [threadPivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'thread-list-0', messages: [] },
+            { id: 'thread-list-1', messages: [threadAlternative] },
+          ],
+          createdAt: 2,
+        },
+      },
+    }
+
+    getSessionMock.mockResolvedValue(session)
+    createSessionMock.mockImplementation(async (newSession: Omit<Session, 'id'>) => ({
+      ...newSession,
+      id: 'new-session-thread',
+    }))
+
+    await sessionActions.moveThreadToConversations(session.id, thread.id)
+
+    expect(createSessionMock).toHaveBeenCalledTimes(1)
+    const newSession = createSessionMock.mock.calls[0][0] as Omit<Session, 'id'>
+    expect(newSession.name).toBe(thread.name)
+    expect(newSession.threads).toEqual([])
+    expect(newSession.messages).toHaveLength(2)
+    expect(newSession.messages[0].id).not.toBe(threadPivot.id)
+    expect(newSession.messageForksHash).toBeDefined()
+    expect(Object.keys(newSession.messageForksHash ?? {})).toHaveLength(1)
+
+    const copiedPivotId = newSession.messages[0].id
+    const copiedFork = newSession.messageForksHash?.[copiedPivotId]
+    expect(copiedFork).toBeDefined()
+    expect(copiedFork?.lists[1].messages[0].id).not.toBe(threadAlternative.id)
+    expect(updateSessionMock).toHaveBeenCalledWith(session.id, { threads: [] })
+    expect(routerNavigateMock).toHaveBeenCalledWith({
+      to: '/session/$sessionId',
+      params: { sessionId: 'new-session-thread' },
+    })
+  })
+
+  test('moveCurrentThreadToConversations preserves current thread forks', async () => {
+    uuidQueue.push('copied-pivot', 'copied-reply', 'copied-current-list-0', 'copied-alt', 'copied-current-list-1')
+    const pivot = makeMessage('pivot', 'user')
+    const reply = makeMessage('reply', 'assistant')
+    const alternative = makeMessage('alt', 'assistant')
+    const historyPivot = makeMessage('history-pivot', 'user')
+    const historyReply = makeMessage('history-reply', 'assistant')
+    const session: Session = {
+      id: 'session-move-current',
+      name: 'Source Session',
+      threadName: 'Current Topic',
+      messages: [pivot, reply],
+      threads: [
+        {
+          id: 'history-1',
+          name: 'History',
+          createdAt: 1,
+          messages: [historyPivot, historyReply],
+        },
+      ],
+      messageForksHash: {
+        [pivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'list-0', messages: [] },
+            { id: 'list-1', messages: [alternative] },
+          ],
+          createdAt: 1,
+        },
+      },
+    }
+
+    getSessionMock.mockResolvedValue(session)
+    createSessionMock.mockImplementation(async (newSession: Omit<Session, 'id'>) => ({
+      ...newSession,
+      id: 'new-session-current',
+    }))
+
+    await sessionActions.moveCurrentThreadToConversations(session.id)
+
+    expect(createSessionMock).toHaveBeenCalledTimes(1)
+    const newSession = createSessionMock.mock.calls[0][0] as Omit<Session, 'id'>
+    expect(newSession.name).toBe('Current Topic')
+    expect(newSession.threads).toEqual([])
+    expect(newSession.messageForksHash).toBeDefined()
+
+    const copiedPivotId = newSession.messages[0].id
+    const copiedFork = newSession.messageForksHash?.[copiedPivotId]
+    expect(copiedFork).toBeDefined()
+    expect(copiedFork?.lists[1].messages[0].id).not.toBe(alternative.id)
+
+    expect(updateSessionMock).toHaveBeenCalledWith(
+      session.id,
+      expect.objectContaining({
+        messages: [historyPivot, historyReply],
+        threadName: 'History',
+      })
+    )
+    expect(routerNavigateMock).toHaveBeenCalledWith({
+      to: '/session/$sessionId',
+      params: { sessionId: 'new-session-current' },
+    })
+  })
+
+  test('copyAndSwitchSession preserves current and historical thread forks', async () => {
+    uuidQueue.push(
+      'copied-root-pivot',
+      'copied-root-reply',
+      'copied-thread-pivot',
+      'copied-thread-reply',
+      'copied-root-list-0',
+      'copied-root-alt',
+      'copied-root-list-1',
+      'copied-thread-list-0',
+      'copied-thread-alt',
+      'copied-thread-list-1',
+      'copied-thread-id'
+    )
+    const rootPivot = makeMessage('root-pivot', 'user')
+    const rootReply = makeMessage('root-reply', 'assistant')
+    const rootAlternative = makeMessage('root-alt', 'assistant')
+    const threadPivot = makeMessage('thread-pivot', 'user')
+    const threadReply = makeMessage('thread-reply', 'assistant')
+    const threadAlternative = makeMessage('thread-alt', 'assistant')
+    const session: Session = {
+      id: 'session-copy',
+      name: 'Source Session',
+      messages: [rootPivot, rootReply],
+      threads: [
+        {
+          id: 'thread-1',
+          name: 'History',
+          createdAt: 1,
+          messages: [threadPivot, threadReply],
+        },
+      ],
+      messageForksHash: {
+        [rootPivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'root-list-0', messages: [] },
+            { id: 'root-list-1', messages: [rootAlternative] },
+          ],
+          createdAt: 1,
+        },
+        [threadPivot.id]: {
+          position: 0,
+          lists: [
+            { id: 'thread-list-0', messages: [] },
+            { id: 'thread-list-1', messages: [threadAlternative] },
+          ],
+          createdAt: 2,
+        },
+      },
+    }
+
+    getSessionMock.mockResolvedValue(session)
+    createSessionMock.mockImplementation(async (newSession: Omit<Session, 'id'>) => ({
+      ...newSession,
+      id: 'new-session-copy',
+    }))
+
+    await sessionActions.copyAndSwitchSession({
+      id: session.id,
+      name: session.name,
+    })
+
+    expect(createSessionMock).toHaveBeenCalledTimes(1)
+    const newSession = createSessionMock.mock.calls[0][0] as Omit<Session, 'id'>
+    expect(newSession.messageForksHash).toBeDefined()
+    expect(Object.keys(newSession.messageForksHash ?? {})).toHaveLength(2)
+
+    const copiedRootPivotId = newSession.messages[0].id
+    expect(newSession.messageForksHash?.[copiedRootPivotId]).toBeDefined()
+
+    const copiedThreadPivotId = newSession.threads?.[0].messages[0].id
+    expect(copiedThreadPivotId).toBeDefined()
+    expect(newSession.messageForksHash?.[copiedThreadPivotId!]).toBeDefined()
+    expect(routerNavigateMock).toHaveBeenCalledWith({
+      to: '/session/$sessionId',
+      params: { sessionId: 'new-session-copy' },
+    })
+  })
+})

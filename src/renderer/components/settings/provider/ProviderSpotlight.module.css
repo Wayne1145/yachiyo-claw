@@ -1,0 +1,12 @@
+.actionsList {
+  max-height: min(600px, calc(100vh - 180px));
+  scrollbar-gutter: stable;
+}
+
+.actionsList [data-radix-scroll-area-viewport] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+.actionsList [data-radix-scroll-area-viewport] > div {
+  padding-bottom: 20px;
+}
