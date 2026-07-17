@@ -70,7 +70,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/chatboxai/chatbox.git"
+    "url": "https://github.com/Wayne1145/yachiyo-claw.git"
+  },
+  "homepage": "https://github.com/Wayne1145/yachiyo-claw",
+  "bugs": {
+    "url": "https://github.com/Wayne1145/yachiyo-claw/issues"
   },
   "keywords": [],
   "author": {
