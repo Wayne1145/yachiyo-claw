@@ -58,6 +58,9 @@ importers:
       '@mozilla/readability':
         specifier: ^0.5.0
         version: 0.5.0
+      '@pixi/unsafe-eval':
+        specifier: 6.5.10
+        version: 6.5.10(@pixi/core@6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))))
       '@sentry/node':
         specifier: ^9.28.1
         version: 9.47.1
@@ -3810,6 +3813,11 @@ packages:
     peerDependencies:
       '@pixi/extensions': 6.5.10
       '@pixi/settings': 6.5.10
+
+  '@pixi/unsafe-eval@6.5.10':
+    resolution: {integrity: sha512-IC/SjQb4vXBgtcLeERjmgb55tdFVJizBQJLytaKFSlJk9gQf3itGmwx4yF/S3+ArrJpJdYrKSR9DB8XNw8oK/w==}
+    peerDependencies:
+      '@pixi/core': 6.5.10
 
   '@pixi/utils@6.5.10':
     resolution: {integrity: sha512-4f4qDMmAz9IoSAe08G2LAxUcEtG9jSdudfsMQT2MG+OpfToirboE6cNoO0KnLCvLzDVE/mfisiQ9uJbVA9Ssdw==}
@@ -17747,6 +17755,10 @@ snapshots:
     dependencies:
       '@pixi/extensions': 6.5.10
       '@pixi/settings': 6.5.10(@pixi/constants@6.5.10)
+
+  '@pixi/unsafe-eval@6.5.10(@pixi/core@6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))))':
+    dependencies:
+      '@pixi/core': 6.5.10(@pixi/constants@6.5.10)(@pixi/extensions@6.5.10)(@pixi/math@6.5.10)(@pixi/runner@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))(@pixi/ticker@6.5.10(@pixi/extensions@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))(@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10)))
 
   '@pixi/utils@6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))':
     dependencies:

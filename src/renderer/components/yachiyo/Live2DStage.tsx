@@ -1,6 +1,8 @@
 import { Application } from '@pixi/app'
+import { ShaderSystem } from '@pixi/core'
 import { extensions } from '@pixi/extensions'
 import { Ticker, TickerPlugin } from '@pixi/ticker'
+import { install as installUnsafeEval } from '@pixi/unsafe-eval'
 import JSZip from 'jszip'
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
@@ -15,6 +17,15 @@ export interface Live2DStageHandle {
 
 let runtimePromise: Promise<Cubism4Module> | undefined
 let pixiRegistered = false
+let unsafeEvalInstalled = false
+
+function ensurePixiUnsafeEval() {
+  if (unsafeEvalInstalled) return
+  // Live2D shaders are compiled by Pixi. This official adapter keeps that
+  // path working in WebView environments where `new Function` is blocked.
+  installUnsafeEval({ ShaderSystem })
+  unsafeEvalInstalled = true
+}
 
 async function ensureCubismRuntime(): Promise<Cubism4Module> {
   if (runtimePromise) return runtimePromise
@@ -97,6 +108,7 @@ export const Live2DStage = forwardRef<
 
     const initialize = async () => {
       setError(undefined)
+      ensurePixiUnsafeEval()
       const runtime = await ensureCubismRuntime()
       if (disposed) return
       const width = Math.max(1, host.clientWidth)

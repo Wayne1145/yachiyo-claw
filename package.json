@@ -1,7 +1,7 @@
 {
   "name": "yachiyo-claw",
   "productName": "Yachiyo Claw",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "node": ">=22.12.0 <25.0.0",
     "pnpm": ">=10.17.0"
@@ -321,6 +321,7 @@
     "@mastra/rag": "^1.0.8",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@mozilla/readability": "^0.5.0",
+    "@pixi/unsafe-eval": "6.5.10",
     "@sentry/node": "^9.28.1",
     "auto-launch": "^5.0.6",
     "chardet": "^2.1.0",
