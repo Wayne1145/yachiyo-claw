@@ -35,7 +35,6 @@ interface StoreType {
   configVersion: number
   settings: Settings
   configs: Config
-  lastShownAboutDialogVersion: string // 上次启动时自动弹出关于对话框的应用版本
 }
 export const store = new Store<StoreType>({
   clearInvalidConfig: true, // 当配置JSON不合法时，清空配置

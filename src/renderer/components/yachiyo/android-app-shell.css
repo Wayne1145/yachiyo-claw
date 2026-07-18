@@ -295,6 +295,29 @@ body:has(.yachiyo-mobile-shell),
   animation: yachiyo-live-bubble-in 260ms cubic-bezier(0.2, 0.85, 0.25, 1);
   backdrop-filter: blur(24px) saturate(1.55);
   -webkit-backdrop-filter: blur(24px) saturate(1.55);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.yachiyo-live-bubble::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  pointer-events: none;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .yachiyo-live-bubble {
+    border-color: rgba(255, 255, 255, 0.84);
+    background: rgba(255, 250, 253, 0.72);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.92),
+      inset 0 -1px 0 rgba(230, 142, 170, 0.16),
+      0 10px 32px rgba(76, 42, 58, 0.12);
+  }
 }
 
 .yachiyo-live-bubble > div {
@@ -444,6 +467,27 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-character-cards small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .yachiyo-character-cards small { color: var(--yachiyo-text-muted); }
 .yachiyo-character-editor { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--yachiyo-border); border-radius: 20px; background: #fff; }
+
+.yachiyo-chat-toolbar-scroll {
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.yachiyo-chat-toolbar-scroll::-webkit-scrollbar { display: none; }
+
+.yachiyo-context-progress {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(66, 57, 62, 0.09);
+}
+.yachiyo-context-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 260ms ease, background-color 180ms ease;
+}
 
 @keyframes yachiyo-live-bubble-in {
   from { opacity: 0; transform: translate(-50%, -8px) scale(0.96); }

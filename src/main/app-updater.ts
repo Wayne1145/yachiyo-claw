@@ -1,6 +1,11 @@
 import type { BrowserWindow } from 'electron'
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import {
+  checkYachiyoGitHubUpdate,
+  YACHIYO_GITHUB_OWNER,
+  YACHIYO_GITHUB_REPO,
+} from '@shared/releases/yachiyo'
 import { getSettings } from './store-node'
 import { getLogger } from './util'
 
@@ -15,7 +20,6 @@ function sendToRenderer(win: BrowserWindow | null, channel: string, data?: unkno
 export class AppUpdater {
   private getWindow: () => BrowserWindow | null
   private isChecking = false
-  private suppressError = false
 
   constructor(getWindow: () => BrowserWindow | null) {
     this.getWindow = getWindow
@@ -24,6 +28,11 @@ export class AppUpdater {
     autoUpdater.logger = log
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: YACHIYO_GITHUB_OWNER,
+      repo: YACHIYO_GITHUB_REPO,
+    })
 
     autoUpdater.on('checking-for-update', () => {
       sendToRenderer(this.getWindow(), 'updater:checking')
@@ -52,10 +61,7 @@ export class AppUpdater {
 
     autoUpdater.on('error', (err) => {
       log.error('auto_updater error:', err)
-      // Suppress error events during feed URL fallback to avoid false error flashes
-      if (!this.suppressError) {
-        sendToRenderer(this.getWindow(), 'updater:error', { message: err?.message || 'Unknown error' })
-      }
+      sendToRenderer(this.getWindow(), 'updater:error', { message: err?.message || 'Unknown error' })
     })
 
     // Guard against double-registration (defensive — AppUpdater is singleton)
@@ -99,39 +105,15 @@ export class AppUpdater {
 
     this.isChecking = true
     try {
-      const feedUrls = [
-        'https://chatboxai.app/api/auto_upgrade',
-        'https://api.chatboxai.app/api/auto_upgrade',
-        'https://api.ai-chatbox.com/api/auto_upgrade',
-        'https://api.chatboxapp.xyz/api/auto_upgrade',
-        'https://api.chatboxai.com/api/auto_upgrade',
-      ]
-
-      const settings = getSettings()
-      autoUpdater.channel = settings.betaUpdate ? 'beta' : 'latest'
-      autoUpdater.allowDowngrade = false
-
-      let lastError: Error | null = null
-      for (const url of feedUrls) {
-        try {
-          autoUpdater.setFeedURL(url)
-          // Suppress error events from failed URLs — only the final error matters
-          this.suppressError = true
-          const result = await autoUpdater.checkForUpdates()
-          this.suppressError = false
-          return result
-        } catch (e) {
-          lastError = e instanceof Error ? e : new Error(String(e))
-          log.error(`auto_updater: attempt failed: ${url}. `, e)
-        }
+      const hasUpdate = await checkYachiyoGitHubUpdate(app.getVersion())
+      if (!hasUpdate) {
+        sendToRenderer(this.getWindow(), 'updater:not-available')
+        return null
       }
-      this.suppressError = false
-      // All URLs failed — throw so callers handle it (don't return null, which would be misread as "no update")
-      if (lastError) throw lastError
-      return null
+      autoUpdater.allowDowngrade = false
+      return await autoUpdater.checkForUpdates()
     } finally {
       this.isChecking = false
-      this.suppressError = false
     }
   }
 }

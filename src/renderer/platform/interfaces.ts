@@ -68,9 +68,6 @@ export interface Platform extends Storage {
   initTracking(): void
   trackingEvent(name: string, params: { [key: string]: string }): void
 
-  // 通知
-  shouldShowAboutDialogWhenStartUp(): Promise<boolean>
-
   appLog(level: string, message: string): Promise<void>
 
   // 日志导出与管理

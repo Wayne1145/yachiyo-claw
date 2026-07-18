@@ -36,6 +36,7 @@ import { trackJkClickEvent } from '@/analytics/jk'
 import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
 import Divider from '@/components/common/Divider'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
+import { ContextUsageBar } from '@/components/common/ContextUsageBar'
 import TokenCountMenu from '@/components/InputBox/TokenCountMenu'
 import ProviderImageIcon from '@/components/icons/ProviderImageIcon'
 import WindowControls from '@/components/layout/WindowControls'
@@ -584,6 +585,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
             className="rounded-md bg-[var(--chatbox-background-secondary)] px-3 py-2 min-h-[92px]"
             style={{ border: '1px solid var(--chatbox-border-primary)' }}
           >
+            <ContextUsageBar used={totalTokens} limit={contextWindow} />
             <Flex align="flex-end" gap={4}>
               <Textarea
                 ref={textareaRef}

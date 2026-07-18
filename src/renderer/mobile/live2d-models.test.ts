@@ -4,6 +4,7 @@ import {
   extractLive2DActions,
   hideValidLive2DMarkers,
   parseLive2DActionMarkers,
+  validateLive2DArchiveLimits,
 } from './live2d-models'
 
 describe('Live2D action protocol', () => {
@@ -30,5 +31,13 @@ describe('Live2D action protocol', () => {
   it('builds a prompt from the actual model catalog', () => {
     expect(buildLive2DActionPrompt(actions)).toContain('[smile]')
     expect(buildLive2DActionPrompt(actions)).toContain('[Wave]')
+  })
+
+  it('rejects archives that exceed resource limits', () => {
+    expect(() => validateLive2DArchiveLimits(257 * 1024 * 1024, 1, 1)).toThrow('live2d_archive_too_large')
+    expect(() => validateLive2DArchiveLimits(1, 2_001, 1)).toThrow('live2d_archive_too_many_files')
+    expect(() => validateLive2DArchiveLimits(1, 1, 1024 * 1024 * 1024 + 1)).toThrow(
+      'live2d_archive_uncompressed_too_large'
+    )
   })
 })

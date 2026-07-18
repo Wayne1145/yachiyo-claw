@@ -70,8 +70,8 @@ describe('OpenAI listModels', () => {
         JSON.stringify({
           object: 'list',
           data: [
-            { id: 'coder-model', object: 'model', created: 0 },
-            { id: 'vision-model', object: 'model', created: 0 },
+            { id: 'coder-model', object: 'model', created: 0, context_window: 200000 },
+            { id: 'vision-model', object: 'model', created: 0, input_token_limit: 128000 },
           ],
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -90,6 +90,7 @@ describe('OpenAI listModels', () => {
 
     expect(customFetch).toHaveBeenCalledOnce()
     expect(models.map((model) => model.modelId)).toEqual(['coder-model', 'vision-model'])
+    expect(models.map((model) => model.contextWindow)).toEqual([200000, 128000])
   })
 
   it('falls back to configured models when remote fetch fails', async () => {

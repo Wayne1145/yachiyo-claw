@@ -3,7 +3,6 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { zodValidator } from '@tanstack/zod-adapter'
 import { useEffect } from 'react'
 import { z } from 'zod'
-import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 
 const searchSchema = z.object({
@@ -17,21 +16,16 @@ export const Route = createFileRoute('/settings/')({
 
 export function RouteComponent() {
   const isSmallScreen = useIsSmallScreen()
-  const inAndroidAppShell = useInAndroidAppShell()
   const navigate = useNavigate()
   useEffect(() => {
     if (!isSmallScreen) {
-      if (inAndroidAppShell) {
-        navigate({
-          to: '/settings/provider/$providerId',
-          params: { providerId: ModelProviderEnum.Yachiyo },
-          replace: true,
-        })
-      } else {
-        navigate({ to: '/settings/chatbox-ai', replace: true })
-      }
+      navigate({
+        to: '/settings/provider/$providerId',
+        params: { providerId: ModelProviderEnum.Yachiyo },
+        replace: true,
+      })
     }
-  }, [inAndroidAppShell, isSmallScreen, navigate])
+  }, [isSmallScreen, navigate])
 
   return null
 }

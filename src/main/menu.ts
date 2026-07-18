@@ -63,17 +63,17 @@ export default class MenuBuilder {
 
   buildDarwinTemplate(): MenuItemConstructorOptions[] {
     const subMenuAbout: DarwinMenuItemConstructorOptions = {
-      label: 'Chatbox',
+      label: 'Yachiyo Claw',
       submenu: [
         {
-          label: 'About Chatbox',
+          label: 'About Yachiyo Claw',
           selector: 'orderFrontStandardAboutPanel:',
         },
         { type: 'separator' },
         { label: 'Services', submenu: [] },
         { type: 'separator' },
         {
-          label: 'Hide Chatbox',
+          label: 'Hide Yachiyo Claw',
           accelerator: 'Command+H',
           selector: 'hide:',
         },
@@ -205,13 +205,13 @@ export default class MenuBuilder {
         {
           label: 'Learn More',
           click() {
-            shell.openExternal('https://chatboxai.app')
+            shell.openExternal('https://github.com/Wayne1145/yachiyo-claw')
           },
         },
         {
           label: 'Github Repo',
           click() {
-            shell.openExternal('https://github.com/chatboxai/chatbox')
+            shell.openExternal('https://github.com/Wayne1145/yachiyo-claw')
           },
         },
         // {
@@ -223,7 +223,7 @@ export default class MenuBuilder {
         {
           label: 'Search Issues',
           click() {
-            shell.openExternal('https://github.com/chatboxai/chatbox/issues?q=is%3Aissue')
+            shell.openExternal('https://github.com/Wayne1145/yachiyo-claw/issues')
           },
         },
       ],
@@ -296,13 +296,13 @@ export default class MenuBuilder {
           {
             label: 'Learn More',
             click() {
-              shell.openExternal('https://chatboxai.app')
+              shell.openExternal('https://github.com/Wayne1145/yachiyo-claw')
             },
           },
           {
             label: 'Github Repo',
             click() {
-              shell.openExternal('https://github.com/chatboxai/chatbox')
+              shell.openExternal('https://github.com/Wayne1145/yachiyo-claw')
             },
           },
           // {
@@ -314,7 +314,7 @@ export default class MenuBuilder {
           {
             label: 'Search Issues',
             click() {
-              shell.openExternal('https://github.com/chatboxai/chatbox/issues?q=is%3Aissue')
+              shell.openExternal('https://github.com/Wayne1145/yachiyo-claw/issues')
             },
           },
         ],

@@ -15,7 +15,7 @@ import {
   killRootCommand,
   setAgentWorkingDirectory,
 } from '@/mobile/agent-broker'
-import { assessShellRisk, requestAgentApproval } from '@/mobile/agent-approval'
+import { requestAgentApproval } from '@/mobile/agent-approval'
 import { yachiyoAgentNative } from '@/platform/native/yachiyo_agent'
 import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 import type { ImageGenerationStorage } from '@/storage/ImageGenerationStorage'
@@ -208,10 +208,6 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   public initTracking(): void {}
   public trackingEvent(_name: string, _params: { [key: string]: string }): void {}
 
-  public async shouldShowAboutDialogWhenStartUp(): Promise<boolean> {
-    return false
-  }
-
   public async appLog(level: string, message: string): Promise<void> {
     mobileLogger.log(level, message)
   }
@@ -299,7 +295,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     const approved = await requestAgentApproval({
       title: '执行 Shell 命令',
       detail: params.command,
-      risk: assessShellRisk(params.command),
+      risk: 'dangerous',
     })
     if (!approved) return { stdout: '', stderr: '用户拒绝了此操作', exitCode: 126 }
     const result = await executeRootShell(

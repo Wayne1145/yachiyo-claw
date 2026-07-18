@@ -109,7 +109,7 @@ describe('settingsStore persistence', () => {
           apiKey: 'sk-claude',
         },
       },
-      __version: 6,
+      __version: 7,
     }
 
     const { initSettingsStore, settingsStore, mergeProviderSettings, mockStorage } =
@@ -147,7 +147,7 @@ describe('settingsStore persistence', () => {
           apiHost: 'https://api.openai.com',
         },
       },
-      __version: 6,
+        __version: 7,
     })
   })
 
@@ -160,7 +160,7 @@ describe('settingsStore persistence', () => {
       'settings',
       expect.objectContaining({
         providers: { yachiyo: { apiKey: 'disposable-key' } },
-        __version: 6,
+        __version: 7,
       })
     )
     expect(settingsStore.getState().providers?.yachiyo?.apiKey).toBe('disposable-key')

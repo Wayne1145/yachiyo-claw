@@ -60,7 +60,7 @@ export function createCallbackServer(
         } else if (code) {
           res.writeHead(200, { 'Content-Type': 'text/html' })
           res.end(
-            '<html><body><h1>Authorization successful!</h1><p>You can close this window and return to Chatbox.</p></body></html>'
+            '<html><body><h1>Authorization successful!</h1><p>You can close this window and return to Yachiyo Claw.</p></body></html>'
           )
           if (!resolved) {
             resolved = true

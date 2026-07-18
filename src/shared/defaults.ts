@@ -2,8 +2,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { YACHIYO_SOUL } from './personas/yachiyo'
 import { type Config, ModelProviderEnum, type SessionSettings, type Settings, Theme } from './types'
 
-export function defaultAllowReportingAndTracking(buildTarget = process.env.CHATBOX_BUILD_TARGET): boolean {
-  return buildTarget !== 'mobile_app'
+export function defaultAllowReportingAndTracking(_buildTarget = process.env.CHATBOX_BUILD_TARGET): boolean {
+  return false
 }
 
 export function settings(): Settings {

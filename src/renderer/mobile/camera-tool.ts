@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import { requestAgentApproval } from './agent-approval'
 
 export interface CameraCapture {
   data: string
@@ -36,7 +37,16 @@ export function createCameraCaptureTool(sessionId: string) {
     inputSchema: z.object({
       reason: z.string().max(300).optional().describe('A short reason for taking the photo.'),
     }),
-    execute: async () => provider(),
+    execute: async ({ reason }) => {
+      const approved = await requestAgentApproval({
+        sessionId,
+        title: '拍摄并上传当前摄像头画面',
+        detail: reason?.trim() || '模型请求查看当前摄像头画面。',
+        risk: 'dangerous',
+      })
+      if (!approved) throw new Error('user_denied_camera_capture')
+      return provider()
+    },
     toModelOutput: ({ output }) => ({
       type: 'content',
       value: [

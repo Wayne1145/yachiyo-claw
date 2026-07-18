@@ -1,5 +1,5 @@
-productName: Chatbox
-appId: xyz.chatboxapp.app
+productName: Yachiyo Claw
+appId: io.github.yachiyoclaw
 asar: true
 asarUnpack:
   - "**\\*.{node,dll}"
@@ -83,8 +83,6 @@ extraResources:
   - ./assets/**
 
 publish:
-  - provider: s3
-    bucket: chatbox
-    endpoint: https://208624959c9d215edea0720162a740c1.r2.cloudflarestorage.com
-    path: /releases
-    channel: ${env.UPDATE_CHANNEL}
+  - provider: github
+    owner: Wayne1145
+    repo: yachiyo-claw

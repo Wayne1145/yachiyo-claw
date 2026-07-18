@@ -1,5 +1,5 @@
-import { Box, Button, FileButton, Flex, Slider, Stack, Switch, Text, Textarea, Title, Tooltip } from '@mantine/core'
-import { chatSessionSettings, getDefaultPrompt } from '@shared/defaults'
+import { Box, Button, FileButton, Flex, Slider, Stack, Switch, Text, Title, Tooltip } from '@mantine/core'
+import { chatSessionSettings } from '@shared/defaults'
 import { IconInfoCircle } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
@@ -127,35 +127,6 @@ export function RouteComponent() {
       {/* Default Settings */}
       <Stack gap="md">
         <Text fw="600">{t('Default Settings for New Conversation')}</Text>
-        <Stack gap="xxs">
-          <Text fw="500">{t('Prompt')}</Text>
-          <Textarea
-            value={settings.defaultPrompt || ''}
-            autosize
-            minRows={1}
-            maxRows={12}
-            onChange={(e) =>
-              setSettings({
-                defaultPrompt: e.currentTarget.value,
-              })
-            }
-          />
-          <Button
-            variant="subtle"
-            color="chatbox-gray"
-            onClick={() => {
-              setSettings({
-                defaultPrompt: getDefaultPrompt(),
-              })
-            }}
-            px={3}
-            py={6}
-            className=" self-start"
-          >
-            {t('Reset to Default')}
-          </Button>
-        </Stack>
-
         {/* Max Context Message Count */}
         <MaxContextMessageCountSlider
           wrapperProps={{ gap: 'xxs' }}

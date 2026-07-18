@@ -92,6 +92,10 @@ interface ListModelsResponse {
     // OpenRouter specific fields
     name?: string
     context_length?: number
+    context_window?: number
+    max_context_length?: number
+    input_token_limit?: number
+    max_model_len?: number
     architecture?: {
       input_modalities?: string[]
       output_modalities?: string[]
@@ -156,8 +160,10 @@ export async function fetchRemoteModels(
     }
 
     // Add context window if available
-    if (item.context_length) {
-      modelInfo.contextWindow = item.context_length
+    const contextWindow =
+      item.context_length ?? item.context_window ?? item.max_context_length ?? item.input_token_limit ?? item.max_model_len
+    if (contextWindow && contextWindow > 0) {
+      modelInfo.contextWindow = contextWindow
     }
 
     // Add capabilities based on architecture

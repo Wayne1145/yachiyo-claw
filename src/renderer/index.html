@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' data: blob: capacitor: https: http:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src * data: blob: ws: wss:; img-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    />
+    <meta
       name="viewport"
       content="%VIEWPORT_CONTENT%"
     />
@@ -13,35 +17,6 @@
     <link rel="apple-touch-icon" href="/logo192.png" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <title>Yachiyo Claw</title>
-    <!-- upstream-telemetry:start -->
-    <!-- Google tag (gtag.js) -->
-    <script
-      async
-      src="https://www.googletagmanager.com/gtag/js?id=G-B365F44W6E"
-    ></script>
-    <script
-      defer
-      data-domain="app.chatboxai.app"
-      src="https://plausible.midway.run/js/script.local.hash.js"
-    ></script>
-    <script>
-      window.plausible =
-        window.plausible ||
-        function () {
-          (window.plausible.q = window.plausible.q || []).push(arguments);
-        };
-    </script>
-
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        dataLayer.push(arguments);
-      }
-      gtag("js", new Date());
-
-      // gtag('config', 'G-B365F44W6E');
-    </script>
-    <!-- upstream-telemetry:end -->
     <script>
       var initialTheme = localStorage.getItem("initial-theme");
       if (initialTheme === "light" || initialTheme === "dark") {
@@ -122,6 +97,11 @@
         font-size: 18px;
         letter-spacing: 0;
       }
+      .yachiyo-splash-avatar {
+        width: 76px;
+        height: 76px;
+        object-fit: contain;
+      }
       html[data-theme="dark"] .yachiyo-splash-identity {
         color: #f3f6f5;
       }
@@ -147,14 +127,7 @@
       <div class="splash-screen-top"></div>
       <div class="splash-screen-content">
         <div class="yachiyo-splash-identity">
-          <svg width="72" height="72" viewBox="0 0 108 108" fill="none" aria-hidden="true">
-            <path d="M70 31C45 18 21 34 21 54S45 90 70 77" stroke="#087F7A" stroke-linecap="round" stroke-width="8" />
-            <circle cx="50" cy="54" r="8" fill="currentColor" />
-            <circle cx="50" cy="54" r="3" fill="#F7F8FA" />
-            <path d="M72 35L84 29" stroke="#D95461" stroke-linecap="round" stroke-width="6" />
-            <path d="M76 54H88" stroke="#087F7A" stroke-linecap="round" stroke-width="6" />
-            <path d="M72 73L84 79" stroke="#A96B16" stroke-linecap="round" stroke-width="6" />
-          </svg>
+          <img class="yachiyo-splash-avatar" src="/yachiyo-avatar.png" alt="" />
           <strong>Yachiyo Claw</strong>
         </div>
         <svg

@@ -41,6 +41,16 @@ const ONBOARDING_KEY = 'yachiyo.live2d.onboarded.v1'
 const modelStorage = localforage.createInstance({ name: 'yachiyo-claw', storeName: 'live2d-models' })
 const objectUrls = new Map<string, string>()
 
+const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+const MAX_ARCHIVE_FILES = 2_000
+const MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+
+export function validateLive2DArchiveLimits(fileSize: number, fileCount: number, uncompressedBytes: number): void {
+  if (fileSize > MAX_ARCHIVE_BYTES) throw new Error('live2d_archive_too_large')
+  if (fileCount > MAX_ARCHIVE_FILES) throw new Error('live2d_archive_too_many_files')
+  if (uncompressedBytes > MAX_UNCOMPRESSED_BYTES) throw new Error('live2d_archive_uncompressed_too_large')
+}
+
 export const BUILT_IN_LIVE2D_MODEL_ID = 'yachiyo-built-in'
 
 export const BUILT_IN_YACHIYO_MODEL: Live2DModelDescriptor = {
@@ -174,8 +184,14 @@ function findModelSettingsPath(paths: string[]): string | undefined {
 }
 
 export async function importLive2DModel(file: File): Promise<Live2DModelDescriptor> {
+  validateLive2DArchiveLimits(file.size, 0, 0)
   const zip = await JSZip.loadAsync(file)
   const paths = Object.keys(zip.files).filter((path) => !zip.files[path].dir)
+  const uncompressedBytes = paths.reduce((total, path) => {
+    const entry = zip.files[path] as JSZip.JSZipObject & { _data?: { uncompressedSize?: number } }
+    return total + Math.max(0, entry._data?.uncompressedSize ?? 0)
+  }, 0)
+  validateLive2DArchiveLimits(file.size, paths.length, uncompressedBytes)
   const settingsPath = findModelSettingsPath(paths)
   if (!settingsPath) throw new Error('ZIP 中没有找到 .model3.json')
 

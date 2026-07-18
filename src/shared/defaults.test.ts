@@ -19,8 +19,8 @@ describe('defaults', () => {
     expect(result.extension?.webSearch?.provider).toBe('bing')
   })
 
-  it('settings() returns allowReportingAndTracking as true', () => {
-    expect(settings().allowReportingAndTracking).toBe(true)
+  it('settings() disables upstream reporting by default', () => {
+    expect(settings().allowReportingAndTracking).toBe(false)
   })
 
   it('settings() returns enableMarkdownRendering as true', () => {

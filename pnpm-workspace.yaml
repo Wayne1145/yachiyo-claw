@@ -25,8 +25,11 @@ overrides:
   "@tanstack/router-generator": 1.120.15
   "@tanstack/router-plugin": 1.120.15
   convict: ">=6.2.5"
+  dompurify: "^3.4.9"
   fast-xml-parser: ">=5.5.7"
   handlebars: ">=4.7.9"
+  protobufjs: "^7.5.5"
+  shell-quote: "^1.8.4"
 
 patchedDependencies:
   "@ai-sdk/deepseek@2.0.17": patches/@ai-sdk__deepseek@2.0.17.patch

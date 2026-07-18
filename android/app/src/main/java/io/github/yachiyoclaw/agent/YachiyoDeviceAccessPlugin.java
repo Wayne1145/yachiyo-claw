@@ -11,6 +11,8 @@ import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
 import android.provider.Settings;
@@ -52,6 +54,8 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
     private View edgeGlowView;
     private LinearLayout capsuleRoot;
     private TextView streamText;
+    private LinearLayout approvalRoot;
+    private PluginCall pendingApprovalCall;
 
     @PluginMethod
     public void getPermissionStatus(PluginCall call) {
@@ -224,6 +228,46 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         });
     }
 
+    @PluginMethod
+    public void requestOperationApproval(PluginCall call) {
+        if (!Settings.canDrawOverlays(getContext())) {
+            call.reject("overlay_permission_required");
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            if (pendingApprovalCall != null) {
+                call.reject("approval_already_pending");
+                return;
+            }
+            pendingApprovalCall = call;
+            showApprovalInternal(
+                call.getString("title", "Agent operation"),
+                call.getString("detail", ""),
+                call.getBoolean("dangerous", false)
+            );
+        });
+    }
+
+    @PluginMethod
+    public void cancelOperationApproval(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            finishApprovalInternal("deny");
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void bringAppToForeground(PluginCall call) {
+        Intent launch = getContext().getPackageManager().getLaunchIntentForPackage(getContext().getPackageName());
+        if (launch == null) {
+            call.reject("launch_intent_unavailable");
+            return;
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        getContext().startActivity(launch);
+        call.resolve();
+    }
+
     private JSObject executeShizuku(String command, int timeoutMs) throws Exception {
         if (!hasShizukuPermission()) throw new SecurityException("shizuku_permission_required");
         IShizukuService service = IShizukuService.Stub.asInterface(Shizuku.getBinder());
@@ -341,6 +385,7 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         stop.setMinimumWidth(0);
         stop.setPadding(dp(10), 0, dp(6), 0);
         stop.setOnClickListener(view -> {
+            finishApprovalInternal("deny");
             notifyListeners("overlayStopRequested", new JSObject());
             hideOverlayInternal();
         });
@@ -375,6 +420,95 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         capsuleRoot.setScaleX(0.82f);
         capsuleRoot.setScaleY(0.82f);
         capsuleRoot.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(280).setInterpolator(new DecelerateInterpolator()).start();
+    }
+
+    private void showApprovalInternal(String title, String detail, boolean dangerous) {
+        windowManager = (WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE);
+        approvalRoot = new LinearLayout(getContext());
+        approvalRoot.setOrientation(LinearLayout.VERTICAL);
+        approvalRoot.setPadding(dp(16), dp(13), dp(16), dp(12));
+        approvalRoot.setBackground(approvalBackground(dangerous));
+
+        TextView titleView = new TextView(getContext());
+        titleView.setText(title);
+        titleView.setTextColor(Color.WHITE);
+        titleView.setTextSize(15);
+        approvalRoot.addView(titleView);
+
+        TextView detailView = new TextView(getContext());
+        detailView.setText(limitApprovalText(detail));
+        detailView.setTextColor(Color.rgb(235, 225, 230));
+        detailView.setTextSize(12);
+        detailView.setMaxLines(5);
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        detailParams.topMargin = dp(7);
+        approvalRoot.addView(detailView, detailParams);
+
+        LinearLayout actions = new LinearLayout(getContext());
+        actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        actionsParams.topMargin = dp(8);
+        approvalRoot.addView(actions, actionsParams);
+        actions.addView(approvalButton("拒绝", "deny", Color.rgb(245, 205, 215)));
+        actions.addView(approvalButton("仅本次", "once", Color.WHITE));
+        actions.addView(approvalButton("此对话允许", "conversation", Color.rgb(255, 205, 221)));
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+            Math.min(dp(380), getContext().getResources().getDisplayMetrics().widthPixels - dp(24)),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        );
+        params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        params.y = dp(106);
+        windowManager.addView(approvalRoot, params);
+        approvalRoot.setAlpha(0f);
+        approvalRoot.setScaleX(0.88f);
+        approvalRoot.setScaleY(0.88f);
+        approvalRoot.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
+    }
+
+    private Button approvalButton(String text, String decision, int textColor) {
+        Button button = new Button(getContext());
+        button.setText(text);
+        button.setTextColor(textColor);
+        button.setTextSize(12);
+        button.setAllCaps(false);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(dp(9), 0, dp(9), 0);
+        button.setOnClickListener(view -> finishApprovalInternal(decision));
+        return button;
+    }
+
+    private GradientDrawable approvalBackground(boolean dangerous) {
+        GradientDrawable background = capsuleBackground();
+        if (dangerous) background.setStroke(dp(2), Color.rgb(255, 127, 157));
+        return background;
+    }
+
+    private void finishApprovalInternal(String decision) {
+        if (windowManager != null && approvalRoot != null) {
+            try {
+                windowManager.removeView(approvalRoot);
+            } catch (IllegalArgumentException ignored) {}
+        }
+        approvalRoot = null;
+        PluginCall call = pendingApprovalCall;
+        pendingApprovalCall = null;
+        if (call != null) {
+            JSObject result = new JSObject();
+            result.put("decision", decision);
+            call.resolve(result);
+        }
     }
 
     private GradientDrawable capsuleBackground() {
@@ -412,9 +546,22 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         return trimmed.length() <= 240 ? trimmed : "…" + trimmed.substring(trimmed.length() - 239);
     }
 
+    private static String limitApprovalText(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        return trimmed.length() <= 800 ? trimmed : trimmed.substring(0, 799) + "…";
+    }
+
     @Override
     protected void handleOnDestroy() {
-        hideOverlayInternal();
+        Runnable removeWindows = () -> {
+            finishApprovalInternal("deny");
+            hideOverlayInternal();
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            removeWindows.run();
+        } else {
+            new Handler(Looper.getMainLooper()).post(removeWindows);
+        }
         executor.shutdownNow();
         super.handleOnDestroy();
     }

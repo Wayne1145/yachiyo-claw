@@ -6,7 +6,9 @@ import type { ToolSet } from 'ai'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
 import { buildAgentIdentityPrompt } from '@/mobile/agent-profile'
-import { setActiveAgentSession } from '@/mobile/agent-approval'
+import { cancelPendingAgentApprovals, setActiveAgentSession } from '@/mobile/agent-approval'
+import { getAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
+import { nextAgentStreamPart } from '@/mobile/agent-stream-watchdog'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { onAndroidDeviceOperation } from '@/packages/model-calls/toolsets/android-device'
 import platform from '@/platform'
@@ -21,6 +23,7 @@ import { TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
 import { buildTaskSystemPrompt } from './taskSystemPrompt'
 
 const log = getLogger('task-session-actions')
+const AGENT_STREAM_IDLE_TIMEOUT_MS = 180_000
 
 // Note: Using a single module-level AbortController means only one task can generate at a time.
 // This is intentional — prevents resource contention in the sandbox environment.
@@ -156,6 +159,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
   let overlayVisible = false
   let overlayStartPromise: Promise<void> | undefined
   let removeDeviceOperationListener: (() => void) | undefined
+  let completedSuccessfully = false
 
   try {
     const session = queryClient.getQueryData<TaskSession>(queryKey)
@@ -267,7 +271,11 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       },
     }
 
-    for await (const chunk of stream) {
+    const iterator = stream[Symbol.asyncIterator]()
+    while (true) {
+      const next = await nextAgentStreamPart(iterator, AGENT_STREAM_IDLE_TIMEOUT_MS, () => abortController.abort())
+      if (next.done) break
+      const chunk = next.value
       const result = await processStreamChunk(chunk, processorState, streamCallbacks)
       processorState = result.state
 
@@ -324,8 +332,11 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       const persisted = await updateTaskSession(taskId, { messages })
       if (persisted) {
         queryClient.setQueryData(queryKey, persisted)
+        const { syncTaskSessionToChat } = await import('@/mobile/conversation-sync')
+        await syncTaskSessionToChat(persisted)
       }
     }
+    completedSuccessfully = true
   } catch (err) {
     if (!abortController.signal.aborted) {
       log.error('Task generation failed:', err)
@@ -343,16 +354,29 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       const persisted = await updateTaskSession(taskId, { messages })
       if (persisted) {
         queryClient.setQueryData(queryKey, persisted)
+        const { syncTaskSessionToChat } = await import('@/mobile/conversation-sync')
+        await syncTaskSessionToChat(persisted)
       }
     }
   } finally {
+    if (currentAbortController === abortController) currentAbortController = null
     setActiveAgentSession(null)
-    removeDeviceOperationListener?.()
-    await overlayStopListener?.remove()
+    cancelPendingAgentApprovals(taskId)
+    abortController.abort()
+    try {
+      removeDeviceOperationListener?.()
+    } catch (cleanupError) {
+      log.debug('device operation listener cleanup failed:', cleanupError)
+    }
+    await overlayStopListener?.remove().catch((cleanupError) => {
+      log.debug('overlay stop listener cleanup failed:', cleanupError)
+    })
     if (platform.type === 'mobile' && overlayVisible) {
       await yachiyoDeviceAccessNative.hideOperationOverlay().catch(() => undefined)
+      if (completedSuccessfully && getAgentRuntimeSettings().returnToAppOnComplete) {
+        await yachiyoDeviceAccessNative.bringAppToForeground().catch(() => undefined)
+      }
     }
-    currentAbortController = null
   }
 }
 

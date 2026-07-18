@@ -1,5 +1,5 @@
 import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL, yachiyoProvider } from '@shared/providers/definitions/yachiyo'
-import { ModelProviderEnum, type ProviderModelInfo, type RemoteConfig, type Settings } from '@shared/types'
+import { ModelProviderEnum, type ProviderModelInfo, type Settings } from '@shared/types'
 
 export const YACHIYO_API_PROVIDER_ID = ModelProviderEnum.Yachiyo
 export { YACHIYO_API_HOST as YACHIYO_API_BASE_URL, YACHIYO_DEFAULT_MODEL as YACHIYO_DEFAULT_MODEL_ID }
@@ -14,16 +14,6 @@ type AndroidShellSettings = Pick<Settings, 'customProviders' | 'defaultChatModel
 
 export function shouldUseAndroidAppShell(platformType: string, buildPlatform: string): boolean {
   return platformType === 'mobile' && buildPlatform === 'android'
-}
-
-export async function loadStartupRemoteConfig(
-  useAndroidAppShell: boolean,
-  loadRemoteConfig: () => Promise<RemoteConfig>
-): Promise<RemoteConfig> {
-  if (useAndroidAppShell) {
-    return { setting_chatboxai_first: false, current_version: '', product_ids: [] }
-  }
-  return await loadRemoteConfig()
 }
 
 export function resolveAndroidShellTab(pathname: string, workspaceTab?: 'tasks'): AndroidShellTab {

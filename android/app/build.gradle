@@ -2,6 +2,9 @@ apply plugin: 'com.android.application'
 
 def newDreamStudioKeystore = rootProject.file('../.keys/newdreamstudio.keystore')
 def hasNewDreamStudioKeystore = newDreamStudioKeystore.exists()
+def releaseStorePassword = System.getenv('YACHIYO_KEYSTORE_PASSWORD')
+def releaseKeyPassword = System.getenv('YACHIYO_KEY_PASSWORD')
+def hasReleaseSigningCredentials = hasNewDreamStudioKeystore && releaseStorePassword && releaseKeyPassword
 
 android {
     namespace "io.github.yachiyoclaw"
@@ -10,8 +13,8 @@ android {
         applicationId "io.github.yachiyoclaw"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.0.1"
+        versionCode 3
+        versionName "0.0.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -21,7 +24,7 @@ android {
     }
     signingConfigs {
         if (hasNewDreamStudioKeystore) {
-            newDreamStudio {
+            newDreamStudioDebug {
                 storeFile newDreamStudioKeystore
                 storePassword System.getenv('YACHIYO_KEYSTORE_PASSWORD') ?: 'android'
                 keyAlias 'NewDreamStudio'
@@ -30,20 +33,37 @@ android {
                 enableV2Signing true
             }
         }
+        if (hasReleaseSigningCredentials) {
+            newDreamStudioRelease {
+                storeFile newDreamStudioKeystore
+                storePassword releaseStorePassword
+                keyAlias 'NewDreamStudio'
+                keyPassword releaseKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
     }
     buildTypes {
         debug {
             if (hasNewDreamStudioKeystore) {
-                signingConfig signingConfigs.newDreamStudio
+                signingConfig signingConfigs.newDreamStudioDebug
             }
         }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (hasNewDreamStudioKeystore) {
-                signingConfig signingConfigs.newDreamStudio
+            if (hasReleaseSigningCredentials) {
+                signingConfig signingConfigs.newDreamStudioRelease
             }
         }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def buildsRelease = graph.allTasks.any { it.name.toLowerCase().contains('release') }
+    if (buildsRelease && !hasReleaseSigningCredentials) {
+        throw new GradleException('Release signing requires YACHIYO_KEYSTORE_PASSWORD and YACHIYO_KEY_PASSWORD.')
     }
 }
 

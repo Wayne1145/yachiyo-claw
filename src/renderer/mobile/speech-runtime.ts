@@ -12,7 +12,8 @@ import {
   WSS_URL,
 } from '@twn39/edgetts-js'
 import { yachiyoVoiceNative } from '@/platform/native/yachiyo_voice'
-import { getSpeechSettings } from './speech-settings'
+import { getSpeechCredentials } from './speech-credentials'
+import { getSpeechSettings, parseSpeechHeaders, resolveSpeechEndpoint } from './speech-settings'
 
 export interface SpeechPlaybackCallbacks {
   onStart?: () => void
@@ -23,6 +24,7 @@ let playbackGeneration = 0
 let activeAudio: HTMLAudioElement | undefined
 let activeAudioUrl: string | undefined
 let activeAudioCancel: (() => void) | undefined
+let activeRemoteRecognitionStop: (() => void) | undefined
 
 function normalizeEdgeVoice(voice: string) {
   const match = voice.match(/^([a-z]{2,})-([A-Z]{2,})-(.+Neural)$/)
@@ -111,11 +113,78 @@ async function synthesizeWithBing(text: string, voice: string): Promise<Uint8Arr
   })
 }
 
+function authorizationHeaders(apiKey: string, additionalHeaders: string): Record<string, string> {
+  const headers = parseSpeechHeaders(additionalHeaders)
+  if (apiKey && !Object.keys(headers).some((key) => key.toLowerCase() === 'authorization')) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+  return headers
+}
+
+async function captureRemoteSpeech(): Promise<Blob> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((type) =>
+    MediaRecorder.isTypeSupported(type)
+  )
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+  const chunks: BlobPart[] = []
+  return await new Promise<Blob>((resolve, reject) => {
+    const timeout = window.setTimeout(() => recorder.state !== 'inactive' && recorder.stop(), 8_000)
+    const cleanup = () => {
+      window.clearTimeout(timeout)
+      stream.getTracks().forEach((track) => track.stop())
+      activeRemoteRecognitionStop = undefined
+    }
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data)
+    }
+    recorder.onerror = () => {
+      cleanup()
+      reject(new Error('speech_recording_failed'))
+    }
+    recorder.onstop = () => {
+      cleanup()
+      resolve(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }))
+    }
+    activeRemoteRecognitionStop = () => recorder.state !== 'inactive' && recorder.stop()
+    recorder.start(250)
+  })
+}
+
+async function recognizeRemoteSpeech(): Promise<string> {
+  const settings = getSpeechSettings()
+  const credentials = await getSpeechCredentials()
+  const audio = await captureRemoteSpeech()
+  if (audio.size === 0) throw new Error('speech_recording_empty')
+  const form = new FormData()
+  form.append('file', new File([audio], 'speech.webm', { type: audio.type || 'audio/webm' }))
+  form.append('model', settings.asrModel)
+  form.append('language', settings.language.split('-')[0])
+  const response = await fetch(resolveSpeechEndpoint(settings.asrBaseUrl, '/audio/transcriptions'), {
+    method: 'POST',
+    headers: authorizationHeaders(credentials.asrApiKey, settings.asrHeaders),
+    body: form,
+  })
+  if (!response.ok) throw new Error(`speech_asr_http_${response.status}`)
+  const result = (await response.json()) as { text?: string; output?: { text?: string } }
+  const text = result.text ?? result.output?.text ?? ''
+  if (!text.trim()) throw new Error('speech_asr_empty_result')
+  return text.trim()
+}
+
 export async function recognizeAndroidSpeech(): Promise<string> {
-  return (await yachiyoVoiceNative.startListening({ language: 'zh-CN' })).text.trim()
+  const settings = getSpeechSettings()
+  if (settings.asrProvider === 'android-local') {
+    return (await yachiyoVoiceNative.startListening({ language: settings.language })).text.trim()
+  }
+  return recognizeRemoteSpeech()
 }
 
 export async function stopAndroidSpeechRecognition() {
+  if (activeRemoteRecognitionStop) {
+    activeRemoteRecognitionStop()
+    return
+  }
   await yachiyoVoiceNative.stopListening()
 }
 async function speakWithBing(text: string, voice: string, callbacks: SpeechPlaybackCallbacks, generation: number) {
@@ -174,6 +243,66 @@ async function speakWithAndroid(text: string, callbacks: SpeechPlaybackCallbacks
   }
 }
 
+async function speakWithRemote(text: string, callbacks: SpeechPlaybackCallbacks, generation: number) {
+  const settings = getSpeechSettings()
+  const credentials = await getSpeechCredentials()
+  const isGptSoVits = settings.ttsProvider === 'gpt-sovits'
+  const endpoint = resolveSpeechEndpoint(settings.ttsBaseUrl, isGptSoVits ? '/tts' : '/audio/speech')
+  const headers = {
+    'Content-Type': 'application/json',
+    ...authorizationHeaders(credentials.ttsApiKey, settings.ttsHeaders),
+  }
+  const body = isGptSoVits
+    ? {
+        text,
+        text_lang: settings.language.split('-')[0],
+        ref_audio_path: settings.voice,
+        prompt_lang: settings.language.split('-')[0],
+        prompt_text: '',
+        text_split_method: 'cut5',
+        media_type: 'wav',
+        streaming_mode: false,
+      }
+    : { model: settings.ttsModel, input: text, voice: settings.voice, response_format: 'mp3' }
+  const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) })
+  if (!response.ok) throw new Error(`speech_tts_http_${response.status}`)
+  const audioData = await response.arrayBuffer()
+  if (generation !== playbackGeneration || audioData.byteLength === 0) return
+  await playAudioBlob(new Blob([audioData], { type: response.headers.get('content-type') || 'audio/mpeg' }), callbacks)
+}
+
+async function playAudioBlob(blob: Blob, callbacks: SpeechPlaybackCallbacks) {
+  const url = URL.createObjectURL(blob)
+  const audio = new Audio(url)
+  activeAudio = audio
+  activeAudioUrl = url
+  await new Promise<void>((resolve, reject) => {
+    let started = false
+    let finished = false
+    const finish = (error?: Error) => {
+      if (finished) return
+      finished = true
+      if (activeAudio === audio) activeAudio = undefined
+      if (activeAudioUrl === url) activeAudioUrl = undefined
+      if (activeAudioCancel === cancel) activeAudioCancel = undefined
+      URL.revokeObjectURL(url)
+      if (started) callbacks.onEnd?.()
+      error ? reject(error) : resolve()
+    }
+    const cancel = () => finish()
+    activeAudioCancel = cancel
+    audio.onplaying = () => {
+      if (!started) {
+        started = true
+        callbacks.onStart?.()
+      }
+    }
+    audio.onended = () => finish()
+    audio.onerror = () => finish(new Error('speech_playback_failed'))
+    void audio.play().catch((error) => finish(error instanceof Error ? error : new Error(String(error))))
+  })
+}
+
 export async function speakText(text: string, callbacks: SpeechPlaybackCallbacks = {}) {
   const normalized = text.trim()
   if (!normalized) return
@@ -187,6 +316,15 @@ export async function speakText(text: string, callbacks: SpeechPlaybackCallbacks
     } catch {
       if (generation !== playbackGeneration) return
     }
+  }
+
+  if (
+    settings.ttsProvider !== 'bing' &&
+    settings.ttsProvider !== 'android-system' &&
+    generation === playbackGeneration
+  ) {
+    await speakWithRemote(normalized, callbacks, generation)
+    return
   }
 
   if (generation === playbackGeneration) {

@@ -4,6 +4,7 @@ import { Ticker, TickerPlugin } from '@pixi/ticker'
 import JSZip from 'jszip'
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
+import { getLive2DResolution, type Live2DRenderQuality } from '@/mobile/live2d-performance'
 
 type Cubism4Module = typeof import('pixi-live2d-display/cubism4')
 type ModelInstance = Awaited<ReturnType<Cubism4Module['Live2DModel']['from']>>
@@ -63,9 +64,10 @@ export const Live2DStage = forwardRef<
     model: Live2DModelDescriptor
     speaking?: boolean
     muted?: boolean
+    quality?: Live2DRenderQuality
     onReady?: () => void
   }
->(function Live2DStage({ model: descriptor, speaking = false, muted = false, onReady }, ref) {
+>(function Live2DStage({ model: descriptor, speaking = false, muted = false, quality = 'high', onReady }, ref) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application>()
   const modelRef = useRef<ModelInstance>()
@@ -99,13 +101,14 @@ export const Live2DStage = forwardRef<
       if (disposed) return
       const width = Math.max(1, host.clientWidth)
       const height = Math.max(1, host.clientHeight)
+      const resolution = getLive2DResolution(quality, window.devicePixelRatio)
       const app = new Application({
         width,
         height,
         backgroundAlpha: 0,
-        antialias: true,
+        antialias: quality !== 'performance',
         autoDensity: true,
-        resolution: 1,
+        resolution,
       })
       app.view.style.width = '100%'
       app.view.style.height = '100%'
@@ -153,7 +156,7 @@ export const Live2DStage = forwardRef<
       appRef.current = undefined
       host.replaceChildren()
     }
-  }, [descriptor.id, descriptor.source, onReady])
+  }, [descriptor.id, descriptor.source, quality, onReady])
 
   return (
     <div

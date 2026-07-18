@@ -7,6 +7,7 @@ import type { ToolSet } from 'ai'
 import { t } from 'i18next'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
+import { getDisabledAgentCapabilityPrompt } from '@/mobile/agent-disabled-prompt'
 import * as appleAppStore from '@/packages/apple_app_store'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { estimateTokensFromMessages } from '@/packages/token'
@@ -174,12 +175,14 @@ export async function orchestrateGeneration(
     })
     promptMsgs = updatedMsgs
 
-    const { tools, instructions } = await buildToolsForSession(model, {
+    const { tools, instructions: toolInstructions } = await buildToolsForSession(model, {
       webBrowsing,
       knowledgeBase,
       messages: promptMsgs,
       cameraSessionId: sessionId,
+      agentSessionId: sessionId,
     })
+    const instructions = [toolInstructions, getDisabledAgentCapabilityPrompt(sessionId)].filter(Boolean).join('\n')
 
     let injectedMessages = injectModelSystemPrompt(
       model.modelId,

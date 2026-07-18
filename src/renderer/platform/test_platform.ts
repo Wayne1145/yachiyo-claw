@@ -267,12 +267,6 @@ export default class TestPlatform implements Platform {
     // no-op in test
   }
 
-  // ============ 通知 ============
-
-  public async shouldShowAboutDialogWhenStartUp(): Promise<boolean> {
-    return false
-  }
-
   public async appLog(level: string, message: string): Promise<void> {
     console.log(`[${level}] ${message}`)
   }

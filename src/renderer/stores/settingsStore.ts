@@ -16,7 +16,7 @@ import storage, { StorageKey } from '@/storage'
 import { mergeProviderSettings, type ProviderSettingsUpdate } from './providerSettings'
 
 const log = getLogger('settings-store')
-const SETTINGS_STORAGE_VERSION = 6
+const SETTINGS_STORAGE_VERSION = 7
 
 /**
  * Returns platform-specific default document parser configuration.
@@ -105,6 +105,13 @@ export const settingsStore = createStore<Settings & Action>()(
             case 5:
               if (settings.extension?.webSearch?.provider === 'build-in') {
                 settings.extension.webSearch.provider = 'bing'
+              }
+            case 6:
+              if (settings.extension?.webSearch?.provider === 'build-in') {
+                settings.extension.webSearch.provider = 'bing'
+              }
+              if (settings.extension?.documentParser?.type === 'chatbox-ai') {
+                settings.extension.documentParser = getPlatformDefaultDocumentParser()
               }
             default:
               break

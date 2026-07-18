@@ -1,11 +1,10 @@
 import { ModelProviderEnum, ModelProviderType, type Settings } from '@shared/types'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   createYachiyoApiSettingsPatch,
   hasConfiguredModelProvider,
   hasYachiyoDefaultModel,
   isAllowedAndroidShellPath,
-  loadStartupRemoteConfig,
   resolveAndroidShellBackAction,
   resolveAndroidShellTab,
   resolveAndroidShellWorkspaceView,
@@ -27,21 +26,6 @@ describe('Android app shell state', () => {
     expect(shouldUseAndroidAppShell('mobile', 'android')).toBe(true)
     expect(shouldUseAndroidAppShell('mobile', 'ios')).toBe(false)
     expect(shouldUseAndroidAppShell('desktop', 'android')).toBe(false)
-  })
-
-  it('uses local startup config without contacting the upstream service on Android', async () => {
-    const loadRemoteConfig = vi.fn(async () => ({
-      setting_chatboxai_first: true,
-      current_version: '9.9.9',
-      product_ids: [],
-    }))
-
-    await expect(loadStartupRemoteConfig(true, loadRemoteConfig)).resolves.toEqual({
-      setting_chatboxai_first: false,
-      current_version: '',
-      product_ids: [],
-    })
-    expect(loadRemoteConfig).not.toHaveBeenCalled()
   })
 
   it('maps settings and Android agent task routes', () => {

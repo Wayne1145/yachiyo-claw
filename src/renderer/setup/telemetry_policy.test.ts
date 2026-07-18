@@ -8,17 +8,14 @@ import {
   stripUpstreamTelemetryHtml,
 } from './telemetry_policy'
 
-describe('mobile telemetry policy', () => {
-  it('disables runtime reporting and Sentry artifact uploads for mobile builds', () => {
+describe('Yachiyo telemetry policy', () => {
+  it('disables upstream runtime reporting and Sentry uploads on every build', () => {
     expect(defaultAllowReportingAndTracking('mobile_app')).toBe(false)
     expect(shouldInitializeUpstreamTelemetry('mobile_app')).toBe(false)
     expect(shouldUploadSentryArtifacts('sentry-token', true)).toBe(false)
-  })
-
-  it('preserves the existing non-mobile opt-in behavior', () => {
-    expect(defaultAllowReportingAndTracking('unknown')).toBe(true)
-    expect(shouldInitializeUpstreamTelemetry('unknown')).toBe(true)
-    expect(shouldUploadSentryArtifacts('sentry-token', false)).toBe(true)
+    expect(defaultAllowReportingAndTracking('desktop')).toBe(false)
+    expect(shouldInitializeUpstreamTelemetry('desktop')).toBe(false)
+    expect(shouldUploadSentryArtifacts('sentry-token', false)).toBe(false)
     expect(shouldUploadSentryArtifacts(undefined, false)).toBe(false)
   })
 

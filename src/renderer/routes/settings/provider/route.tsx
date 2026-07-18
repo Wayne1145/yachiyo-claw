@@ -44,6 +44,7 @@ export function RouteComponent() {
   const providers = useMemo<ProviderInfo[]>(() => {
     const systemProviders = SystemProviders().filter(
       (p) =>
+        p.id !== 'chatbox-ai' &&
         !(isExceeded && p.name.toLocaleLowerCase().match(/openai|claude|gemini/i)) &&
         !(inAndroidAppShell && p.id === 'yachiyo')
     )
@@ -73,7 +74,7 @@ export function RouteComponent() {
   const handleSelectProvider = useCallback(
     (providerId: string) => {
       navigate({
-        to: providerId === 'chatbox-ai' ? '/settings/provider/chatbox-ai' : '/settings/provider/$providerId',
+        to: '/settings/provider/$providerId',
         params: { providerId },
       })
     },

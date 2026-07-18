@@ -12,6 +12,7 @@ export interface DevicePermissionStatus {
 }
 
 export type PermissionTarget = 'overlay' | 'battery' | 'storage' | 'accessibility' | 'shizuku'
+export type NativeApprovalDecision = 'once' | 'conversation' | 'deny'
 
 interface AccessibilityActionOptions {
   action: 'observe' | 'tap' | 'swipe' | 'text' | 'global' | 'launch'
@@ -36,6 +37,13 @@ interface YachiyoDeviceAccessNativePlugin {
   showOperationOverlay(options: { text: string }): Promise<void>
   updateOperationOverlay(options: { text: string }): Promise<void>
   hideOperationOverlay(): Promise<void>
+  requestOperationApproval(options: {
+    title: string
+    detail: string
+    dangerous: boolean
+  }): Promise<{ decision: NativeApprovalDecision }>
+  cancelOperationApproval(): Promise<void>
+  bringAppToForeground(): Promise<void>
   addListener(eventName: 'overlayStopRequested', listener: () => void): Promise<PluginListenerHandle>
 }
 
@@ -50,5 +58,9 @@ export const yachiyoDeviceAccessNative = {
   showOperationOverlay: (text = '') => nativeAccess.showOperationOverlay({ text }),
   updateOperationOverlay: (text: string) => nativeAccess.updateOperationOverlay({ text }),
   hideOperationOverlay: () => nativeAccess.hideOperationOverlay(),
+  requestOperationApproval: (title: string, detail: string, dangerous: boolean) =>
+    nativeAccess.requestOperationApproval({ title, detail, dangerous }),
+  cancelOperationApproval: () => nativeAccess.cancelOperationApproval(),
+  bringAppToForeground: () => nativeAccess.bringAppToForeground(),
   onOverlayStopRequested: (listener: () => void) => nativeAccess.addListener('overlayStopRequested', listener),
 }

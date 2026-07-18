@@ -1,4 +1,4 @@
-import { ActionIcon, Button, FileButton, Loader, SegmentedControl, Text, Textarea } from '@mantine/core'
+import { ActionIcon, Button, FileButton, Loader, SegmentedControl, Select, Text, Textarea } from '@mantine/core'
 import { createMessage } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
 import {
@@ -32,6 +32,11 @@ import {
   setSelectedLive2DModelId,
 } from '@/mobile/live2d-models'
 import { recognizeAndroidSpeech, speakText, stopAndroidSpeechRecognition, stopSpeaking } from '@/mobile/speech-runtime'
+import {
+  getLive2DRenderQuality,
+  setLive2DRenderQuality,
+  type Live2DRenderQuality,
+} from '@/mobile/live2d-performance'
 import { useSession } from '@/stores/chatStore'
 import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
@@ -66,6 +71,7 @@ export function AndroidInteractive({
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user')
   const [cameraPosition, setCameraPosition] = useState({ x: 0, y: 0 })
   const [background, setBackground] = useState(() => localStorage.getItem('yachiyo.interactive.background') || '')
+  const [renderQuality, setRenderQuality] = useState(getLive2DRenderQuality)
   const stageRef = useRef<Live2DStageHandle>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream>()
@@ -353,7 +359,13 @@ export function AndroidInteractive({
           className="yachiyo-interactive-backdrop"
           style={background ? { backgroundImage: `url(${background})` } : undefined}
         />
-        <Live2DStage ref={stageRef} model={selectedModel} speaking={ttsSpeaking} muted={muted} />
+        <Live2DStage
+          ref={stageRef}
+          model={selectedModel}
+          speaking={ttsSpeaking}
+          muted={muted}
+          quality={renderQuality}
+        />
         {cameraEnabled && (
           <div
             className="yachiyo-camera-preview"
@@ -457,6 +469,22 @@ export function AndroidInteractive({
           <Text size="sm" c="dimmed">
             选择内置模型，或导入包含 .model3.json 的 ZIP 模型包。
           </Text>
+          <Select
+            label="显示质量"
+            value={renderQuality}
+            allowDeselect={false}
+            data={[
+              { value: 'performance', label: '省电（1x）' },
+              { value: 'balanced', label: '均衡（最高 1.75x）' },
+              { value: 'high', label: '高清（最高 2.5x）' },
+            ]}
+            onChange={(value) => {
+              if (!value) return
+              const quality = value as Live2DRenderQuality
+              setRenderQuality(quality)
+              setLive2DRenderQuality(quality)
+            }}
+          />
           {models.map((model) => (
             <button
               key={model.id}

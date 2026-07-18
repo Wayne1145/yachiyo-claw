@@ -148,7 +148,7 @@ export function ImportProviderModal({ opened, onClose, importedConfig, existingP
             </Flex>
           )}
 
-          <ReadOnlyInput label="API Key" value={apiKey} mb="md" />
+          <ReadOnlyInput label="API Key" value={apiKey} type="password" mb="md" />
 
           {/* Model list */}
           {importedConfig?.models && importedConfig.models.length > 0 && (

@@ -7,7 +7,6 @@ import { forwardRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import ModelSelector from '@/components/ModelSelector'
-import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { enrichModelsFromRegistry, useModelRegistryVersion } from '@/packages/model-registry'
 import { useSettingsStore } from '@/stores/settingsStore'
 
@@ -17,13 +16,12 @@ export const Route = createFileRoute('/settings/default-models')({
 
 export function RouteComponent() {
   const { t } = useTranslation()
-  const inAndroidAppShell = useInAndroidAppShell()
   const { setSettings, ...settings } = useSettingsStore((state) => state)
   const productCopy = (key: string) => {
     const translated = String(t(key))
-    return inAndroidAppShell ? translated.replaceAll('Chatbox', 'Yachiyo Claw') : translated
+    return translated.replaceAll('Chatbox', 'Yachiyo Claw')
   }
-  const ocrAutoText = settings.licenseKey && !inAndroidAppShell ? t('Auto (Use Chatbox AI)')! : t('None')!
+  const ocrAutoText = t('None')!
 
   return (
     <Stack p="md" gap="xl">

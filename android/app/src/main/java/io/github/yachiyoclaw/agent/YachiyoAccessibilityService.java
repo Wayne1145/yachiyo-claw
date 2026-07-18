@@ -111,9 +111,11 @@ public class YachiyoAccessibilityService extends AccessibilityService {
         if (node == null || depth > 40 || output.length() > 1_500_000) return;
         Rect bounds = new Rect();
         node.getBoundsInScreen(bounds);
+        CharSequence text = node.isPassword() ? "[REDACTED]" : node.getText();
+        CharSequence description = node.isPassword() ? "" : node.getContentDescription();
         output.append("<node class=\"").append(escape(node.getClassName())).append("\"")
-            .append(" text=\"").append(escape(node.getText())).append("\"")
-            .append(" description=\"").append(escape(node.getContentDescription())).append("\"")
+            .append(" text=\"").append(escape(text)).append("\"")
+            .append(" description=\"").append(escape(description)).append("\"")
             .append(" viewId=\"").append(escape(node.getViewIdResourceName())).append("\"")
             .append(" bounds=\"").append(bounds.toShortString()).append("\"")
             .append(" clickable=\"").append(node.isClickable()).append("\"")

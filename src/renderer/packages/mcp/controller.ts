@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { ToolSet } from 'ai'
 import Emittery from 'emittery'
 import { isEqual } from 'lodash'
+import { requestAgentApproval } from '@/mobile/agent-approval'
 import { IPCStdioTransport } from './ipc-stdio-transport'
 import type { MCPServerConfig, MCPServerStatus } from './types'
 
@@ -194,7 +195,7 @@ export const mcpController = {
     }
   },
 
-  getAvailableTools(): ToolSet {
+  getAvailableTools(sessionId?: string): ToolSet {
     const toolSet: ToolSet = {}
     for (const { instance, config } of this.servers.values()) {
       const mcpTools = instance.getAvailableTools()
@@ -204,6 +205,13 @@ export const mcpController = {
           ...tool,
           execute: async (args, options) => {
             try {
+              const approved = await requestAgentApproval({
+                sessionId,
+                title: `MCP: ${config.name}/${toolName}`,
+                detail: JSON.stringify(args, null, 2).slice(0, 4_000),
+                risk: 'dangerous',
+              })
+              if (!approved) return { error: 'user_denied_mcp_tool' }
               return await rawExecute?.(args, options)
             } catch (err) {
               // 返回而非抛出，否则会导致流程中断

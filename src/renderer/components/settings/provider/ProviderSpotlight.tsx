@@ -24,8 +24,7 @@ const ProviderSpotlight: FC<{
       (p) => FEATURED_PROVIDER_IDS.includes(p.id) && p.id !== ModelProviderEnum.ChatboxAI
     )
     const others = allSystemProviders.filter(
-      (p) =>
-        !FEATURED_PROVIDER_IDS.includes(p.id) && (p.id !== ModelProviderEnum.ChatboxAI || platform.type === 'mobile')
+      (p) => !FEATURED_PROVIDER_IDS.includes(p.id) && p.id !== ModelProviderEnum.ChatboxAI
     )
 
     const quickActions: SpotlightActionData[] = [

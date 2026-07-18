@@ -11,6 +11,7 @@ import * as picUtils from '@/packages/pic_utils'
 import platform from '@/platform'
 import { useUIStore } from '@/stores/uiStore'
 import * as toastActions from '../stores/toastActions'
+import { sanitizeSvgMarkup } from './svg-sanitizer'
 
 export function MessageMermaid(props: { source: string; theme: 'light' | 'dark'; generating?: boolean }) {
   const { source, theme, generating } = props
@@ -186,12 +187,12 @@ export function SVGPreview(props: { xmlCode: string; className?: string; generat
 }
 
 async function mermaidCodeToSvgCode(source: string, theme: 'light' | 'dark') {
-  mermaid.initialize({ theme: theme === 'light' ? 'default' : 'dark' })
+  mermaid.initialize({ theme: theme === 'light' ? 'default' : 'dark', securityLevel: 'strict', startOnLoad: false })
   const id = 'mermaidtmp' + Math.random().toString(36).substring(2, 15)
   const result = await mermaid.render(id, source)
   // 考虑到 mermaid 工具内部本身已经使用了 dompurify 进行处理，因此可以先假设它的输出是安全的
   // 经过测试，发现 dompurify.sanitize 有时候会导致最终的 svg 显示不完整
   // 考虑到现代浏览器都不会执行 svg 中的 script 标签，所以这里不进行 sanitize。参考：https://stackoverflow.com/questions/7917008/xss-when-loading-untrusted-svg-using-img-tag
   // return dompurify.sanitize(result.svg, { USE_PROFILES: { svg: true, svgFilters: true } })
-  return { id, svg: result.svg }
+  return { id, svg: sanitizeSvgMarkup(result.svg) }
 }

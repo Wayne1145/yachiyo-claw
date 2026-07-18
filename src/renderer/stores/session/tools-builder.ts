@@ -138,7 +138,7 @@ export async function buildToolsForSession(
   }
 
   let tools: ToolSet = {
-    ...mcpController.getAvailableTools(),
+    ...mcpController.getAvailableTools(options.agentSessionId),
   }
 
   const cameraCaptureTool =

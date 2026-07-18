@@ -306,7 +306,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
           )}
         </header>}
 
-        <div className="yachiyo-mobile-content">{content}</div>
+        <div key={location.pathname} className="yachiyo-mobile-content">{content}</div>
 
         <AndroidBottomNavigation activeTab={activeTab} onChange={(tab) => void handleTabChange(tab)} />
       </div>

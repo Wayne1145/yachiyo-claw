@@ -23,7 +23,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveSelect } from '@/components/AdaptiveSelect'
 import LazySlider from '@/components/common/LazySlider'
-import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { languageNameMap, languages } from '@/i18n/locales'
 import platform from '@/platform'
 import storage, { StorageKey } from '@/storage'
@@ -37,7 +36,6 @@ export const Route = createFileRoute('/settings/general')({
 
 export function RouteComponent() {
   const { t } = useTranslation()
-  const inAndroidAppShell = useInAndroidAppShell()
   const { setSettings, ...settings } = useSettingsStore((state) => state)
 
   return (
@@ -167,28 +165,6 @@ export function RouteComponent() {
 
       {/* Export Logs */}
       <ExportLogsSection />
-
-      <Divider />
-
-      {/* Error Reporting */}
-      <Stack gap="md">
-        <Stack gap="xxs">
-          <Title order={5}>{t('Error Reporting')}</Title>
-          <Text c="chatbox-tertiary">
-            {String(
-              t(
-                'Chatbox respects your privacy and only uploads anonymous error data and events when necessary. You can change your preferences at any time in the settings.'
-              )
-            ).replaceAll('Chatbox', inAndroidAppShell ? 'Yachiyo Claw' : 'Chatbox')}
-          </Text>
-        </Stack>
-
-        <Checkbox
-          label={t('Enable optional anonymous reporting of crash and event data')}
-          checked={settings.allowReportingAndTracking}
-          onChange={(e) => setSettings({ allowReportingAndTracking: e.target.checked })}
-        />
-      </Stack>
 
       {/* others */}
       {platform.type === 'desktop' && (

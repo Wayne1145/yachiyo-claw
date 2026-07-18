@@ -36,6 +36,14 @@ export interface CreateScheduledAgentTaskInput {
   repeat: ScheduledTaskRepeat
 }
 
+export function recoverInterruptedScheduledTasks(tasks: ScheduledAgentTask[]): ScheduledAgentTask[] {
+  return tasks.map((task) =>
+    task.status === 'running'
+      ? { ...task, status: 'failed', lastError: '上次运行被系统或应用终止，可以重新执行。' }
+      : task
+  )
+}
+
 let cachedRaw = ''
 let cachedTasks: ScheduledAgentTask[] = []
 let draining = false
@@ -62,8 +70,13 @@ export function getScheduledAgentTasks(): ScheduledAgentTask[] {
   try {
     const parsed = JSON.parse(raw) as unknown
     cachedTasks = Array.isArray(parsed)
-      ? parsed.filter(isScheduledAgentTask).sort((left, right) => left.runAt - right.runAt)
+      ? recoverInterruptedScheduledTasks(parsed.filter(isScheduledAgentTask)).sort((left, right) => left.runAt - right.runAt)
       : []
+    const normalizedRaw = JSON.stringify(cachedTasks)
+    if (normalizedRaw !== raw) {
+      cachedRaw = normalizedRaw
+      localStorage.setItem(STORAGE_KEY, normalizedRaw)
+    }
   } catch {
     cachedTasks = []
   }
@@ -158,7 +171,7 @@ async function createAndRunAgentConversation(
   saveAgentSessionConfig(agentTask.id, {
     enabled: true,
     configured: true,
-    approvalMode: 'smart',
+    approvalMode: 'manual',
   })
   taskSessionStore.getState().setCurrentTaskId(agentTask.id)
 

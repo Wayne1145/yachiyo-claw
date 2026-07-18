@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const requestAgentApprovalMock = vi.hoisted(() => vi.fn(async () => true))
+vi.mock('./agent-approval', () => ({ requestAgentApproval: requestAgentApprovalMock }))
 import {
   type CameraCapture,
   createCameraCaptureTool,
@@ -29,6 +32,9 @@ describe('interactive camera tool', () => {
 
     const execute = cameraTool.execute as (input: unknown, options: unknown) => Promise<CameraCapture>
     const output = await execute({}, {})
+    expect(requestAgentApprovalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: SESSION_ID, risk: 'dangerous' })
+    )
     expect(capture).toHaveBeenCalledOnce()
     expect(output).toMatchObject({ width: 1280, height: 720 })
 

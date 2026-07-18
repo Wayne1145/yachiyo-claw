@@ -83,6 +83,7 @@ import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { delay } from '@/utils'
 import { recognizeAndroidSpeech, speakText } from '@/mobile/speech-runtime'
+import { ContextUsageBar } from '@/components/common/ContextUsageBar'
 import { getMessageText } from '@shared/utils/message'
 import { featureFlags } from '@/utils/feature-flags'
 import { trackEvent } from '@/utils/track'
@@ -1258,7 +1259,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     // Show deprecated notice for legacy picture sessions
     if (sessionType === 'picture') {
       return (
-        <Box pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID}>
+        <Box className="shrink-0" pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID}>
           <Stack
             className={cn('rounded-2xl bg-chatbox-background-secondary', widthFull ? 'w-full' : 'max-w-4xl mx-auto')}
             gap="xs"
@@ -1277,7 +1278,14 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     }
 
     return (
-      <Box pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID} {...getRootProps()}>
+      <Box
+        className="shrink-0"
+        pt={0}
+        pb={isSmallScreen ? 'md' : 'sm'}
+        px="sm"
+        id={dom.InputBoxID}
+        {...getRootProps()}
+      >
         <input className="hidden" {...getInputProps()} />
         <Stack className={cn(widthFull ? 'w-full' : 'max-w-4xl mx-auto')} gap="xs">
           {currentSessionId && <CompactionStatus sessionId={currentSessionId} />}
@@ -1557,8 +1565,16 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
               </Flex>
             )}
 
+            <ContextUsageBar used={totalTokens} limit={effectiveContextWindow} />
+
             {/* Toolbar Row */}
-            <Flex align="center" gap={0} className="shrink-0 w-full" justify="space-between">
+            <Flex
+              align="center"
+              gap={isSmallScreen ? 4 : 0}
+              wrap={isSmallScreen ? 'wrap' : 'nowrap'}
+              className="shrink-0 w-full"
+              justify="space-between"
+            >
               {/* Hidden file inputs */}
               <ImageUploadInput ref={pictureInputRef} onChange={onFileInputChange} />
               <input
@@ -1571,7 +1587,11 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
               />
 
               {/* Left Group: Tool Buttons */}
-              <Flex align="center" gap={0}>
+              <Flex
+                align="center"
+                gap={0}
+                className={isSmallScreen ? 'order-2 w-full min-w-0 overflow-x-auto yachiyo-chat-toolbar-scroll' : ''}
+              >
                 {platform.type === 'mobile' && (
                   <>
                     <Tooltip label="语音输入" position="top" withArrow>
@@ -1738,7 +1758,11 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
               </Flex>
 
               {/* Right Group: Token Count + Model Selector */}
-              <Flex align="center" gap={0} className="min-w-0 ml-auto">
+              <Flex
+                align="center"
+                gap={0}
+                className={isSmallScreen ? 'order-1 w-full min-w-0 justify-end' : 'min-w-0 ml-auto'}
+              >
                 {platform.type === 'mobile' && <CharacterSelector sessionId={sessionId} />}
                 <TokenCountMenu
                   currentInputTokens={currentInputTokens}

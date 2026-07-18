@@ -198,7 +198,7 @@ function RouteComponent() {
       {/* MessageList 设置 key，确保每个 session 对应新的 MessageList 实例 */}
       <MessageList ref={messageListRef} key={`message-list${currentSessionId}`} currentSession={currentSession} />
 
-      <Box className="relative">
+      <Box className="relative shrink-0">
         {shouldShowTemplateWelcomeCard && (
           // absolute — taken out of flow, doesn't affect layout of siblings
           // bottom: '100%' — positioned right above the parent box's top edge (like a tooltip anchoring upward)

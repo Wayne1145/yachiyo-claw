@@ -25,10 +25,15 @@ export async function ensureAgentTaskForChat(sessionId: string): Promise<TaskSes
   const taskMessages = chat.messages.filter((message) => message.role !== 'system')
   const existing = await findTaskForChatSession(sessionId)
   if (existing) {
+    const existingIds = new Set(existing.messages.map((message) => message.id))
+    const mergedMessages = [
+      ...existing.messages,
+      ...taskMessages.filter((message) => !existingIds.has(message.id)),
+    ].sort((left, right) => (left.timestamp ?? 0) - (right.timestamp ?? 0))
     return (
       (await updateTaskSession(existing.id, {
         name: chat.name,
-        messages: taskMessages,
+        messages: mergedMessages,
         settings: chat.settings,
       })) || existing
     )

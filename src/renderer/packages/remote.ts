@@ -1,5 +1,6 @@
 import { ofetch } from 'ofetch'
 import { z } from 'zod'
+import { checkYachiyoGitHubUpdate } from '@shared/releases/yachiyo'
 import { getLogger } from '@/lib/utils'
 import platform from '@/platform'
 import { authInfoStore } from '@/stores/authInfoStore'
@@ -97,7 +98,6 @@ async function getAuthenticatedAfetch() {
 
 // ========== API ORIGIN 根据可用性维护 ==========
 
-// const RELEASE_ORIGIN = 'https://releases.chatboxai.app'
 export function getAPIOrigin() {
   if (USE_LOCAL_API) {
     return 'http://localhost:8002'
@@ -137,20 +137,10 @@ const getChatboxHeaders = async () => {
 // ========== 各个接口方法 ==========
 
 export async function checkNeedUpdate(version: string, os: string, config: Config, settings: Settings) {
-  type Response = {
-    need_update?: boolean
-  }
-  // const res = await ofetch<Response>(`${RELEASE_ORIGIN}/chatbox_need_update/${version}`, {
-  const res = await ofetch<Response>(`${getAPIOrigin()}/chatbox_need_update/${version}`, {
-    method: 'POST',
-    retry: 3,
-    body: {
-      uuid: config.uuid,
-      os: os,
-      allowReportingAndTracking: settings.allowReportingAndTracking ? 1 : 0,
-    },
-  })
-  return !!res.need_update
+  void os
+  void config
+  void settings
+  return checkYachiyoGitHubUpdate(version)
 }
 
 // export async function getSponsorAd(): Promise<null | SponsorAd> {

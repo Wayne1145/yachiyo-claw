@@ -35,7 +35,7 @@ export function ProviderList({ providers, onAddProvider }: ProviderListProps) {
 
   const activatedProviderIds = useMemo(() => new Set(availableProviders.map((p) => p.id)), [availableProviders])
 
-  // Yachiyo is the product service; upstream Chatbox remains an ordinary provider.
+  // Yachiyo is the product service. Chatbox AI is filtered before this list.
   const sortedProviders = useMemo(() => {
     const yachiyo = providers.filter((p) => p.id === ModelProviderEnum.Yachiyo)
     const activated: ProviderBaseInfo[] = []
@@ -68,7 +68,7 @@ export function ProviderList({ providers, onAddProvider }: ProviderListProps) {
           {sortedProviders.map((provider) => (
             <Link
               key={provider.id}
-              to={provider.id === 'chatbox-ai' ? `/settings/provider/chatbox-ai` : `/settings/provider/$providerId`}
+              to="/settings/provider/$providerId"
               params={{ providerId: provider.id }}
               className={'block no-underline'}
             >

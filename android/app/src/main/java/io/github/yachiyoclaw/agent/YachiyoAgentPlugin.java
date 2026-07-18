@@ -1,5 +1,6 @@
 package io.github.yachiyoclaw.agent;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
@@ -29,6 +30,7 @@ public class YachiyoAgentPlugin extends Plugin {
     private static final int MAX_COMMAND_LENGTH = 32_768;
     private static final int MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
     private static final int ADB_ROOT_BRIDGE_PORT = 39_280;
+    private static final String ADB_ROOT_BRIDGE_TOKEN_FILE = "yachiyo-root-bridge-token";
     private static final String EXIT_MARKER = "__YACHIYO_EXIT_CODE__=";
     private static final String PREFERENCES_NAME = "yachiyo-agent";
     private static final String WORKING_DIRECTORY_URI_KEY = "working-directory-uri";
@@ -115,6 +117,7 @@ public class YachiyoAgentPlugin extends Plugin {
     }
 
     @ActivityCallback
+    @SuppressLint("WrongConstant")
     private void workingDirectoryResult(PluginCall call, ActivityResult result) {
         Intent data = result.getData();
         if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
@@ -129,6 +132,7 @@ public class YachiyoAgentPlugin extends Plugin {
         try {
             int permissionFlags = data.getFlags() &
                 (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            if (permissionFlags == 0) throw new SecurityException("working_directory_grant_missing");
             getContext().getContentResolver().takePersistableUriPermission(treeUri, permissionFlags);
             path = resolveDocumentIdToPath(DocumentsContract.getTreeDocumentId(treeUri));
         } catch (RuntimeException error) {
@@ -278,12 +282,13 @@ public class YachiyoAgentPlugin extends Plugin {
     }
 
     private CommandResult executeWithAdbRootBridge(String command, int timeoutMs) throws Exception {
+        String token = readAdbRootBridgeToken();
         Socket socket = new Socket();
         activeSocket = socket;
         try {
             socket.connect(new InetSocketAddress("127.0.0.1", ADB_ROOT_BRIDGE_PORT), 1_500);
             socket.setSoTimeout(timeoutMs);
-            String payload = command + "\nprintf '\\n" + EXIT_MARKER + "%s\\n' \"$?\"\nexit\n";
+            String payload = token + "\n" + command + "\nprintf '\\n" + EXIT_MARKER + "%s\\n' \"$?\"\nexit\n";
             OutputStream output = socket.getOutputStream();
             output.write(payload.getBytes(StandardCharsets.UTF_8));
             output.flush();
@@ -320,6 +325,14 @@ public class YachiyoAgentPlugin extends Plugin {
                 socket.close();
             } catch (IOException ignored) {}
         }
+    }
+
+    private String readAdbRootBridgeToken() throws IOException {
+        java.io.File tokenFile = new java.io.File(getContext().getFilesDir(), ADB_ROOT_BRIDGE_TOKEN_FILE);
+        if (!tokenFile.isFile()) throw new IOException("adb_root_bridge_token_missing");
+        String token = new String(java.nio.file.Files.readAllBytes(tokenFile.toPath()), StandardCharsets.US_ASCII).trim();
+        if (!token.matches("^[a-f0-9]{64}$")) throw new IOException("adb_root_bridge_token_invalid");
+        return token;
     }
 
     private static String trimTrailingWhitespace(String value) {

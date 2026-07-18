@@ -86,7 +86,7 @@ ${
     description: 'Tap a physical screen coordinate.',
     inputSchema: z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative() }),
     execute: async ({ x, y }) => {
-      if (!(await approve('点击屏幕', `坐标：(${x}, ${y})`))) return denied()
+      if (!(await approve('点击屏幕', `坐标：(${x}, ${y})`, 'dangerous'))) return denied()
       return getAgentBackend() === 'accessibility'
         ? accessibility({ action: 'tap', x, y })
         : exec(`input tap ${x} ${y}`)
@@ -122,7 +122,7 @@ ${
     inputSchema: z.object({ text: z.string().max(4_000) }),
     execute: async ({ text }) => {
       const preview = text.length > 160 ? `${text.slice(0, 160)}…` : text
-      if (!(await approve('输入文字', preview))) return denied()
+      if (!(await approve('输入文字', preview, 'dangerous'))) return denied()
       return getAgentBackend() === 'accessibility'
         ? accessibility({ action: 'text', text })
         : exec(`input text ${shellQuote(text.replace(/ /g, '%s'))}`)
@@ -133,7 +133,7 @@ ${
     description: 'Send an Android system navigation action such as HOME, BACK, or RECENTS.',
     inputSchema: z.object({ key: z.union([z.string().max(40), z.number().int().nonnegative()]) }),
     execute: async ({ key }) => {
-      if (!(await approve('执行系统导航', String(key)))) return denied()
+      if (!(await approve('执行系统导航', String(key), 'dangerous'))) return denied()
       return getAgentBackend() === 'accessibility'
         ? accessibility({ action: 'global', key: String(key) })
         : exec(`input keyevent ${shellQuote(String(key))}`)
@@ -144,7 +144,7 @@ ${
     description: 'Launch an installed Android app by package name.',
     inputSchema: z.object({ package_name: z.string().regex(/^[a-zA-Z0-9_.]+$/) }),
     execute: async ({ package_name }) => {
-      if (!(await approve('启动应用', package_name))) return denied()
+      if (!(await approve('启动应用', package_name, 'dangerous'))) return denied()
       return getAgentBackend() === 'accessibility'
         ? accessibility({ action: 'launch', packageName: package_name })
         : exec(`monkey -p ${shellQuote(package_name)} -c android.intent.category.LAUNCHER 1`)

@@ -1,15 +1,7 @@
-import {
-  TASK_SANDBOX_DENY_READ_PATHS,
-  TASK_SANDBOX_DENY_WRITE_PATHS,
-  TASK_SANDBOX_EXTRA_WRITE_PATHS,
-} from '@shared/task-sandbox'
-
 export function buildTaskSystemPrompt(
   workingDirectory: string,
   options: { agentIdentity?: string; deviceAgent?: boolean } = {}
 ): string {
-  const writablePaths = [workingDirectory, ...TASK_SANDBOX_EXTRA_WRITE_PATHS].join(', ')
-
   const agentOperatingInstructions = options.deviceAgent
     ? [
         '<agent_operating_instructions>',
@@ -27,15 +19,12 @@ export function buildTaskSystemPrompt(
     : ''
 
   const sandboxPolicy = [
-    'You are operating in a sandbox with explicit filesystem permissions.',
+    'You are operating with a privileged shell whose actions are controlled by the Tool Broker approval policy.',
     `Working directory: ${workingDirectory}`,
-    `Writable paths: ${writablePaths}`,
-    `Blocked read paths: ${TASK_SANDBOX_DENY_READ_PATHS.join(', ')}`,
-    `Blocked write paths: ${TASK_SANDBOX_DENY_WRITE_PATHS.join(', ')}`,
-    'Prefer to complete work within the writable paths above.',
-    `Use temporary paths like ${TASK_SANDBOX_EXTRA_WRITE_PATHS.join(
-      ', '
-    )} for artifacts and intermediate files when helpful.`,
+    'The working directory is the initial directory, not a filesystem security boundary.',
+    'Stay inside the working directory unless the user explicitly requests access elsewhere.',
+    'Never access credential directories, private keys, authentication stores, or unrelated application data.',
+    'Use /data/local/tmp/yachiyo-agent for temporary artifacts when helpful.',
     options.deviceAgent
       ? 'Use the available Android device tools to complete authorized system-level actions directly.'
       : 'If a requested action requires global or system-level changes, do not execute it directly.',

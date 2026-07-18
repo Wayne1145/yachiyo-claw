@@ -22,7 +22,6 @@ import path from 'path'
 // @ts-expect-error - source-map-support doesn't have type definitions
 import * as sourceMapSupport from 'source-map-support'
 import type { ShortcutSetting } from 'src/shared/types'
-import * as analystic from './analystic-node'
 import { AppUpdater } from './app-updater'
 import * as autoLauncher from './autoLauncher'
 import { handleDeepLink } from './deeplinks'
@@ -133,8 +132,12 @@ const getAssetPath = (...paths: string[]): string => {
   return path.join(RESOURCES_PATH, ...paths)
 }
 
-// 开发环境使用 chatbox-dev:// 协议，避免和正式版冲突
-const PROTOCOL_SCHEME = process.defaultApp ? 'chatbox-dev' : 'chatbox'
+// 开发环境使用独立协议，避免和正式版冲突。
+const PROTOCOL_SCHEME = process.defaultApp ? 'yachiyoclaw-dev' : 'yachiyoclaw'
+
+function findYachiyoDeepLink(args: string[]): string | undefined {
+  return args.find((arg) => arg.startsWith('yachiyoclaw://') || arg.startsWith('yachiyoclaw-dev://'))
+}
 
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
@@ -255,7 +258,7 @@ function createTray() {
       accelerator: 'Command+Q',
     },
   ])
-  tray.setToolTip('Chatbox')
+  tray.setToolTip('Yachiyo Claw')
   tray.setContextMenu(contextMenu)
   tray.on('double-click', showOrHideWindow)
   return tray
@@ -463,7 +466,7 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', async (event, commandLine, workingDirectory) => {
     // on windows and linux, the deep link is passed in the command line
-    const url = commandLine.find((arg) => arg.startsWith('chatbox://') || arg.startsWith('chatbox-dev://'))
+    const url = findYachiyoDeepLink(commandLine)
 
     if (url) {
       // Deep Link 场景：总是显示并聚焦窗口
@@ -518,7 +521,7 @@ if (!gotTheLock) {
       // 处理启动时的 Deep Link (Windows/Linux)
       // macOS 会通过 open-url 事件处理，不需要在这里处理
       if (process.platform !== 'darwin') {
-        const url = process.argv.find((arg) => arg.startsWith('chatbox://') || arg.startsWith('chatbox-dev://'))
+        const url = findYachiyoDeepLink(process.argv)
         if (url && mainWindow) {
           // 确保窗口加载完成后再处理 Deep Link
           if (mainWindow.webContents.isLoading()) {
@@ -689,28 +692,12 @@ ipcMain.handle('relaunch', () => {
   app.quit()
 })
 
-ipcMain.handle('analysticTrackingEvent', (event, dataJson) => {
-  const data = JSON.parse(dataJson)
-  analystic.event(data.name, data.params).catch((e) => {
-    log.error('analystic_tracking_event', e)
-  })
-})
-
 ipcMain.handle('getConfig', (event) => {
   return getConfig()
 })
 
 ipcMain.handle('getSettings', (event) => {
   return getSettings()
-})
-
-ipcMain.handle('shouldShowAboutDialogWhenStartUp', (event) => {
-  const currentVersion = app.getVersion()
-  if (store.get('lastShownAboutDialogVersion', '') === currentVersion) {
-    return false
-  }
-  store.set('lastShownAboutDialogVersion', currentVersion)
-  return true
 })
 
 ipcMain.handle('appLog', (event, dataJson) => {

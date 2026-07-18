@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next'
 import { useMCPServerStatus, useToggleMCPServer } from '@/hooks/mcp'
 import { navigateToSettings } from '@/modals/Settings'
 import { BUILTIN_MCP_SERVERS } from '@/packages/mcp/builtin'
-import { useAutoValidate } from '@/stores/premiumActions'
 import { useMcpSettings } from '@/stores/settingsStore'
 import { ScalableIcon } from '../common/ScalableIcon'
 import MCPStatus from './MCPStatus'
@@ -43,7 +42,6 @@ const ServerItem: FC<{
 const MCPMenu: FC<{ children: (enabledTools: number) => ReactNode }> = ({ children }) => {
   const { t } = useTranslation()
   const mcp = useMcpSettings()
-  const isPremium = useAutoValidate()
   const onEnabledChange = useToggleMCPServer()
   const enabledToolsCount = mcp.servers.filter((s) => s.enabled).length + mcp.enabledBuiltinServers.length
   const [opened, setOpened] = useState(false)
@@ -81,22 +79,18 @@ const MCPMenu: FC<{ children: (enabledTools: number) => ReactNode }> = ({ childr
             </ActionIcon>
           </Menu.Label>
         </Flex>
-        {isPremium && (
-          <>
-            {BUILTIN_MCP_SERVERS.map((server) => (
-              <ServerItem
-                key={server.id}
-                item={{
-                  id: server.id,
-                  name: server.name,
-                  enabled: mcp.enabledBuiltinServers.includes(server.id),
-                }}
-                onEnabledChange={onEnabledChange}
-              />
-            ))}
-            <Menu.Divider />
-          </>
-        )}
+        {BUILTIN_MCP_SERVERS.map((server) => (
+          <ServerItem
+            key={server.id}
+            item={{
+              id: server.id,
+              name: server.name,
+              enabled: mcp.enabledBuiltinServers.includes(server.id),
+            }}
+            onEnabledChange={onEnabledChange}
+          />
+        ))}
+        <Menu.Divider />
         {mcp.servers.map((server) => (
           <ServerItem key={server.id} item={server} onEnabledChange={onEnabledChange} />
         ))}

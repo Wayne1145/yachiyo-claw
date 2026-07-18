@@ -1,12 +1,12 @@
 const UPSTREAM_TELEMETRY_START = '<!-- upstream-telemetry:start -->'
 const UPSTREAM_TELEMETRY_END = '<!-- upstream-telemetry:end -->'
 
-export function shouldInitializeUpstreamTelemetry(buildTarget: string): boolean {
-  return buildTarget !== 'mobile_app'
+export function shouldInitializeUpstreamTelemetry(_buildTarget: string): boolean {
+  return false
 }
 
-export function shouldUploadSentryArtifacts(authToken: string | undefined, isMobile: boolean): boolean {
-  return Boolean(authToken) && !isMobile
+export function shouldUploadSentryArtifacts(_authToken: string | undefined, _isMobile: boolean): boolean {
+  return false
 }
 
 export function stripUpstreamTelemetryHtml(html: string): string {

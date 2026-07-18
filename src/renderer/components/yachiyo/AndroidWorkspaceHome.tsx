@@ -9,6 +9,8 @@ import {
   IconShieldLock,
 } from '@tabler/icons-react'
 import { type ReactNode, useCallback, useEffect, useId, useState } from 'react'
+import { YACHIYO_LATEST_RELEASE_URL, YACHIYO_RELEASES_URL } from '@shared/releases/yachiyo'
+import useVersion from '@/hooks/useVersion'
 import {
   type AgentBackend,
   getAgentBackend,
@@ -312,6 +314,7 @@ export function AndroidTasksWorkspace() {
 
 export function AndroidAboutWorkspace() {
   const titleId = useId()
+  const { version, needCheckUpdate } = useVersion()
 
   return (
     <main className="yachiyo-workspace" aria-labelledby={titleId}>
@@ -327,9 +330,23 @@ export function AndroidAboutWorkspace() {
       </section>
 
       <section className="yachiyo-status-panel" aria-label="应用信息">
+        <StatusRow label="版本" value={version ? `v${version}` : '读取中'} />
         <StatusRow label="平台" value="Android 11+" />
         <StatusRow label="许可证" value="GPL-3.0" />
-        <StatusRow label="项目状态" value="开发中" />
+        <StatusRow
+          label="更新"
+          value={needCheckUpdate ? '发现新版本' : '已是最新版本'}
+          tone={needCheckUpdate ? 'ready' : 'neutral'}
+          action={
+            <Button
+              size="compact-xs"
+              variant="light"
+              onClick={() => void platform.openLink(needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL)}
+            >
+              查看 Releases
+            </Button>
+          }
+        />
       </section>
     </main>
   )

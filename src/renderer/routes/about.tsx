@@ -6,49 +6,36 @@ import {
   Divider,
   Flex,
   Image,
-  Popover,
   Progress,
   Stack,
   Text,
   Title,
 } from '@mantine/core'
-import { useDisclosure } from '@mantine/hooks'
 import {
   IconChevronRight,
-  IconClipboard,
   IconFileText,
-  IconHome,
-  IconMail,
-  IconMessage2,
-  IconPencil,
   IconRefresh,
-  IconX,
 } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Fragment, type ReactElement, useState } from 'react'
+import { Fragment, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
+import { YACHIYO_GITHUB_URL, YACHIYO_LATEST_RELEASE_URL, YACHIYO_RELEASES_URL } from '@shared/releases/yachiyo'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import BrandGithub from '@/components/icons/BrandGithub'
-import BrandRedNote from '@/components/icons/BrandRedNote'
-import BrandWechat from '@/components/icons/BrandWechat'
 import Page from '@/components/layout/Page'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import useVersion from '@/hooks/useVersion'
-import { buildChatboxUrl } from '@/packages/remote'
 import platform from '@/platform'
-import iconPNG from '@/static/icon.png'
-import IMG_WECHAT_QRCODE from '@/static/wechat_qrcode.png'
-import { useLanguage } from '@/stores/settingsStore'
 import { installUpdate, useUpdateStore } from '@/stores/updateStore'
+import iconPNG from '../../../assets/brand/yachiyo-avatar.png'
 
 export const Route = createFileRoute('/about')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
-  const { t, i18n: _i18n } = useTranslation()
+  const { t } = useTranslation()
   const version = useVersion()
-  const language = useLanguage()
   const isSmallScreen = useIsSmallScreen()
 
   return (
@@ -59,35 +46,14 @@ function RouteComponent() {
             <Image h={100} w={100} mah={'20vw'} maw={'20vw'} src={iconPNG} />
             <Stack flex={1} gap="xxs">
               <Flex justify="space-between" align="center" wrap="wrap" gap={isSmallScreen ? 'xs' : 'sm'} rowGap="xs">
-                <Title order={5} lh={1.5} lineClamp={1} title={`Chatbox v${version.version}`}>
-                  Chatbox {/\d/.test(version.version) ? `(v${version.version})` : ''}
+                <Title order={5} lh={1.5} lineClamp={1} title={`Yachiyo Claw v${version.version}`}>
+                  Yachiyo Claw {/\d/.test(version.version) ? `(v${version.version})` : ''}
                 </Title>
 
-                <UpdateSection language={language} needCheckUpdate={version.needCheckUpdate} />
+                <UpdateSection needCheckUpdate={version.needCheckUpdate} />
               </Flex>
-              <Text>{t('about-slogan')}</Text>
-              <Text c="chatbox-tertiary">{t('about-introduction')}</Text>
-
-              <Flex gap="sm">
-                <Anchor
-                  size="sm"
-                  href="https://chatboxai.app/privacy"
-                  target="_blank"
-                  underline="hover"
-                  c="chatbox-tertiary"
-                >
-                  {t('Privacy Policy')}
-                </Anchor>
-                <Anchor
-                  size="sm"
-                  href="https://chatboxai.app/terms"
-                  target="_blank"
-                  underline="hover"
-                  c="chatbox-tertiary"
-                >
-                  {t('User Terms')}
-                </Anchor>
-              </Flex>
+              <Text>Android-first AI chat and local device agent</Text>
+              <Text c="chatbox-tertiary">NewDreamStudio · GPL-3.0</Text>
             </Stack>
           </Flex>
 
@@ -95,55 +61,13 @@ function RouteComponent() {
             <ListItem
               icon={<BrandGithub className="w-full h-full" />}
               title={t('Github')}
-              link="https://github.com/chatboxai/chatbox"
-              value="chatbox"
-            />
-            {/* <ListItem
-              icon={<BrandX className="w-full h-full" />}
-              title={t('X(Twitter)')}
-              link="https://x.com/ChatboxAI_HQ"
-              value="@ChatboxAI_HQ"
-            /> */}
-            <ListItem
-              icon={<BrandRedNote className="w-full h-full" />}
-              title={t('RedNote')}
-              link="https://www.xiaohongshu.com/user/profile/67b581b6000000000e01d11f"
-              value="@63844903136"
-            />
-            <ListItem icon={<BrandWechat className="w-full h-full" />} title={t('WeChat')} right={<WechatQRCode />} />
-          </List>
-
-          <List>
-            <ListItem
-              icon={<IconHome className="w-full h-full" />}
-              title={t('Official Site')}
-              link={buildChatboxUrl(`/redirect_app/homepage/${language}`)}
-            />
-            <ListItem
-              icon={<IconClipboard className="w-full h-full" />}
-              title={t('Survey')}
-              link={_i18n.language === 'zh-Hans' ? 'https://jsj.top/f/fcMYEa' : 'https://jsj.top/f/RUMbvY'}
-            />
-            <ListItem
-              icon={<IconPencil className="w-full h-full" />}
-              title={t('Feedback')}
-              link={buildChatboxUrl(`/redirect_app/feedback/${language}`)}
+              link={YACHIYO_GITHUB_URL}
+              value="Wayne1145/yachiyo-claw"
             />
             <ListItem
               icon={<IconFileText className="w-full h-full" />}
               title={t('Changelog')}
-              link={`https://chatboxai.app/${language.split('-')[0] || 'en'}/help-center/changelog`}
-            />
-            <ListItem
-              icon={<IconMail className="w-full h-full" />}
-              title={t('E-mail')}
-              link={`mailto:hi@chatboxai.com`}
-              value="hi@chatboxai.com"
-            />
-            <ListItem
-              icon={<IconMessage2 className="w-full h-full" />}
-              title={t('FAQs')}
-              link={`https://chatboxai.app/${language.split('-')[0] || 'en'}/help-center/chatbox-ai-service-faqs`}
+              link={YACHIYO_RELEASES_URL}
             />
           </List>
         </Stack>
@@ -157,7 +81,7 @@ function RouteComponent() {
  * Desktop: check button, progress bar, error/retry, restart & install.
  * Mobile: "New version available" hint linking to app store.
  */
-function UpdateSection({ language, needCheckUpdate }: { language: string; needCheckUpdate: boolean }) {
+function UpdateSection({ needCheckUpdate }: { needCheckUpdate: boolean }) {
   const isDesktop = platform.type === 'desktop'
 
   if (isDesktop) {
@@ -165,10 +89,10 @@ function UpdateSection({ language, needCheckUpdate }: { language: string; needCh
   }
 
   // Mobile and Web both use external link
-  return <MobileUpdateHint language={language} needCheckUpdate={needCheckUpdate} />
+  return <MobileUpdateHint needCheckUpdate={needCheckUpdate} />
 }
 
-function MobileUpdateHint({ language, needCheckUpdate }: { language: string; needCheckUpdate: boolean }) {
+function MobileUpdateHint({ needCheckUpdate }: { needCheckUpdate: boolean }) {
   const { t } = useTranslation()
 
   if (needCheckUpdate) {
@@ -179,7 +103,7 @@ function MobileUpdateHint({ language, needCheckUpdate }: { language: string; nee
         color="chatbox-brand"
         radius="xl"
         className="flex-shrink-0"
-        onClick={() => platform.openLink(buildChatboxUrl(`/redirect_app/check_update/${language}`))}
+        onClick={() => platform.openLink(YACHIYO_LATEST_RELEASE_URL)}
       >
         {t('New version available')}
       </Button>
@@ -192,7 +116,7 @@ function MobileUpdateHint({ language, needCheckUpdate }: { language: string; nee
       variant="default"
       radius="xl"
       className="flex-shrink-0"
-      onClick={() => platform.openLink(buildChatboxUrl(`/redirect_app/check_update/${language}`))}
+      onClick={() => platform.openLink(YACHIYO_RELEASES_URL)}
     >
       {t('Check Update')}
     </Button>
@@ -281,7 +205,7 @@ function DesktopUpdateSection() {
           <Anchor
             size="xs"
             c="chatbox-tertiary"
-            onClick={() => platform.openLink(buildChatboxUrl('/redirect_app/homepage/'))}
+            onClick={() => platform.openLink(YACHIYO_RELEASES_URL)}
           >
             {t('Download from official site')}
           </Anchor>
@@ -302,23 +226,6 @@ function DesktopUpdateSection() {
         </Button>
       )
   }
-}
-
-function WechatQRCode() {
-  const { t } = useTranslation()
-  const [opened, { close, open }] = useDisclosure(false)
-  return (
-    <Popover position="top" withArrow shadow="md" opened={opened}>
-      <Popover.Target>
-        <Text onMouseEnter={open} onMouseLeave={close} c="chatbox-brand" className="cursor-pointer">
-          {t('QR Code')}
-        </Text>
-      </Popover.Target>
-      <Popover.Dropdown style={{ pointerEvents: 'none' }}>
-        <Image src={IMG_WECHAT_QRCODE} alt="wechat qrcode" w={160} h={160} />
-      </Popover.Dropdown>
-    </Popover>
-  )
 }
 
 function List(props: { children: ReactElement[] }) {

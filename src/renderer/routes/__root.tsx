@@ -1,4 +1,4 @@
-import { type RemoteConfig, Theme } from '@shared/types'
+import { Theme } from '@shared/types'
 import { z } from 'zod'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import Toasts from '@/components/common/Toasts'
@@ -45,15 +45,11 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { ThemeProvider } from '@mui/material/styles'
 import { useQuery } from '@tanstack/react-query'
 import { createRootRoute, Outlet, useLocation } from '@tanstack/react-router'
-import { useSetAtom } from 'jotai'
 import { useEffect, useMemo, useRef } from 'react'
-import { trackJkViewEvent } from '@/analytics/jk'
-import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
-import { loadStartupRemoteConfig, shouldUseAndroidAppShell } from '@/mobile/android-app-shell'
+import { shouldUseAndroidAppShell } from '@/mobile/android-app-shell'
 import SettingsModal, { navigateToSettings } from '@/modals/Settings'
 import { prefetchModelRegistry } from '@/packages/model-registry'
 import { getOS } from '@/packages/navigator'
-import * as remote from '@/packages/remote'
 import PictureDialog from '@/pages/PictureDialog'
 import RemoteDialogWindow from '@/pages/RemoteDialogWindow'
 import SearchDialog from '@/pages/SearchDialog'
@@ -61,13 +57,10 @@ import platform from '@/platform'
 import { router } from '@/router'
 import Sidebar from '@/Sidebar'
 import storage from '@/storage'
-import * as atoms from '@/stores/atoms'
-import { getSession, useSession } from '@/stores/chatStore'
+import { useSession } from '@/stores/chatStore'
 import { initOnboardingStore, onboardingStore } from '@/stores/onboardingStore'
-import * as premiumActions from '@/stores/premiumActions'
 import * as settingActions from '@/stores/settingActions'
 import { initSettingsStore, settingsStore, useLanguage, useSettingsStore, useTheme } from '@/stores/settingsStore'
-import { getTaskSession } from '@/stores/taskSessionStore'
 import { useUIStore } from '@/stores/uiStore'
 import { CHATBOX_BUILD_CHANNEL, CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { blobToDataUrl } from './image-creator/-components/constants'
@@ -138,15 +131,11 @@ function BackgroundImageOverlay() {
 
 function Root() {
   const useAndroidAppShell = shouldUseAndroidAppShell(platform.type, CHATBOX_BUILD_PLATFORM)
-  const { isExceeded, isExceededResolved } = useVersion({ checkRemoteUpdates: !useAndroidAppShell })
+  const { isExceeded, isExceededResolved } = useVersion({ checkRemoteUpdates: true })
   const location = useLocation()
   const spellCheck = useSettingsStore((state) => state.spellCheck)
   const language = useLanguage()
   const initialized = useRef(false)
-
-  const setOpenAboutDialog = useUIStore((s) => s.setOpenAboutDialog)
-
-  const setRemoteConfig = useSetAtom(atoms.remoteConfigAtom)
 
   useEffect(() => {
     if (initialized.current) {
@@ -158,15 +147,8 @@ function Root() {
       await Promise.all([initSettingsStore(), initOnboardingStore()])
       void prefetchModelRegistry()
 
-      const remoteConfig = await loadStartupRemoteConfig(useAndroidAppShell, () =>
-        remote
-          .getRemoteConfig('setting_chatboxai_first')
-          .catch(() => ({ setting_chatboxai_first: false }) as RemoteConfig)
-      )
-      setRemoteConfig(async (prev) => ({ ...(await prev), ...remoteConfig }))
-
-      // The Android product owns onboarding and update surfaces locally. Do not
-      // contact or navigate through the upstream Chatbox startup experience.
+      // Yachiyo owns onboarding and update surfaces locally. Startup must not
+      // contact or navigate through the upstream Chatbox experience.
       if (useAndroidAppShell) {
         initialized.current = true
         if (location.pathname === '/guide') {
@@ -205,15 +187,8 @@ function Root() {
         return
       }
 
-      // 是否需要弹出关于窗口（更新后首次启动）
-      // 目前仅在桌面版本更新后首次启动、且网络环境为"外网"的情况下才自动弹窗
-      const shouldShowAboutDialogWhenStartUp = await platform.shouldShowAboutDialogWhenStartUp()
-      if (shouldShowAboutDialogWhenStartUp && remoteConfig.setting_chatboxai_first) {
-        setOpenAboutDialog(true)
-        return
-      }
     })()
-  }, [setOpenAboutDialog, setRemoteConfig, location.pathname, isExceeded, isExceededResolved, useAndroidAppShell])
+  }, [location.pathname, isExceeded, isExceededResolved, useAndroidAppShell])
 
   const showSidebar = useUIStore((s) => s.showSidebar)
   const sidebarWidth = useSidebarWidth()
@@ -276,56 +251,6 @@ function Root() {
     }
     // Other routes (settings, copilots, about, etc.) don't change sidebarMode
   }, [location.pathname, setSidebarMode])
-
-  // Page view tracking
-  const settingsSearch = (location.search as Record<string, unknown>)?.settings as string | undefined
-  useEffect(() => {
-    const pathname = location.pathname
-    let pageName: string | undefined
-
-    // 桌面端 settings 以 modal 方式打开，pathname 不变，通过 search.settings 控制
-    if (settingsSearch) {
-      pageName = JK_PAGE_NAMES.SETTING_PAGE
-    } else if (pathname === '/' || pathname.startsWith('/session/')) {
-      pageName = JK_PAGE_NAMES.CHAT_PAGE
-    } else if (pathname === '/task' || pathname.startsWith('/task/')) {
-      pageName = JK_PAGE_NAMES.TASK_PAGE
-    } else if (pathname.startsWith('/image-creator')) {
-      pageName = JK_PAGE_NAMES.IMAGE_PAGE
-    } else if (pathname.startsWith('/copilots')) {
-      pageName = JK_PAGE_NAMES.COPILOTS_PAGE
-    } else if (pathname.startsWith('/settings')) {
-      pageName = JK_PAGE_NAMES.SETTING_PAGE
-    } else if (pathname.startsWith('/guide')) {
-      pageName = JK_PAGE_NAMES.HELP_PAGE
-    } else if (pathname === '/about') {
-      pageName = JK_PAGE_NAMES.ABOUT_PAGE
-    }
-
-    if (!pageName) return
-
-    const trackPageView = async () => {
-      let content: string | undefined
-
-      if (pathname.startsWith('/session/')) {
-        const sessionId = pathname.slice('/session/'.length)
-        const session = await getSession(sessionId).catch(() => null)
-        content = session?.name
-      } else if (pathname.startsWith('/task/') && pathname.length > '/task/'.length) {
-        const taskId = pathname.slice('/task/'.length)
-        const taskSession = await getTaskSession(taskId).catch(() => null)
-        content = taskSession?.name
-      }
-
-      trackJkViewEvent(JK_EVENTS.PAGE_VIEW, {
-        pageName,
-        content,
-      })
-    }
-
-    // biome-ignore lint/nursery/noFloatingPromises: analytics tracking
-    trackPageView()
-  }, [location.pathname, settingsSearch])
 
   const { needRoomForMacWindowControls } = useNeedRoomForWinControls()
   useEffect(() => {
@@ -686,7 +611,6 @@ export const Route = createRootRoute({
   }),
   component: () => {
     useI18nEffect()
-    premiumActions.useAutoValidate() // 每次启动都执行 license 检查，防止用户在lemonsqueezy管理页面中取消了当前设备的激活
     useSystemLanguageWhenInit()
     useShortcut()
     const useAndroidLightTheme = shouldUseAndroidAppShell(platform.type, CHATBOX_BUILD_PLATFORM)

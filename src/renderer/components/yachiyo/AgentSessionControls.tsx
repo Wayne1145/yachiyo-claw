@@ -1,4 +1,4 @@
-import { Alert, Button, SegmentedControl, Stack, Text, Title } from '@mantine/core'
+import { Alert, Button, SegmentedControl, Stack, Switch, Text, Title } from '@mantine/core'
 import { IconAdjustments, IconAlertTriangle, IconBolt, IconShieldLock } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
@@ -14,6 +14,7 @@ import {
   getAgentSessionConfig,
   saveAgentSessionConfig,
 } from '@/mobile/agent-session-config'
+import { getAgentRuntimeSettings, saveAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
 import { AgentConfigurationPanel } from './AgentConfigurationPanel'
 import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 
@@ -55,6 +56,7 @@ export function AgentSessionControls({
   const [backendReady, setBackendReady] = useState(false)
   const [backendDetail, setBackendDetail] = useState('')
   const [authorizing, setAuthorizing] = useState(false)
+  const [returnToApp, setReturnToApp] = useState(() => getAgentRuntimeSettings().returnToAppOnComplete)
 
   useEffect(() => {
     const next = getAgentSessionConfig(sessionId)
@@ -219,6 +221,16 @@ export function AgentSessionControls({
               value={approvalMode}
               onChange={selectApprovalMode}
               data={APPROVAL_OPTIONS}
+            />
+            <Switch
+              label="任务完成后自动返回 Yachiyo Claw"
+              description="Agent 在其他应用操作完成后，将 Yachiyo Claw 重新切换到前台。"
+              checked={returnToApp}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked
+                setReturnToApp(checked)
+                saveAgentRuntimeSettings({ returnToAppOnComplete: checked })
+              }}
             />
           </section>
           {config.allowDangerousForConversation && (
