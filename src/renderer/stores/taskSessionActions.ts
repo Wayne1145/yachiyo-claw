@@ -5,14 +5,28 @@ import { getMessageText, sequenceMessages } from '@shared/utils/message'
 import type { ToolSet } from 'ai'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
+import { cancelPendingAgentApprovals, requestAgentApproval, setActiveAgentSession } from '@/mobile/agent-approval'
+import {
+  AgentBudgetExceededError,
+  AgentBudgetTracker,
+  KNOWN_PRICE_AGENT_BUDGET,
+  UNKNOWN_PRICE_AGENT_BUDGET,
+} from '@/mobile/agent-budget'
+import { buildDeviceGoalContext } from '@/mobile/agent-goal'
+import { tryRunLocalAndroidRecipe } from '@/mobile/android-task-recipe'
+import {
+  AgentUsageBudgetExceededError,
+  AgentUnknownPriceError,
+  createAgentUsageLedger,
+  resolveDefaultAgentPrice,
+} from '@/mobile/agent-usage-ledger'
 import { buildAgentIdentityPrompt } from '@/mobile/agent-profile'
-import { cancelPendingAgentApprovals, setActiveAgentSession } from '@/mobile/agent-approval'
 import { getAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
 import { nextAgentStreamPart } from '@/mobile/agent-stream-watchdog'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { onAndroidDeviceOperation } from '@/packages/model-calls/toolsets/android-device'
 import platform from '@/platform'
-import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
+import { resetSemanticObservationCache, yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 import { featureFlags } from '@/utils/feature-flags'
 import { lastUsedModelStore } from './lastUsedModelStore'
 import { queryClient } from './queryClient'
@@ -29,6 +43,7 @@ const AGENT_STREAM_IDLE_TIMEOUT_MS = 180_000
 // This is intentional — prevents resource contention in the sandbox environment.
 // If concurrent task generation is needed in the future, replace with a Map<taskId, AbortController>.
 let currentAbortController: AbortController | null = null
+let currentAgentRunId: string | null = null
 
 export function isTaskGenerating(): boolean {
   return currentAbortController !== null
@@ -67,14 +82,18 @@ async function clearTaskGeneratingState(taskId: string): Promise<void> {
 }
 
 export async function cancelTaskGeneration(taskId?: string): Promise<void> {
+  const agentRunId = currentAgentRunId
   if (currentAbortController) {
     currentAbortController.abort()
     currentAbortController = null
   }
-  try {
-    await platform.sandboxKill?.()
-  } catch (err) {
-    log.debug('sandbox kill during cancellation:', err)
+  cancelPendingAgentApprovals(agentRunId || taskId)
+  if (platform.type !== 'mobile') {
+    try {
+      await platform.sandboxKill?.()
+    } catch (err) {
+      log.debug('sandbox kill during cancellation:', err)
+    }
   }
   if (taskId) {
     await clearTaskGeneratingState(taskId)
@@ -90,15 +109,16 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
     return
   }
 
-  // Run compaction check before sending (same as chat mode)
-  try {
-    const { runTaskCompaction } = await import('./taskCompaction')
-    await runTaskCompaction(taskId)
-    // Re-fetch session after compaction (may have added messages/points)
-    currentSession = queryClient.getQueryData<TaskSession>(queryKey) ?? currentSession
-  } catch (err) {
-    log.error('Task compaction failed:', err)
-    // Don't block on compaction failure — proceed with send
+  // Device runs already reduce the prompt to one GoalSpec. A second
+  // summarization request here would add an unbudgeted billable model call.
+  if (platform.type !== 'mobile') {
+    try {
+      const { runTaskCompaction } = await import('./taskCompaction')
+      await runTaskCompaction(taskId)
+      currentSession = queryClient.getQueryData<TaskSession>(queryKey) ?? currentSession
+    } catch (err) {
+      log.error('Task compaction failed:', err)
+    }
   }
 
   const userMessage: Message = createMessage('user', content)
@@ -122,6 +142,39 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
   } else {
     // Persist failed but update cache optimistically so UI stays consistent
     queryClient.setQueryData(queryKey, { ...currentSession, messages: messagesWithAssistant })
+  }
+
+  // A confirmed local recipe is resolved before constructing a model or
+  // opening a stream. This is the zero-request path for repeated Android work.
+  if (platform.type === 'mobile') {
+    try {
+      const localOutcome = await tryRunLocalAndroidRecipe(taskId, content)
+      if (localOutcome.handled) {
+        const localMessage: Message = {
+          ...assistantMessage,
+          generating: false,
+          cancel: undefined,
+          status: [],
+          contentParts: [{ type: 'text', text: localOutcome.message || '本地流程已完成。' }],
+        }
+        const localSession = queryClient.getQueryData<TaskSession>(queryKey)
+        if (localSession) {
+          const localMessages = localSession.messages.map((message) =>
+            message.id === assistantMessage.id ? localMessage : message,
+          )
+          const persisted = await updateTaskSession(taskId, { messages: localMessages })
+          queryClient.setQueryData(queryKey, persisted || { ...localSession, messages: localMessages })
+          if (persisted) {
+            const { syncTaskSessionToChat } = await import('@/mobile/conversation-sync')
+            await syncTaskSessionToChat(persisted)
+          }
+        }
+        return
+      }
+    } catch (error) {
+      // A malformed/stale recipe must never prevent the normal model fallback.
+      log.debug('local Android recipe skipped:', error)
+    }
   }
 
   await generateTaskResponse(taskId, assistantMessage, messagesWithUser)
@@ -154,12 +207,22 @@ function getDefaultModelSettings(sessionSettings?: { provider?: string; modelId?
 async function generateTaskResponse(taskId: string, targetMsg: Message, contextMessages: Message[]): Promise<void> {
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   const abortController = new AbortController()
+  const deviceAgent = platform.type === 'mobile'
+  // Scope persisted Broker checkpoints to one generated task message. A later
+  // user request in the same session must be allowed to perform the same
+  // legitimate action again, while retries of this message remain idempotent.
+  const agentRunId = `${taskId}:${targetMsg.id}`
+  let budget: AgentBudgetTracker | null = null
+  if (deviceAgent) resetSemanticObservationCache(agentRunId)
   currentAbortController = abortController
+  currentAgentRunId = agentRunId
   let overlayStopListener: Awaited<ReturnType<typeof yachiyoDeviceAccessNative.onOverlayStopRequested>> | undefined
   let overlayVisible = false
   let overlayStartPromise: Promise<void> | undefined
   let removeDeviceOperationListener: (() => void) | undefined
   let completedSuccessfully = false
+  let usageReservations = new Map<number, string>()
+  let settlePendingUsage: (usage?: unknown, result?: unknown) => Promise<void> = async () => undefined
 
   try {
     const session = queryClient.getQueryData<TaskSession>(queryKey)
@@ -171,8 +234,49 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     }
     const dependencies = await createModelDependencies()
     const model = await createModel(sessionSettings, dependencies)
-    if (platform.type === 'mobile') {
+    const knownPrice = deviceAgent ? resolveDefaultAgentPrice(provider, modelId) : undefined
+    const agentLimits = knownPrice ? KNOWN_PRICE_AGENT_BUDGET : UNKNOWN_PRICE_AGENT_BUDGET
+    if (deviceAgent) budget = new AgentBudgetTracker(agentLimits)
+    const usageLedger = deviceAgent
+      ? createAgentUsageLedger({
+          budget: {
+            maxTokens: agentLimits.maxTokens,
+            maxModelRequests: agentLimits.maxModelRequests,
+            ...(agentLimits.maxCostUsd !== undefined ? { maxCostUsd: agentLimits.maxCostUsd } : {}),
+          },
+          priceResolver: () => knownPrice,
+          requirePriceConfirmation: !knownPrice,
+          confirmUnknownPrice: ({ provider: unknownProvider, model: unknownModel, reservedTokens }) =>
+            requestAgentApproval({
+              sessionId: taskId,
+              runId: agentRunId,
+              signal: abortController.signal,
+              title: '模型价格未知，是否继续？',
+              detail: `${unknownProvider}/${unknownModel}，最多预留 ${reservedTokens} tokens`,
+              risk: 'dangerous',
+            }),
+        })
+      : null
+    await usageLedger?.recoverPendingReservations(Date.now(), taskId)
+    usageReservations = new Map<number, string>()
+    settlePendingUsage = async (usage?: unknown, result?: unknown) => {
+      if (!usageLedger) return
+      for (const [stepNumber, reservationId] of usageReservations) {
+        const settled = await usageLedger
+          .settle(reservationId, { usage: usage as Record<string, unknown> | undefined, result })
+          .catch(() => undefined)
+        if (settled?.costUsd !== undefined) budget?.recordCost(settled.costUsd)
+        usageReservations.delete(stepNumber)
+      }
+    }
+    if (deviceAgent) {
       removeDeviceOperationListener = onAndroidDeviceOperation(async () => {
+        try {
+          budget?.reserveLocalAction()
+        } catch (error) {
+          abortController.abort()
+          throw error
+        }
         if (overlayVisible) return overlayStartPromise
         overlayVisible = true
         overlayStartPromise = (async () => {
@@ -182,7 +286,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
         await overlayStartPromise
       })
     }
-    if (session?.workingDirectory && platform.sandboxInit) {
+    if (!deviceAgent && session?.workingDirectory && platform.sandboxInit) {
       const initResult = await platform.sandboxInit({ workingDirectory: session.workingDirectory })
       if (!initResult.success) {
         throw new Error(`Sandbox initialization failed: ${initResult.error || 'Unknown error'}`)
@@ -190,7 +294,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     }
 
     let filteredContext = contextMessages
-    if (session?.compactionPoints?.length) {
+    if (!deviceAgent && session?.compactionPoints?.length) {
       try {
         const { buildContext } = await import('@shared/context')
         const noopResolver = { read: async () => null }
@@ -210,28 +314,30 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       buildTaskSystemPrompt(workingDir, {
         agentIdentity: platform.type === 'mobile' ? buildAgentIdentityPrompt() : undefined,
         deviceAgent: platform.type === 'mobile',
-      })
+      }),
     )
 
-    const promptMessages = [systemMessage, ...filteredContext]
+    const promptMessages = [systemMessage, ...(deviceAgent ? buildDeviceGoalContext(filteredContext) : filteredContext)]
 
     const skillSettings = settingsStore.getState().getSettings().skills
     const enabledSkillNames = featureFlags.skills ? skillSettings.enabledSkillNames : []
 
-    const { tools, instructions } = await buildToolsForSession(model, {
-      webBrowsing: true,
+    const { tools, instructions, activeTools } = await buildToolsForSession(model, {
+      webBrowsing: !deviceAgent,
       messages: promptMessages,
       sandboxEnabled: true,
-      enabledSkillNames,
-      agentSessionId: taskId,
+      enabledSkillNames: deviceAgent ? [] : enabledSkillNames,
+      agentSessionId: deviceAgent ? agentRunId : taskId,
+      agentApprovalSessionId: deviceAgent ? taskId : undefined,
       cameraSessionId: taskId,
+      deviceAgentOnly: deviceAgent,
     })
 
     let injectedMessages = injectModelSystemPrompt(
       model.modelId,
       promptMessages,
       instructions,
-      model.isSupportSystemMessage() ? 'system' : 'user'
+      model.isSupportSystemMessage() ? 'system' : 'user',
     )
 
     if (!model.isSupportSystemMessage()) {
@@ -254,6 +360,60 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const chatOptions: ChatStreamOptions = {
       sessionId: taskId,
       signal: abortController.signal,
+      agentMode: deviceAgent,
+      ...(activeTools ? { activeTools } : {}),
+      ...(deviceAgent
+        ? {
+            maxSteps: agentLimits.maxModelRequests,
+            maxModelRequests: agentLimits.maxModelRequests,
+            maxOutputTokens: agentLimits.maxOutputTokens,
+            onAgentRequest: () => budget?.reserveModelRequest(),
+            agentLifecycle: {
+              beforeRequest: async ({ stepNumber, messages, tools: toolDefinitions, activeTools: visibleTools }) => {
+                if (!usageLedger) return
+                const filteredTools = visibleTools?.length
+                  ? Object.fromEntries(
+                      visibleTools
+                        .map((name) => [name, toolDefinitions?.[name]] as const)
+                        .filter(([, value]) => Boolean(value)),
+                    )
+                  : toolDefinitions
+                const reservation = await usageLedger.reserve({
+                  provider,
+                  model: modelId,
+                  taskId,
+                  requestId: `${agentRunId}:request:${stepNumber + 1}`,
+                  attempt: stepNumber + 1,
+                  messages,
+                  tools: filteredTools,
+                  results: messages.filter((message) => message.role === 'tool'),
+                  maxOutputTokens: agentLimits.maxOutputTokens,
+                  maxReasoningTokens: Math.floor(agentLimits.maxOutputTokens / 2),
+                  budget: {
+                    maxTokens: agentLimits.maxTokens,
+                    maxModelRequests: agentLimits.maxModelRequests,
+                    ...(agentLimits.maxCostUsd !== undefined ? { maxCostUsd: agentLimits.maxCostUsd } : {}),
+                  },
+                  price: knownPrice,
+                })
+                usageReservations.set(stepNumber, reservation.reservationId)
+              },
+              onStepFinish: async ({ stepNumber, usage, result }) => {
+                const reservationId = usageReservations.get(stepNumber)
+                if (!reservationId || !usageLedger) return
+                const settled = await usageLedger.settle(reservationId, {
+                  usage: usage as Record<string, unknown> | undefined,
+                  result,
+                })
+                if (settled.costUsd !== undefined) budget?.recordCost(settled.costUsd)
+                usageReservations.delete(stepNumber)
+              },
+              onFinish: async ({ usage, result }) => settlePendingUsage(usage, result),
+              onAbort: async () => settlePendingUsage(),
+              onError: async () => settlePendingUsage(),
+            },
+          }
+        : {}),
     }
 
     if (Object.keys(tools).length > 0) {
@@ -264,20 +424,30 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
 
     let processorState = createInitialState()
     let lastOverlayUpdate = 0
+    let accountedTokens = 0
 
     const streamCallbacks = {
-      onFileReceived: async (_mediaType: string, _base64: string) => {
-        return ''
-      },
+      onFileReceived: (_mediaType: string, _base64: string) => Promise.resolve(''),
     }
 
     const iterator = stream[Symbol.asyncIterator]()
     while (true) {
-      const next = await nextAgentStreamPart(iterator, AGENT_STREAM_IDLE_TIMEOUT_MS, () => abortController.abort())
+      budget?.assertWithinDeadline()
+      const next = await nextAgentStreamPart(
+        iterator,
+        budget ? Math.min(AGENT_STREAM_IDLE_TIMEOUT_MS, Math.max(1, budget.remainingMs)) : AGENT_STREAM_IDLE_TIMEOUT_MS,
+        () => abortController.abort(),
+      )
       if (next.done) break
       const chunk = next.value
       const result = await processStreamChunk(chunk, processorState, streamCallbacks)
       processorState = result.state
+
+      const totalTokens = processorState.usage?.totalTokens
+      if (budget && typeof totalTokens === 'number' && totalTokens > accountedTokens) {
+        budget.recordTokens(totalTokens - accountedTokens)
+        accountedTokens = totalTokens
+      }
 
       if (result.skipUpdate) {
         if (result.statusChunk && result.statusChunk.type === 'status') {
@@ -341,7 +511,16 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     if (!abortController.signal.aborted) {
       log.error('Task generation failed:', err)
     }
-    const error = abortController.signal.aborted ? undefined : err instanceof Error ? err.message : String(err)
+    const error =
+      err instanceof AgentBudgetExceededError || err instanceof AgentUsageBudgetExceededError
+        ? `任务已停止：${err.limit === 'deadline' ? '超过时间预算' : `超过${err.limit}预算`}`
+        : err instanceof AgentUnknownPriceError
+          ? '任务已停止：模型价格未知，未获得继续确认。'
+          : abortController.signal.aborted
+            ? undefined
+            : err instanceof Error
+              ? err.message
+              : String(err)
     targetMsg = {
       ...targetMsg,
       generating: false,
@@ -360,8 +539,9 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     }
   } finally {
     if (currentAbortController === abortController) currentAbortController = null
+    if (currentAgentRunId === agentRunId) currentAgentRunId = null
     setActiveAgentSession(null)
-    cancelPendingAgentApprovals(taskId)
+    cancelPendingAgentApprovals(agentRunId)
     abortController.abort()
     try {
       removeDeviceOperationListener?.()
@@ -377,6 +557,8 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
         await yachiyoDeviceAccessNative.bringAppToForeground().catch(() => undefined)
       }
     }
+    await settlePendingUsage().catch(() => undefined)
+    if (deviceAgent) resetSemanticObservationCache(agentRunId)
   }
 }
 

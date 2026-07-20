@@ -30,6 +30,7 @@ import type { KnowledgeBaseController } from './knowledge-base/interface'
 import { acceptMobileDeepLink } from './mobile_deep_link'
 import MobileExporter from './mobile_exporter'
 import mobileLogger from './mobile_logger'
+import { MobileKnowledgeBaseController, MobileSessionAttachmentRagController } from './mobile-rag-controller'
 import type { SessionAttachmentRagController } from './session-attachment-rag/interface'
 import { MobileSQLiteStorage } from './storages'
 import { parseTextFileLocally } from './web_platform_utils'
@@ -44,6 +45,8 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   private _imageGenerationStorage: ImageGenerationStorage | null = null
   private _taskSessionStorage: TaskSessionStorage | null = null
   private _sessionMetaStorage: SessionMetaStorage | null = null
+  private _mobileKnowledgeBaseController: MobileKnowledgeBaseController | null = null
+  private _mobileSessionAttachmentRagController: MobileSessionAttachmentRagController | null = null
   private agentWorkingDirectory = getAgentWorkingDirectory()
 
   constructor() {
@@ -255,11 +258,17 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   }
 
   public getKnowledgeBaseController(): KnowledgeBaseController {
-    throw new Error('Method not implemented.')
+    if (!this._mobileKnowledgeBaseController) {
+      this._mobileKnowledgeBaseController = new MobileKnowledgeBaseController(this)
+    }
+    return this._mobileKnowledgeBaseController
   }
 
   public getSessionAttachmentRagController(): SessionAttachmentRagController {
-    throw new Error('Session attachment RAG is not implemented on mobile.')
+    if (!this._mobileSessionAttachmentRagController) {
+      this._mobileSessionAttachmentRagController = new MobileSessionAttachmentRagController(this)
+    }
+    return this._mobileSessionAttachmentRagController
   }
 
   public getImageGenerationStorage(): ImageGenerationStorage {

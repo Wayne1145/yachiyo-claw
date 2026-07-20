@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AccessibilitySelectorSchema,
   ApprovalDecisionSchema,
   ApprovalPolicySchema,
   AUDIT_EVENTS,
@@ -8,9 +9,15 @@ import {
   BACKEND_KINDS,
   BackendKindSchema,
   BackgroundGrantSchema,
+  ExecutionCheckpointSchema,
+  GoalSpecSchema,
+  LaunchableAppSchema,
+  LauncherPlacementSchema,
   PARAMETER_DIGEST_ALGORITHM,
   RISK_LEVELS,
   RiskLevelSchema,
+  SemanticNodeSchema,
+  SemanticSnapshotSchema,
   TOOL_IDS,
   ToolCallRequestSchema,
   ToolCallResultSchema,
@@ -43,6 +50,100 @@ const request = {
 } as const
 
 describe('Agent Tool Broker v1 contracts', () => {
+  it('accepts compact accessibility, app index, and checkpoint records', () => {
+    const selector = { resourceId: 'com.example:id/follow', role: 'button' } as const
+    expect(AccessibilitySelectorSchema.parse(selector)).toEqual(selector)
+
+    const node = {
+      nodeId: 'node-1',
+      role: 'button',
+      text: '关注',
+      clickable: true,
+      editable: false,
+      checked: false,
+      selected: false,
+      visible: true,
+      bounds: { left: 0, top: 0, right: 100, bottom: 80 },
+      className: 'android.widget.Button',
+      ancestorSignature: 'button#com.example:id/follow',
+      sensitive: false,
+      index: 0,
+    } as const
+    expect(SemanticNodeSchema.parse(node)).toEqual(node)
+    expect(
+      SemanticSnapshotSchema.parse({
+        version: 1,
+        packageName: 'com.example.app',
+        nodes: [node],
+        nodeCount: 1,
+        truncated: false,
+        screenSignature: 'screen-1',
+      })
+    ).toMatchObject({ nodeCount: 1 })
+
+    const app = {
+      packageName: 'com.example.app',
+      activityName: 'com.example.app.MainActivity',
+      launchActivity: 'com.example.app.MainActivity',
+      label: 'Example',
+      aliases: ['示例'],
+      updatedAt: now,
+    } as const
+    expect(LaunchableAppSchema.parse(app)).toEqual(app)
+    expect(
+      LaunchableAppSchema.parse({ packageName: 'com.example.other', label: 'Other', versionCode: '42' })
+    ).toMatchObject({ packageName: 'com.example.other' })
+
+    const placement = {
+      launcherPackage: 'com.android.launcher3',
+      launcherVersionCode: '42',
+      displayId: '0',
+      orientation: 'portrait',
+      density: 2.75,
+      gridRows: 6,
+      gridColumns: 5,
+      packageName: 'com.example.app',
+      activityName: 'com.example.app.MainActivity',
+      pageIndex: 1,
+      cellRow: 2,
+      cellColumn: 3,
+      bounds: { left: 0, top: 0, right: 100, bottom: 80 },
+      confidence: 0.9,
+      observedAt: now,
+      label: 'Example',
+      screenSignature: 'launcher:page-1',
+    } as const
+    expect(LauncherPlacementSchema.parse(placement)).toEqual(placement)
+    expect(LauncherPlacementSchema.safeParse({ ...placement, cellRow: placement.gridRows }).success).toBe(false)
+
+    const checkpoint = {
+      schemaVersion: 1,
+      taskId: 'task-1',
+      stepId: 'step-1',
+      callId: 'call-1',
+      attempt: 1,
+      toolId: TOOL_IDS.UI_TAP,
+      parameterDigest,
+      expectedState: { following: true },
+      sideEffectState: 'unknown',
+      resultDigest: null,
+      recordedAt: now,
+    } as const
+    expect(ExecutionCheckpointSchema.parse(checkpoint)).toEqual(checkpoint)
+    expect(
+      GoalSpecSchema.parse({
+        objective: '在微信发朋友圈',
+        constraints: {
+          maxLocalActions: 20,
+          maxCommits: 1,
+          maxModelRequests: 3,
+          maxReplans: 1,
+          requireVerification: true,
+        },
+      })
+    ).toMatchObject({ objective: '在微信发朋友圈' })
+  })
+
   it('rejects extra fields on descriptors and nested contract objects', () => {
     const descriptor = {
       schemaVersion: 1,

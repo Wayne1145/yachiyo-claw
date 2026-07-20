@@ -1,6 +1,6 @@
 import { getBuiltinServerConfig } from '@/packages/mcp/builtin'
 import { mcpController } from '@/packages/mcp/controller'
-import { initSettingsStore } from '@/stores/settingsStore'
+import { initSettingsStore, settingsStore } from '@/stores/settingsStore'
 import { NODE_ENV } from '@/variables'
 
 function monitorServerStatus() {
@@ -25,9 +25,21 @@ function monitorServerStatus() {
 initSettingsStore()
   .then((settings) => {
     const { mcp, licenseKey } = settings
+    const isNative = Capacitor.isNativePlatform()
+    const userServers = isNative
+      ? (mcp.servers || []).filter((server) => validateMobileMCPServerConfig(server).success)
+      : mcp.servers || []
+    if (isNative && userServers.length !== (mcp.servers || []).length) {
+      // Remove legacy stdio/inline-secret rows before they can be persisted again on mobile.
+      settingsStore.getState().setSettings((draft) => {
+        draft.mcp.servers = userServers
+      })
+    }
     const servers = [
-      ...(mcp.enabledBuiltinServers || []).map((id) => getBuiltinServerConfig(id, licenseKey)).filter((s) => !!s),
-      ...(mcp.servers || []), // user defined servers
+      ...(isNative
+        ? []
+        : (mcp.enabledBuiltinServers || []).map((id) => getBuiltinServerConfig(id, licenseKey)).filter((s) => !!s)),
+      ...userServers,
     ]
     console.info(`mcp bootstrap ${servers.length} servers, with license key: ${!!licenseKey}`)
     mcpController.bootstrap(servers)
@@ -38,3 +50,5 @@ initSettingsStore()
   .catch((err) => {
     console.error('mcp bootstrap error', err)
   })
+import { Capacitor } from '@capacitor/core'
+import { validateMobileMCPServerConfig } from '@shared/types/mcp'

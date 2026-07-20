@@ -11,11 +11,20 @@ import { z } from 'zod'
  * - skillPath: Optional file system path to skill
  */
 export interface SkillSource {
-  type: 'builtin' | 'local' | 'marketplace' | 'github'
+  type: 'builtin' | 'local' | 'marketplace' | 'github' | 'skillhub'
   repo?: string
   commitHash?: string
   installedAt?: string
   skillPath?: string
+  slug?: string
+  version?: string
+  revision?: string
+  filesHash?: string
+  signature?: SkillSignature
+  publisher?: string
+  securityReport?: string
+  requiresApiKeys?: string[]
+  capabilityManifest?: SkillCapabilityManifest
 }
 
 /**
@@ -34,6 +43,15 @@ export interface MarketplaceSkill {
   installs: number
   source: string
   description?: string
+  slug?: string
+  version?: string
+  revision?: string
+  filesHash?: string
+  signature?: SkillSignature
+  publisher?: string
+  securityReport?: string
+  requiresApiKeys?: string[]
+  capabilityManifest?: SkillCapabilityManifest
 }
 
 // ===== Skill Metadata Types =====
@@ -83,6 +101,79 @@ export const SkillSettingsSchema = z.object({
   translationEnabled: z.boolean().default(true),
 })
 
+const SkillIdentifierSchema = z.string().regex(/^[a-z0-9]+(?:[-_.][a-z0-9]+)*$/, 'Invalid skill identifier')
+
+export const SkillCapabilityManifestSchema = z
+  .object({
+    network: z.boolean().optional(),
+    filesystem: z.boolean().optional(),
+    scripts: z.boolean().optional(),
+    privileged: z.boolean().optional(),
+    tools: z.array(z.string().min(1).max(128)).max(256).optional(),
+  })
+  .strict()
+
+export const SkillSignatureSchema = z
+  .object({
+    algorithm: z.literal('ed25519'),
+    value: z.string().min(1),
+    keyId: z.string().min(1).max(256).optional(),
+    publicKey: z.string().min(1).optional(),
+  })
+  .strict()
+
+export const SkillFileManifestSchema = z
+  .object({
+    path: z.string().min(1).max(1024),
+    size: z.number().int().nonnegative(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+    contentType: z.string().max(255).optional(),
+    executable: z.boolean().optional(),
+  })
+  .strict()
+
+export const MarketplaceSkillSchema = z
+  .object({
+    id: z.string().min(1),
+    skillId: SkillIdentifierSchema,
+    name: z.string().min(1).max(256),
+    installs: z.number().int().nonnegative().default(0),
+    source: z.string().min(1).max(2048),
+    description: z.string().max(4096).optional(),
+    slug: SkillIdentifierSchema.optional(),
+    version: z.string().max(128).optional(),
+    revision: z.string().max(256).optional(),
+    filesHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+    signature: SkillSignatureSchema.optional(),
+    publisher: z.string().max(256).optional(),
+    securityReport: z.string().url().optional(),
+    requiresApiKeys: z.array(z.string().min(1).max(128)).max(64).optional(),
+    capabilityManifest: SkillCapabilityManifestSchema.optional(),
+  })
+  .strict()
+
+export const SkillInstallRecordSchema = z
+  .object({
+    id: z.string().min(1).max(256),
+    slug: SkillIdentifierSchema,
+    name: z.string().min(1).max(256),
+    version: z.string().max(128).optional(),
+    revision: z.string().max(256).optional(),
+    source: z.custom<SkillSource>(),
+    files: z.array(SkillFileManifestSchema).max(4096),
+    contentHash: z.string().regex(/^[a-f0-9]{64}$/i),
+    signatureVerified: z.boolean(),
+    executionMode: z.literal('declarative'),
+    enabled: z.boolean(),
+    installedAt: z.string().datetime(),
+    updatedAt: z.string().datetime().optional(),
+  })
+  .strict()
+
 // ===== Type Exports =====
 
 export type SkillSettings = z.infer<typeof SkillSettingsSchema>
+export type SkillCapabilityManifest = z.infer<typeof SkillCapabilityManifestSchema>
+export type SkillSignature = z.infer<typeof SkillSignatureSchema>
+export type SkillFileManifest = z.infer<typeof SkillFileManifestSchema>
+export type SkillInstallRecord = z.infer<typeof SkillInstallRecordSchema>

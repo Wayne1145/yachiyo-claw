@@ -3,6 +3,7 @@ import { ModelProviderEnum } from '../types'
 // Re-export getModel and getProviderSettings from providers for backward compatibility
 // This allows existing imports like `import { getModel } from '@shared/models'` to continue working
 export { getModel, getProviderSettings } from '../providers'
+export * from './model-catalog'
 
 export const aiProviderNameHash: Record<ModelProviderEnum, string> = {
   [ModelProviderEnum.Yachiyo]: 'Yachiyo API',

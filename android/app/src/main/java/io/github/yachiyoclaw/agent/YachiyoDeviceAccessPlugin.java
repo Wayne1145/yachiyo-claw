@@ -1,8 +1,14 @@
 package io.github.yachiyoclaw.agent;
 
 import android.content.Context;
+import android.content.BroadcastReceiver;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.res.Configuration;
+import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -15,7 +21,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
+import android.os.Build;
 import android.provider.Settings;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -34,6 +42,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,10 +57,19 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import moe.shizuku.server.IShizukuService;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import rikka.shizuku.Shizuku;
 
 @CapacitorPlugin(name = "YachiyoDeviceAccess")
 public class YachiyoDeviceAccessPlugin extends Plugin {
+
+    private static final Locale[] APP_LABEL_LOCALES = new Locale[] {
+        Locale.SIMPLIFIED_CHINESE,
+        Locale.TRADITIONAL_CHINESE,
+        Locale.ENGLISH,
+    };
 
     private static final int SHIZUKU_REQUEST_CODE = 8_000;
     private static final int MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -56,6 +81,38 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
     private TextView streamText;
     private LinearLayout approvalRoot;
     private PluginCall pendingApprovalCall;
+    private BroadcastReceiver packageChangeReceiver;
+
+    @Override
+    public void load() {
+        super.load();
+        packageChangeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                JSObject event = new JSObject();
+                event.put("action", intent.getAction() == null ? "" : intent.getAction());
+                event.put("packageName", intent.getData() == null ? "" : intent.getData().getSchemeSpecificPart());
+                event.put("observedAt", System.currentTimeMillis());
+                // Retain the invalidation until the renderer installs its lazy listener.
+                notifyListeners("launchableAppsChanged", event, true);
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        filter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        filter.addDataScheme("package");
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                getContext().registerReceiver(packageChangeReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                getContext().registerReceiver(packageChangeReceiver, filter);
+            }
+        } catch (RuntimeException ignored) {
+            packageChangeReceiver = null;
+        }
+    }
 
     @PluginMethod
     public void getPermissionStatus(PluginCall call) {
@@ -145,19 +202,170 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         });
     }
 
+    /**
+     * Enumerate launcher activities locally. This is deliberately independent
+     * from AccessibilityService so an app can be resolved before the service
+     * navigates anywhere (and without sending a HOME/search loop to a model).
+     */
+    @PluginMethod
+    public void listLaunchableApps(PluginCall call) {
+        try {
+            List<LaunchableAppRecord> records = queryLaunchableApps();
+            long observedAt = System.currentTimeMillis();
+            JSONArray apps = new JSONArray();
+            for (LaunchableAppRecord record : records) apps.put(record.toJson(observedAt));
+            JSObject result = new JSObject();
+            result.put("apps", apps);
+            result.put("count", records.size());
+            result.put("observedAt", System.currentTimeMillis());
+            call.resolve(result);
+        } catch (RuntimeException error) {
+            call.reject("launchable_apps_unavailable");
+        }
+    }
+
+    /** Read the stable launcher/display fields needed to validate an icon cache. */
+    @PluginMethod
+    public void getLauncherContext(PluginCall call) {
+        try {
+            PackageManager packageManager = getContext().getPackageManager();
+            Intent homeIntent = new Intent(Intent.ACTION_MAIN);
+            homeIntent.addCategory(Intent.CATEGORY_HOME);
+            ResolveInfo home = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY);
+            if (home == null || home.activityInfo == null || !isValidPackageName(home.activityInfo.packageName)) {
+                call.reject("launcher_context_unavailable");
+                return;
+            }
+            String launcherPackage = home.activityInfo.packageName;
+            long launcherVersionCode = Build.VERSION.SDK_INT >= 28
+                ? packageManager.getPackageInfo(launcherPackage, 0).getLongVersionCode()
+                : packageManager.getPackageInfo(launcherPackage, 0).versionCode;
+            android.util.DisplayMetrics metrics = getContext().getResources().getDisplayMetrics();
+            int displayId = 0;
+            if (getActivity() != null && getActivity().getDisplay() != null) {
+                displayId = getActivity().getDisplay().getDisplayId();
+            }
+            String orientation = getContext().getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
+                ? "landscape"
+                : "portrait";
+            JSObject result = new JSObject();
+            result.put("launcherPackage", launcherPackage);
+            result.put("launcherVersionCode", launcherVersionCode);
+            result.put("displayId", displayId);
+            result.put("orientation", orientation);
+            result.put("density", metrics.density);
+            result.put("densityDpi", metrics.densityDpi);
+            result.put("widthPixels", metrics.widthPixels);
+            result.put("heightPixels", metrics.heightPixels);
+            call.resolve(result);
+        } catch (PackageManager.NameNotFoundException | RuntimeException error) {
+            call.reject("launcher_context_unavailable");
+        }
+    }
+
+    /**
+     * Resolve a user-facing app name/package using only local PackageManager
+     * metadata. The caller receives ranked candidates so ambiguous labels can
+     * be confirmed without any model exploration.
+     */
+    @PluginMethod
+    public void resolveLaunchableApp(PluginCall call) {
+        String query = call.getString("query", "");
+        if (query == null || query.trim().isEmpty() || query.length() > 256) {
+            call.reject("invalid_app_query");
+            return;
+        }
+        String expected = normalizeAppQuery(query);
+        List<ScoredLaunchableApp> matches = new ArrayList<>();
+        for (LaunchableAppRecord record : queryLaunchableApps()) {
+            int score = appMatchScore(record, expected);
+            if (score > 0) matches.add(new ScoredLaunchableApp(record, score));
+        }
+        Collections.sort(matches, (left, right) -> {
+            int score = Integer.compare(right.score, left.score);
+            return score != 0 ? score : left.record.label.compareToIgnoreCase(right.record.label);
+        });
+
+        JSONArray candidates = new JSONArray();
+        int limit = Math.min(matches.size(), 32);
+        long observedAt = System.currentTimeMillis();
+        for (int index = 0; index < limit; index++) candidates.put(matches.get(index).record.toJson(observedAt));
+        JSObject result = new JSObject();
+        result.put("query", query.trim());
+        result.put("matches", candidates);
+        result.put("ambiguous", matches.size() > 1 && matches.get(0).score == matches.get(1).score);
+        if (matches.size() == 1 || (matches.size() > 0 && matches.get(0).score > matches.get(1).score)) {
+            result.put("selected", matches.get(0).record.toJson(observedAt));
+        }
+        call.resolve(result);
+    }
+
+    /** Direct PackageManager launch used by the local app index. */
+    @PluginMethod
+    public void launchApp(PluginCall call) {
+        launchPackage(call, call.getString("packageName", ""), call.getString("activityName", ""));
+    }
+
     @PluginMethod
     public void accessibilityAction(PluginCall call) {
+        String action = call.getString("action", "");
+
+        // PackageManager launching does not require an active accessibility
+        // service. Keep this old action usable during permission setup.
+        if ("launch".equals(action)) {
+            launchPackage(call, call.getString("packageName", ""), call.getString("activityName", ""));
+            return;
+        }
+
         YachiyoAccessibilityService service = YachiyoAccessibilityService.getInstance();
         if (service == null) {
             call.reject("accessibility_not_running");
             return;
         }
-        String action = call.getString("action", "");
         JSObject result = new JSObject();
         switch (action) {
             case "observe":
+                String legacy = service.observe();
                 result.put("success", true);
-                result.put("output", service.observe());
+                // Keep the compatibility XML path bounded as well; semantic
+                // observation is the preferred model-facing contract.
+                result.put(
+                    "output",
+                    legacy.getBytes(StandardCharsets.UTF_8).length <= YachiyoAccessibilityService.SEMANTIC_MAX_BYTES
+                        ? legacy
+                        : "<hierarchy truncated=\"true\" />"
+                );
+                break;
+            case "observeSemantic":
+                String semantic = service.observeSemantic();
+                result.put("success", true);
+                result.put("output", semantic);
+                result.put("bytes", semantic.getBytes(StandardCharsets.UTF_8).length);
+                break;
+            case "findNode":
+                YachiyoAccessibilityService.AccessibilitySelector findSelector = selectorFromCall(call);
+                YachiyoAccessibilityService.NodeFindResult findResult = service.findNodeResult(findSelector);
+                result.put("success", findResult.found);
+                result.put("found", findResult.found);
+                if (findResult.ambiguous) {
+                    result.put("ambiguous", true);
+                    result.put("reason", "node_ambiguous");
+                }
+                if (findResult.found) result.put("output", findResult.node);
+                break;
+            case "clickNode":
+                putNodeActionResult(result, service.clickNode(selectorFromCall(call)));
+                break;
+            case "setNodeText":
+                String nodeText = call.getString("text", "");
+                if (nodeText == null || nodeText.length() > 16_000) {
+                    call.reject("invalid_accessibility_text");
+                    return;
+                }
+                putNodeActionResult(result, service.setNodeText(selectorFromCall(call, true), nodeText));
+                break;
+            case "scrollNode":
+                putNodeActionResult(result, service.scrollNode(selectorFromCall(call), call.getString("direction", "")));
                 break;
             case "tap":
                 result.put("success", service.tap(call.getFloat("x", 0f), call.getFloat("y", 0f)));
@@ -180,19 +388,278 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
             case "global":
                 result.put("success", service.globalAction(call.getString("key", "")));
                 break;
-            case "launch":
-                Intent launch = getContext().getPackageManager().getLaunchIntentForPackage(call.getString("packageName", ""));
-                if (launch != null) {
-                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    getContext().startActivity(launch);
-                }
-                result.put("success", launch != null);
-                break;
             default:
                 call.reject("unknown_accessibility_action");
                 return;
         }
         call.resolve(result);
+    }
+
+    private void launchPackage(PluginCall call, String packageName, String activityName) {
+        if (!isValidPackageName(packageName)) {
+            call.reject("invalid_package_name");
+            return;
+        }
+        PackageManager packageManager = getContext().getPackageManager();
+        Intent launch = packageManager.getLaunchIntentForPackage(packageName);
+        String normalizedActivity = activityName == null ? "" : activityName.trim();
+        if (!normalizedActivity.isEmpty() && normalizedActivity.length() <= 300) {
+            ActivityInfo launcherActivity = findLauncherActivity(packageManager, packageName, normalizedActivity);
+            if (launcherActivity != null) {
+                Intent explicit = new Intent(Intent.ACTION_MAIN);
+                explicit.addCategory(Intent.CATEGORY_LAUNCHER);
+                explicit.setClassName(packageName, launcherActivity.name);
+                launch = explicit;
+            }
+        }
+        boolean started = false;
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(launch);
+                started = true;
+            } catch (RuntimeException ignored) {}
+        }
+        JSObject result = new JSObject();
+        result.put("success", started);
+        result.put("packageName", packageName);
+        call.resolve(result);
+    }
+
+    /**
+     * Only accept an explicit activity that PackageManager currently exposes as
+     * a MAIN/LAUNCHER entry. A stale or caller-supplied exported activity must
+     * never broaden the launch surface beyond the local app index.
+     */
+    private static ActivityInfo findLauncherActivity(
+        PackageManager packageManager,
+        String packageName,
+        String activityName
+    ) {
+        String requestedName = canonicalActivityName(packageName, activityName);
+        try {
+            for (ResolveInfo resolveInfo : queryLauncherActivities(packageManager)) {
+                ActivityInfo activityInfo = resolveInfo.activityInfo;
+                if (activityInfo == null || !packageName.equals(activityInfo.packageName)) continue;
+                if (requestedName.equals(activityInfo.name) || activityName.equals(activityInfo.name)) {
+                    return activityInfo;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Fall back to PackageManager's package-level launch intent below.
+        }
+        return null;
+    }
+
+    private static String canonicalActivityName(String packageName, String activityName) {
+        if (activityName == null || activityName.isEmpty()) return "";
+        if (activityName.charAt(0) == '.') return packageName + activityName;
+        return activityName.indexOf('.') < 0 ? packageName + "." + activityName : activityName;
+    }
+
+    private static boolean isValidPackageName(String packageName) {
+        return packageName != null && packageName.length() <= 200 &&
+            packageName.matches("^[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)+$");
+    }
+
+    private static void putNodeActionResult(JSObject result, YachiyoAccessibilityService.NodeActionResult action) {
+        result.put("success", action.success);
+        if (action.ambiguous) result.put("ambiguous", true);
+        if (!TextUtils.isEmpty(action.method)) result.put("method", action.method);
+        if (!TextUtils.isEmpty(action.reason)) result.put("reason", action.reason);
+        if (!TextUtils.isEmpty(action.node)) result.put("node", action.node);
+    }
+
+    private static YachiyoAccessibilityService.AccessibilitySelector selectorFromCall(PluginCall call) {
+        return selectorFromCall(call, false);
+    }
+
+    private static YachiyoAccessibilityService.AccessibilitySelector selectorFromCall(PluginCall call, boolean replacementText) {
+        String selectorText = call.getString("selectorText", "");
+        if (!replacementText && TextUtils.isEmpty(selectorText)) selectorText = call.getString("text", "");
+        return new YachiyoAccessibilityService.AccessibilitySelector(
+            call.getString("packageName", ""),
+            call.getString("resourceId", ""),
+            selectorText,
+            call.getString("contentDescription", ""),
+            call.getString("role", ""),
+            call.getString("ancestorSignature", ""),
+            null,
+            null,
+            null
+        );
+    }
+
+    private List<LaunchableAppRecord> queryLaunchableApps() {
+        PackageManager packageManager = getContext().getPackageManager();
+        List<ResolveInfo> activities = queryLauncherActivities(packageManager);
+        List<LaunchableAppRecord> records = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (ResolveInfo resolveInfo : activities) {
+            ActivityInfo activityInfo = resolveInfo.activityInfo;
+            if (activityInfo == null || activityInfo.applicationInfo == null) continue;
+            String packageName = activityInfo.packageName;
+            String activityName = activityInfo.name;
+            String key = packageName + "/" + activityName;
+            if (!seen.add(key)) continue;
+            ApplicationInfo applicationInfo = activityInfo.applicationInfo;
+            CharSequence labelValue;
+            try {
+                labelValue = resolveInfo.loadLabel(packageManager);
+            } catch (RuntimeException ignored) {
+                labelValue = null;
+            }
+            if (TextUtils.isEmpty(labelValue) && applicationInfo != null) {
+                try {
+                    labelValue = packageManager.getApplicationLabel(applicationInfo);
+                } catch (RuntimeException ignored) {
+                    labelValue = null;
+                }
+            }
+            String label = TextUtils.isEmpty(labelValue) ? packageName : labelValue.toString();
+            Set<String> aliases = new LinkedHashSet<>();
+            try {
+                addAlias(aliases, packageManager.getApplicationLabel(applicationInfo), label);
+            } catch (RuntimeException ignored) {
+                // A package can disappear between query and label lookup.
+            }
+            addLocalizedAliases(aliases, packageName, applicationInfo, activityInfo, label);
+            long versionCode;
+            try {
+                versionCode = Build.VERSION.SDK_INT >= 28
+                    ? packageManager.getPackageInfo(packageName, 0).getLongVersionCode()
+                    : packageManager.getPackageInfo(packageName, 0).versionCode;
+            } catch (PackageManager.NameNotFoundException ignored) {
+                versionCode = 0L;
+            }
+            records.add(new LaunchableAppRecord(packageName, activityName, label, versionCode, aliases));
+        }
+        Collections.sort(records, Comparator.comparing(record -> record.label.toLowerCase(Locale.ROOT)));
+        return records;
+    }
+
+    private static List<ResolveInfo> queryLauncherActivities(PackageManager packageManager) {
+        Intent launcherIntent = new Intent(Intent.ACTION_MAIN);
+        launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> activities = packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL);
+        return activities == null ? Collections.emptyList() : activities;
+    }
+
+    private static int appMatchScore(LaunchableAppRecord record, String expected) {
+        String packageName = normalizeAppQuery(record.packageName);
+        String label = normalizeAppQuery(record.label);
+        if (packageName.equals(expected)) return 120;
+        if (label.equals(expected)) return 110;
+        if (packageName.startsWith(expected)) return 90;
+        if (label.startsWith(expected)) return 80;
+        if (packageName.contains(expected)) return 60;
+        if (label.contains(expected)) return 50;
+        for (String alias : record.aliases) {
+            String normalizedAlias = normalizeAppQuery(alias);
+            if (normalizedAlias.equals(expected)) return 105;
+            if (normalizedAlias.startsWith(expected)) return 78;
+            if (normalizedAlias.contains(expected)) return 48;
+        }
+        return 0;
+    }
+
+    private void addLocalizedAliases(
+        Set<String> aliases,
+        String packageName,
+        ApplicationInfo applicationInfo,
+        ActivityInfo activityInfo,
+        String primaryLabel
+    ) {
+        for (Locale locale : APP_LABEL_LOCALES) {
+            addAlias(
+                aliases,
+                localizedLabel(packageName, activityInfo.labelRes, activityInfo.nonLocalizedLabel, locale),
+                primaryLabel
+            );
+            addAlias(
+                aliases,
+                localizedLabel(packageName, applicationInfo.labelRes, applicationInfo.nonLocalizedLabel, locale),
+                primaryLabel
+            );
+        }
+    }
+
+    private String localizedLabel(
+        String packageName,
+        int labelRes,
+        CharSequence nonLocalizedLabel,
+        Locale locale
+    ) {
+        if (nonLocalizedLabel != null && labelRes == 0) return nonLocalizedLabel.toString();
+        if (labelRes == 0) return "";
+        try {
+            Context packageContext = getContext().createPackageContext(packageName, Context.CONTEXT_IGNORE_SECURITY);
+            Configuration configuration = new Configuration(packageContext.getResources().getConfiguration());
+            configuration.setLocale(locale);
+            Context localizedContext = packageContext.createConfigurationContext(configuration);
+            CharSequence value = localizedContext.getResources().getText(labelRes);
+            return value == null ? "" : value.toString();
+        } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private static void addAlias(Set<String> aliases, CharSequence candidate, String primaryLabel) {
+        if (candidate == null) return;
+        String value = candidate.toString().trim();
+        if (value.isEmpty() || normalizeAppQuery(value).equals(normalizeAppQuery(primaryLabel))) return;
+        if (value.length() <= 256) aliases.add(value);
+    }
+
+    private static String normalizeAppQuery(String value) {
+        if (value == null) return "";
+        return value.trim().replaceAll("[\\s\\p{Punct}]+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static final class LaunchableAppRecord {
+        final String packageName;
+        final String activityName;
+        final String label;
+        final long versionCode;
+        final Set<String> aliases;
+
+        LaunchableAppRecord(String packageName, String activityName, String label, long versionCode, Set<String> aliases) {
+            this.packageName = packageName;
+            this.activityName = activityName;
+            this.label = label;
+            this.versionCode = versionCode;
+            this.aliases = aliases == null ? Collections.emptySet() : new LinkedHashSet<>(aliases);
+        }
+
+        JSONObject toJson(long observedAt) {
+            JSONObject result = new JSONObject();
+            try {
+                result.put("packageName", packageName);
+                result.put("activityName", activityName);
+                result.put("launchActivity", activityName);
+                result.put("label", label.length() > 256 ? label.substring(0, 256) : label);
+                JSONArray aliasArray = new JSONArray();
+                int aliasCount = 0;
+                for (String alias : aliases) {
+                    if (aliasCount++ >= 20) break;
+                    aliasArray.put(alias);
+                }
+                result.put("aliases", aliasArray);
+                result.put("versionCode", versionCode);
+                result.put("updatedAt", observedAt);
+            } catch (JSONException ignored) {}
+            return result;
+        }
+    }
+
+    private static final class ScoredLaunchableApp {
+        final LaunchableAppRecord record;
+        final int score;
+
+        ScoredLaunchableApp(LaunchableAppRecord record, int score) {
+            this.record = record;
+            this.score = score;
+        }
     }
 
     @PluginMethod
@@ -371,12 +838,12 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         statusCapsule.setPadding(dp(14), dp(8), dp(8), dp(8));
         statusCapsule.setBackground(capsuleBackground());
         TextView status = new TextView(getContext());
-        status.setText("Yachiyo Claw 正在操作你的设备");
+        status.setText("Yachiyo Claw is operating your device");
         status.setTextColor(Color.WHITE);
         status.setTextSize(13);
         statusCapsule.addView(status);
         Button stop = new Button(getContext());
-        stop.setText("停止");
+        stop.setText("Stop");
         stop.setTextColor(Color.rgb(255, 205, 221));
         stop.setTextSize(12);
         stop.setAllCaps(false);
@@ -455,9 +922,9 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         );
         actionsParams.topMargin = dp(8);
         approvalRoot.addView(actions, actionsParams);
-        actions.addView(approvalButton("拒绝", "deny", Color.rgb(245, 205, 215)));
-        actions.addView(approvalButton("仅本次", "once", Color.WHITE));
-        actions.addView(approvalButton("此对话允许", "conversation", Color.rgb(255, 205, 221)));
+        actions.addView(approvalButton("Deny", "deny", Color.rgb(245, 205, 215)));
+        actions.addView(approvalButton("Allow once", "once", Color.WHITE));
+        actions.addView(approvalButton("Allow for conversation", "conversation", Color.rgb(255, 205, 221)));
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             Math.min(dp(380), getContext().getResources().getDisplayMetrics().widthPixels - dp(24)),
@@ -543,16 +1010,22 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
 
     private static String limitText(String value) {
         String trimmed = value == null ? "" : value.trim();
-        return trimmed.length() <= 240 ? trimmed : "…" + trimmed.substring(trimmed.length() - 239);
+        return trimmed.length() <= 240 ? trimmed : "..." + trimmed.substring(trimmed.length() - 239);
     }
 
     private static String limitApprovalText(String value) {
         String trimmed = value == null ? "" : value.trim();
-        return trimmed.length() <= 800 ? trimmed : trimmed.substring(0, 799) + "…";
+        return trimmed.length() <= 800 ? trimmed : trimmed.substring(0, 799) + "...";
     }
 
     @Override
     protected void handleOnDestroy() {
+        if (packageChangeReceiver != null) {
+            try {
+                getContext().unregisterReceiver(packageChangeReceiver);
+            } catch (IllegalArgumentException ignored) {}
+            packageChangeReceiver = null;
+        }
         Runnable removeWindows = () -> {
             finishApprovalInternal("deny");
             hideOverlayInternal();

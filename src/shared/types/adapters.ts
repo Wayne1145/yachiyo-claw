@@ -31,6 +31,24 @@ export interface RequestAdapter {
   apiRequest(options: ApiRequestOptions): Promise<Response>
 }
 
+/** Optional native/local inference boundary. Shared models never import Capacitor. */
+export interface LocalInferenceAdapter {
+  isAvailable(modelId: string): Promise<boolean>
+  stream(
+    modelId: string,
+    input: {
+      messages: unknown[]
+      tools?: unknown
+      signal?: AbortSignal
+    }
+  ): AsyncGenerator<
+    | { type: 'text'; text: string }
+    | { type: 'tool-call'; name: string; arguments: unknown; callId: string }
+    | { type: 'status'; status: string }
+  >
+  unload?(modelId?: string): Promise<void>
+}
+
 export interface ModelDependencies {
   request: RequestAdapter
   storage: StorageAdapter
@@ -39,4 +57,6 @@ export interface ModelDependencies {
   oauth?: OAuthAdapter
   /** Current platform type, used for OAuth auth resolution */
   platformType?: 'desktop' | 'web' | 'mobile'
+  /** Native LiteRT-LM/llama.cpp adapter; absent for ordinary cloud providers. */
+  localInference?: LocalInferenceAdapter
 }

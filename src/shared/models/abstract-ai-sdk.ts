@@ -9,6 +9,7 @@ import {
   type LanguageModelUsage,
   type ModelMessage,
   type Provider,
+  pruneMessages,
   simulateStreamingMiddleware,
   stepCountIs,
   streamText,
@@ -33,16 +34,73 @@ import { ApiError, ChatboxAIAPIError } from './errors'
 import type {
   CallChatCompletionOptions,
   ChatStreamOptions,
+  AgentRequestEvent,
   ModelInterface,
   ModelStatus,
   ModelStreamPart,
 } from './types'
+import { selectAndroidActiveTools } from '../agent/android-tool-stages'
 
 const RETRY_CONFIG = {
   MAX_ATTEMPTS: 5,
   INITIAL_DELAY_MS: 1000,
   BACKOFF_FACTOR: 2,
 } as const
+
+const AGENT_DEFAULT_MAX_STEPS = 6
+const AGENT_DEFAULT_MAX_OUTPUT_TOKENS = 512
+
+function resolveMaxSteps(options: { maxSteps?: number; maxModelRequests?: number; agentMode?: boolean }): number {
+  if (!options.agentMode) {
+    return options.maxSteps ?? Number.MAX_SAFE_INTEGER
+  }
+  return Math.min(
+    options.maxSteps ?? AGENT_DEFAULT_MAX_STEPS,
+    options.maxModelRequests ?? AGENT_DEFAULT_MAX_STEPS,
+    AGENT_DEFAULT_MAX_STEPS,
+  )
+}
+
+function applyAgentCallLimits(callSettings: CallSettings, options: { maxOutputTokens?: number; agentMode?: boolean }) {
+  if (!options.agentMode) return callSettings
+
+  const requested = options.maxOutputTokens ?? AGENT_DEFAULT_MAX_OUTPUT_TOKENS
+  const configured = callSettings.maxOutputTokens
+  return {
+    ...callSettings,
+    maxOutputTokens: configured === undefined ? requested : Math.min(configured, requested),
+  }
+}
+
+function createAgentStepHook(options: {
+  agentMode?: boolean
+  onAgentRequest?: (stepNumber: number) => void | Promise<void>
+  activeTools?: string[]
+  tools?: ToolSet
+  beforeRequest?: (event: AgentRequestEvent) => void | Promise<void>
+}) {
+  if (!options.agentMode) return undefined
+  return async ({ stepNumber, messages }: { stepNumber: number; messages: ModelMessage[] }) => {
+    const prunedMessages = pruneMessages({
+      messages,
+      toolCalls: [{ type: 'before-last-2-messages', tools: ['android_observe'] }],
+    })
+    const activeTools = selectAndroidActiveTools(stepNumber, messages, options.activeTools)
+    await options.onAgentRequest?.(stepNumber)
+    await options.beforeRequest?.({
+      stepNumber,
+      messages: prunedMessages,
+      tools: options.tools,
+      activeTools,
+    })
+    // Keep the latest semantic observation and its paired tool call, while
+    // pruning older screen trees from subsequent model requests.
+    return {
+      messages: prunedMessages,
+      activeTools,
+    }
+  }
+}
 
 /**
  * Retryable from a billing-safety perspective: upstream rejected or crashed
@@ -151,13 +209,13 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
 
   public constructor(
     public options: { model: ProviderModelInfo; stream?: boolean },
-    protected dependencies: ModelDependencies
+    protected dependencies: ModelDependencies,
   ) {
     this.modelId = options.model.modelId
   }
 
   protected abstract getProvider(
-    options: CallChatCompletionOptions
+    options: CallChatCompletionOptions,
   ): Pick<Provider, 'languageModel'> & Partial<Pick<Provider, 'embeddingModel' | 'imageModel'>>
 
   protected abstract getChatModel(options: CallChatCompletionOptions): LanguageModelV3
@@ -216,7 +274,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
 
   public async *chatStream<T extends ToolSet>(
     messages: ModelMessage[],
-    options: ChatStreamOptions
+    options: ChatStreamOptions,
   ): AsyncGenerator<ModelStreamPart<T>> {
     let baseModel = this.getChatModel(options)
     const callSettings = this.getCallSettings(options)
@@ -245,50 +303,74 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       return undefined
     }
 
-    const model = createRetryable({
-      model: baseModel,
-      retries: [retryableStatusAttempt],
-      onError: (context) => {
-        if (isErrorAttempt(context.current)) {
-          const { error } = context.current
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          console.debug(`[ai-retry] Error on attempt ${context.attempts.length}:`, errorMessage)
-        }
-      },
-      onRetry: (context) => {
-        const attemptNumber = context.attempts.length + 1
-        const lastError = context.attempts[context.attempts.length - 1]
-        const errorMessage =
-          lastError && 'error' in lastError
-            ? lastError.error instanceof Error
-              ? lastError.error.message
-              : String(lastError.error)
-            : 'Unknown error'
+    const model = options.agentMode
+      ? baseModel
+      : createRetryable({
+          model: baseModel,
+          retries: [retryableStatusAttempt],
+          onError: (context) => {
+            if (isErrorAttempt(context.current)) {
+              const { error } = context.current
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              console.debug(`[ai-retry] Error on attempt ${context.attempts.length}:`, errorMessage)
+            }
+          },
+          onRetry: (context) => {
+            const attemptNumber = context.attempts.length + 1
+            const lastError = context.attempts[context.attempts.length - 1]
+            const errorMessage =
+              lastError && 'error' in lastError
+                ? lastError.error instanceof Error
+                  ? lastError.error.message
+                  : String(lastError.error)
+                : 'Unknown error'
 
-        console.debug(`[ai-retry] Retrying attempt ${attemptNumber}/${RETRY_CONFIG.MAX_ATTEMPTS}`)
+            console.debug(`[ai-retry] Retrying attempt ${attemptNumber}/${RETRY_CONFIG.MAX_ATTEMPTS}`)
 
-        statusQueue.push({
-          type: 'retrying',
-          attempt: attemptNumber,
-          maxAttempts: RETRY_CONFIG.MAX_ATTEMPTS,
-          error: errorMessage,
+            statusQueue.push({
+              type: 'retrying',
+              attempt: attemptNumber,
+              maxAttempts: RETRY_CONFIG.MAX_ATTEMPTS,
+              error: errorMessage,
+            })
+          },
         })
-      },
-    })
 
+    let lifecycleStep = 0
     const result = streamText({
       model,
       messages,
-      stopWhen: stepCountIs(options.maxSteps || Number.MAX_SAFE_INTEGER),
+      stopWhen: stepCountIs(resolveMaxSteps(options)),
+      prepareStep: createAgentStepHook({
+        ...options,
+        tools: options.tools,
+        beforeRequest: options.agentLifecycle?.beforeRequest,
+      }),
+      activeTools: options.activeTools,
       tools: options.tools as T | undefined,
       abortSignal: options.signal,
-      ...callSettings,
+      ...applyAgentCallLimits(callSettings, options),
       // Billable POST retries are handled explicitly by the `ai-retry` wrapper above
       // (covers 5xx and 429, which are safe because upstream hasn't processed the request).
       // AI SDK's default retry (2x) would also fire on arbitrary network errors, which
       // could double-charge if the server processed the request before the connection died.
       // Kept last so provider `callSettings` cannot accidentally re-enable retries.
       maxRetries: 0,
+      onStepFinish: async (event) => {
+        await options.agentLifecycle?.onStepFinish?.({
+          stepNumber: lifecycleStep++,
+          usage: event.usage,
+          result: { text: event.text, toolCalls: event.toolCalls, toolResults: event.toolResults },
+        })
+      },
+      onFinish: async (event) => {
+        await options.agentLifecycle?.onFinish?.({
+          usage: event.totalUsage,
+          result: { text: event.text, toolCalls: event.toolCalls, toolResults: event.toolResults },
+        })
+      },
+      onAbort: async () => options.agentLifecycle?.onAbort?.(),
+      onError: async ({ error }) => options.agentLifecycle?.onError?.(error),
     })
 
     const streamIterator = result.fullStream[Symbol.asyncIterator]()
@@ -345,7 +427,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       aspectRatio?: string
     },
     signal?: AbortSignal,
-    callback?: (picBase64: string) => void | Promise<void>
+    callback?: (picBase64: string) => void | Promise<void>,
   ): Promise<string[]> {
     const imageModel = this.getImageModel()
     if (!imageModel) {
@@ -376,7 +458,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   private addContentPart(
     contentPart: MessageContentParts[number],
     contentParts: MessageContentParts,
-    options: CallChatCompletionOptions
+    options: CallChatCompletionOptions,
   ): void {
     // Handle timing for reasoning parts in non-streaming mode
     if (contentPart.type === 'reasoning') {
@@ -394,7 +476,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   private processToolCalls<T extends ToolSet>(
     toolCalls: TypedToolCall<T>[],
     contentParts: MessageContentParts,
-    options: CallChatCompletionOptions
+    options: CallChatCompletionOptions,
   ): void {
     for (const toolCall of toolCalls) {
       const args = toolCall.input
@@ -407,7 +489,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
           args,
         },
         contentParts,
-        options
+        options,
       )
     }
   }
@@ -415,7 +497,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   private processToolResults<T extends ToolSet>(
     toolResults: TypedToolResult<T>[],
     contentParts: MessageContentParts,
-    options: CallChatCompletionOptions
+    options: CallChatCompletionOptions,
   ): void {
     for (const toolResult of toolResults) {
       const result = toolResult.output
@@ -431,7 +513,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   private processToolErrors<T extends ToolSet>(
     toolErrors: TypedToolError<T>[],
     contentParts: MessageContentParts,
-    options: CallChatCompletionOptions
+    options: CallChatCompletionOptions,
   ): void {
     for (const toolError of toolErrors) {
       const serializedError =
@@ -490,7 +572,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     textDelta: string,
     contentParts: MessageContentParts,
     currentPart: T | undefined,
-    type: T['type']
+    type: T['type'],
   ): T {
     if (!currentPart) {
       currentPart = { type, text: '' } as T
@@ -503,7 +585,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   private createOrUpdateTextPart(
     textDelta: string,
     contentParts: MessageContentParts,
-    currentTextPart: MessageTextPart | undefined
+    currentTextPart: MessageTextPart | undefined,
   ): MessageTextPart {
     return this.createOrUpdateContentPart(textDelta, contentParts, currentTextPart, 'text')
   }
@@ -518,7 +600,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   private createOrUpdateReasoningPart(
     textDelta: string,
     contentParts: MessageContentParts,
-    currentReasoningPart: MessageReasoningPart | undefined
+    currentReasoningPart: MessageReasoningPart | undefined,
   ): MessageReasoningPart {
     if (!currentReasoningPart) {
       // Create new reasoning part with start time for timer tracking in streaming mode
@@ -537,7 +619,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     mimeType: string,
     base64: string,
     contentParts: MessageContentParts,
-    responseType: 'response' = 'response'
+    responseType: 'response' = 'response',
   ): Promise<void> {
     const storageKey = await this.dependencies.storage.saveImage(responseType, `data:${mimeType};base64,${base64}`)
     contentParts.push({ type: 'image', storageKey })
@@ -548,7 +630,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     contentParts: MessageContentParts,
     currentTextPart: MessageTextPart | undefined,
     currentReasoningPart: MessageReasoningPart | undefined,
-    _options: CallChatCompletionOptions
+    _options: CallChatCompletionOptions,
   ): Promise<{
     currentTextPart: MessageTextPart | undefined
     currentReasoningPart: MessageReasoningPart | undefined
@@ -662,7 +744,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       usage?: LanguageModelUsage
       finishReason?: FinishReason
     },
-    options: CallChatCompletionOptions
+    options: CallChatCompletionOptions,
   ): StreamTextResult {
     // Fallback: Set final duration for any reasoning parts that don't have it yet
     // This should rarely be needed since we capture duration at transition points,
@@ -686,15 +768,22 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     model: LanguageModelV3,
     coreMessages: ModelMessage[],
     options: CallChatCompletionOptions<T>,
-    callSettings: CallSettings
+    callSettings: CallSettings,
   ): Promise<StreamTextResult> {
+    let lifecycleStep = 0
     const result = streamText({
       model,
       messages: coreMessages,
-      stopWhen: stepCountIs(options.maxSteps || Number.MAX_SAFE_INTEGER),
+      stopWhen: stepCountIs(resolveMaxSteps(options)),
+      prepareStep: createAgentStepHook({
+        ...options,
+        tools: options.tools,
+        beforeRequest: options.agentLifecycle?.beforeRequest,
+      }),
+      activeTools: options.activeTools,
       tools: options.tools,
       abortSignal: options.signal,
-      ...callSettings,
+      ...applyAgentCallLimits(callSettings, options),
       // Billable POST retries are handled explicitly by the `ai-retry` wrapper in
       // _callChatCompletion (covers 5xx and 429, which are safe because upstream
       // hasn't processed the request). AI SDK's default retry (2x) would fire on
@@ -702,6 +791,21 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       // processed the request before the connection died.
       // Kept last so provider `callSettings` cannot accidentally re-enable retries.
       maxRetries: 0,
+      onStepFinish: async (event) => {
+        await options.agentLifecycle?.onStepFinish?.({
+          stepNumber: lifecycleStep++,
+          usage: event.usage,
+          result: { text: event.text, toolCalls: event.toolCalls, toolResults: event.toolResults },
+        })
+      },
+      onFinish: async (event) => {
+        await options.agentLifecycle?.onFinish?.({
+          usage: event.totalUsage,
+          result: { text: event.text, toolCalls: event.toolCalls, toolResults: event.toolResults },
+        })
+      },
+      onAbort: async () => options.agentLifecycle?.onAbort?.(),
+      onError: async ({ error }) => options.agentLifecycle?.onError?.(error),
     })
 
     const contentParts: MessageContentParts = []
@@ -722,7 +826,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
           contentParts,
           currentTextPart,
           currentReasoningPart,
-          options
+          options,
         )
         currentTextPart = chunkResult.currentTextPart
         currentReasoningPart = chunkResult.currentReasoningPart
@@ -743,13 +847,13 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
         usage: await result.totalUsage,
         finishReason: await result.finishReason,
       },
-      options
+      options,
     )
   }
 
   private async _callChatCompletion<T extends ToolSet>(
     coreMessages: ModelMessage[],
-    options: CallChatCompletionOptions<T>
+    options: CallChatCompletionOptions<T>,
   ): Promise<StreamTextResult> {
     let baseModel = this.getChatModel(options)
     const callSettings = this.getCallSettings(options)
@@ -776,39 +880,46 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       return undefined
     }
 
-    const model = createRetryable({
-      model: baseModel,
-      retries: [retryableStatusAttempt],
-      onError: (context) => {
-        if (isErrorAttempt(context.current)) {
-          const { error } = context.current
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          console.debug(`[ai-retry] Error on attempt ${context.attempts.length}:`, errorMessage)
-        }
-      },
-      onRetry: (context) => {
-        const attemptNumber = context.attempts.length + 1
-        const lastError = context.attempts[context.attempts.length - 1]
-        const errorMessage =
-          lastError && 'error' in lastError
-            ? lastError.error instanceof Error
-              ? lastError.error.message
-              : String(lastError.error)
-            : 'Unknown error'
+    const model = options.agentMode
+      ? baseModel
+      : createRetryable({
+          model: baseModel,
+          retries: [retryableStatusAttempt],
+          onError: (context) => {
+            if (isErrorAttempt(context.current)) {
+              const { error } = context.current
+              const errorMessage = error instanceof Error ? error.message : String(error)
+              console.debug(`[ai-retry] Error on attempt ${context.attempts.length}:`, errorMessage)
+            }
+          },
+          onRetry: (context) => {
+            const attemptNumber = context.attempts.length + 1
+            const lastError = context.attempts[context.attempts.length - 1]
+            const errorMessage =
+              lastError && 'error' in lastError
+                ? lastError.error instanceof Error
+                  ? lastError.error.message
+                  : String(lastError.error)
+                : 'Unknown error'
 
-        console.debug(`[ai-retry] Retrying attempt ${attemptNumber}/${RETRY_CONFIG.MAX_ATTEMPTS}`)
+            console.debug(`[ai-retry] Retrying attempt ${attemptNumber}/${RETRY_CONFIG.MAX_ATTEMPTS}`)
 
-        options.onStatusChange?.({
-          type: 'retrying',
-          attempt: attemptNumber,
-          maxAttempts: RETRY_CONFIG.MAX_ATTEMPTS,
-          error: errorMessage,
+            options.onStatusChange?.({
+              type: 'retrying',
+              attempt: attemptNumber,
+              maxAttempts: RETRY_CONFIG.MAX_ATTEMPTS,
+              error: errorMessage,
+            })
+          },
         })
-      },
-    })
 
     try {
-      const result = await this.handleStreamingCompletion(model, coreMessages, options, callSettings)
+      const result = await this.handleStreamingCompletion(
+        model,
+        coreMessages,
+        options,
+        applyAgentCallLimits(callSettings, options),
+      )
       options.onStatusChange?.(null)
       return result
     } catch (error) {

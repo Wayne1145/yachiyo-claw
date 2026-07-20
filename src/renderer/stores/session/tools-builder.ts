@@ -4,6 +4,7 @@ import type { SkillInfo } from '@shared/types/skills'
 import { type ToolSet, tool } from 'ai'
 import { z } from 'zod'
 import { getAgentBackend } from '@/mobile/agent-broker'
+import { ANDROID_TOOL_STAGE_INITIAL } from '@shared/agent/android-tool-stages'
 import { createCameraCaptureTool } from '@/mobile/camera-tool'
 import { mcpController } from '@/packages/mcp/controller'
 import { createAndroidDeviceToolSet } from '@/packages/model-calls/toolsets/android-device'
@@ -23,13 +24,20 @@ export interface BuildToolsOptions {
   messages: Message[]
   sandboxEnabled?: boolean
   enabledSkillNames?: string[]
+  /** Generated run id used by Broker checkpoints and precise cancellation. */
   agentSessionId?: string
+  /** Conversation id used for persisted approval policy. */
+  agentApprovalSessionId?: string
   cameraSessionId?: string
+  /** Keep mobile device runs to the compact Android/camera tool surface. */
+  deviceAgentOnly?: boolean
 }
 
 export interface BuildToolsResult {
   tools: ToolSet
   instructions: string
+  /** Initial model-visible Android tool names; later stages are selected by the SDK. */
+  activeTools?: string[]
 }
 
 function escapeXml(str: string): string {
@@ -45,11 +53,11 @@ function getSessionAttachmentRagIds(messages: Message[]): number[] {
             (file) =>
               file.ragMode === 'session-retrieval' &&
               file.sessionAttachmentAvailability !== 'blocked' &&
-              typeof file.sessionAttachmentId === 'number'
+              typeof file.sessionAttachmentId === 'number',
           )
-          .map((file) => file.sessionAttachmentId as number)
-      )
-    )
+          .map((file) => file.sessionAttachmentId as number),
+      ),
+    ),
   )
 }
 
@@ -59,7 +67,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
       (s) => `<skill>
   <name>${escapeXml(s.name)}</name>
   <description>${escapeXml(s.description)}</description>
-</skill>`
+</skill>`,
     )
     .join('\n')
 
@@ -82,20 +90,22 @@ ${toolHint}`
  */
 export async function buildToolsForSession(
   model: ModelInterface,
-  options: BuildToolsOptions
+  options: BuildToolsOptions,
 ): Promise<BuildToolsResult> {
-  const { webBrowsing, knowledgeBase, messages, sandboxEnabled, enabledSkillNames } = options
-  const androidDeviceToolSet = createAndroidDeviceToolSet(options.agentSessionId)
-  const useSandboxTools = sandboxEnabled && !(platform.type === 'mobile' && getAgentBackend() === 'accessibility')
+  const { webBrowsing, knowledgeBase, messages, sandboxEnabled, enabledSkillNames, deviceAgentOnly } = options
+  const androidDeviceToolSet = createAndroidDeviceToolSet(options.agentSessionId, options.agentApprovalSessionId)
+  const useSandboxTools =
+    !deviceAgentOnly && sandboxEnabled && !(platform.type === 'mobile' && getAgentBackend() === 'accessibility')
 
   const hasInlineFileOrLink = messages.some(
-    (m) => m.links?.length || m.files?.some((file) => file.ragMode !== 'session-retrieval')
+    (m) => m.links?.length || m.files?.some((file) => file.ragMode !== 'session-retrieval'),
   )
   const sessionAttachmentIds = getSessionAttachmentRagIds(messages)
-  const needFileToolSet = hasInlineFileOrLink && model.isSupportToolUse('read-file')
-  const needSessionAttachmentRagToolSet = sessionAttachmentIds.length > 0 && model.isSupportToolUse('read-file')
-  const kbSupported = knowledgeBase && model.isSupportToolUse('knowledge-base')
-  const webSupported = webBrowsing && model.isSupportToolUse('web-browsing')
+  const needFileToolSet = !deviceAgentOnly && hasInlineFileOrLink && model.isSupportToolUse('read-file')
+  const needSessionAttachmentRagToolSet =
+    !deviceAgentOnly && sessionAttachmentIds.length > 0 && model.isSupportToolUse('read-file')
+  const kbSupported = !deviceAgentOnly && knowledgeBase && model.isSupportToolUse('knowledge-base')
+  const webSupported = !deviceAgentOnly && webBrowsing && model.isSupportToolUse('web-browsing')
   const searchProvider = settingActions.getExtensionSettings().webSearch.provider
   const includeParseLinkTool = webSupported && PROVIDERS_WITH_PARSE_LINK.has(searchProvider)
 
@@ -134,15 +144,17 @@ export async function buildToolsForSession(
     instructions += sandboxToolSet.description
   }
   if (sandboxEnabled && platform.type === 'mobile') {
-    instructions += androidDeviceToolSet.description
+    instructions += deviceAgentOnly
+      ? '\n<android_device_agent>Use the local App Index and semantic Android actions. Launch by app name or package; observe before acting and verify after side effects.</android_device_agent>\n'
+      : androidDeviceToolSet.description
   }
 
-  let tools: ToolSet = {
-    ...mcpController.getAvailableTools(options.agentSessionId),
-  }
+  let tools: ToolSet = deviceAgentOnly ? {} : { ...mcpController.getAvailableTools(options.agentSessionId) }
 
   const cameraCaptureTool =
-    model.isSupportToolUse() && options.cameraSessionId ? createCameraCaptureTool(options.cameraSessionId) : undefined
+    !deviceAgentOnly && model.isSupportToolUse() && options.cameraSessionId
+      ? createCameraCaptureTool(options.cameraSessionId)
+      : undefined
   if (cameraCaptureTool) {
     tools.camera_capture = cameraCaptureTool
     instructions +=
@@ -175,22 +187,24 @@ export async function buildToolsForSession(
   }
   if (sandboxEnabled && platform.type === 'mobile') {
     tools = { ...tools, ...androidDeviceToolSet.tools }
-    tools.write_skill = tool({
-      description: 'Create or update a reusable local Agent skill on this Android device.',
-      inputSchema: z.object({
-        name: z
-          .string()
-          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-          .max(64),
-        description: z.string().min(1).max(1024),
-        instructions: z.string().min(1).max(20_000),
-      }),
-      execute: ({ name, description, instructions }) => skillsController.saveSkill({ name, description }, instructions),
-    })
+    if (!deviceAgentOnly)
+      tools.write_skill = tool({
+        description: 'Create or update a reusable local Agent skill on this Android device.',
+        inputSchema: z.object({
+          name: z
+            .string()
+            .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+            .max(64),
+          description: z.string().min(1).max(1024),
+          instructions: z.string().min(1).max(20_000),
+        }),
+        execute: ({ name, description, instructions }) =>
+          skillsController.saveSkill({ name, description }, instructions),
+      })
   }
 
   // Skills integration
-  if (enabledSkillNames && enabledSkillNames.length > 0) {
+  if (!deviceAgentOnly && enabledSkillNames && enabledSkillNames.length > 0) {
     let allSkills: SkillInfo[] = []
     try {
       allSkills = await skillsController.discoverSkills()
@@ -247,5 +261,9 @@ export async function buildToolsForSession(
     }
   }
 
-  return { tools, instructions }
+  return {
+    tools,
+    instructions,
+    ...(deviceAgentOnly ? { activeTools: [...ANDROID_TOOL_STAGE_INITIAL] } : {}),
+  }
 }

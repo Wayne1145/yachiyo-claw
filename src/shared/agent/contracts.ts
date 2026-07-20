@@ -33,7 +33,8 @@ const ParameterBindingShape = {
   parameterDigest: ParameterDigestSchema,
 }
 
-export const BACKEND_KINDS = ['standard', 'accessibility', 'adb', 'shizuku', 'root'] as const
+// Companion is a broker-bound remote adapter, never a model-selected shell.
+export const BACKEND_KINDS = ['standard', 'accessibility', 'adb', 'shizuku', 'root', 'companion'] as const
 export const BackendKindSchema = z.enum(BACKEND_KINDS)
 export type BackendKind = z.infer<typeof BackendKindSchema>
 
@@ -387,3 +388,213 @@ export const AuditRecordSchema = z
     }
   })
 export type AuditRecord = z.infer<typeof AuditRecordSchema>
+
+export const SEMANTIC_NODE_ROLES = [
+  'unknown',
+  'button',
+  'checkbox',
+  'editable',
+  'textbox',
+  'image',
+  'list',
+  'list-item',
+  'menu',
+  'tab',
+  'text',
+  'toggle',
+  'switch',
+  'radio',
+  'scrollview',
+  'webview',
+  'toolbar',
+  'dialog',
+  'container',
+] as const
+export const SemanticNodeRoleSchema = z.enum(SEMANTIC_NODE_ROLES)
+export type SemanticNodeRole = z.infer<typeof SemanticNodeRoleSchema>
+
+export const SemanticBoundsSchema = z
+  .object({
+    left: z.number().finite(),
+    top: z.number().finite(),
+    right: z.number().finite(),
+    bottom: z.number().finite(),
+  })
+  .strict()
+  .superRefine((bounds, context) => {
+    if (bounds.right < bounds.left) {
+      context.addIssue({ code: 'custom', message: 'Bounds right must not be less than left.' })
+    }
+    if (bounds.bottom < bounds.top) {
+      context.addIssue({ code: 'custom', message: 'Bounds bottom must not be less than top.' })
+    }
+  })
+export type SemanticBounds = z.infer<typeof SemanticBoundsSchema>
+
+/** Compact, model-safe projection of an AccessibilityNodeInfo tree. */
+export const SemanticNodeSchema = z
+  .object({
+    nodeId: IdentifierSchema,
+    role: SemanticNodeRoleSchema,
+    text: z.string().max(500).optional(),
+    contentDescription: z.string().max(500).optional(),
+    resourceId: z.string().max(300).optional(),
+    packageName: z.string().max(200).optional(),
+    clickable: z.boolean(),
+    editable: z.boolean(),
+    checked: z.boolean().optional(),
+    selected: z.boolean().optional(),
+    visible: z.boolean(),
+    bounds: SemanticBoundsSchema,
+    parentNodeId: IdentifierSchema.optional(),
+    // These fields are emitted by AccessibilityService v1. Keep them in the
+    // strict projection so native metadata cannot be silently discarded.
+    className: z.string().max(500).optional(),
+    ancestorSignature: z.string().max(500).optional(),
+    sensitive: z.boolean().optional(),
+    index: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+export type SemanticNode = z.infer<typeof SemanticNodeSchema>
+
+export const SemanticSnapshotSchema = z
+  .object({
+    version: SchemaVersionSchema,
+    packageName: z.string().max(200),
+    nodes: z.array(SemanticNodeSchema).max(512),
+    nodeCount: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+    screenSignature: z.string().max(128),
+    mode: z.enum(['full', 'diff']).optional(),
+    baseSignature: z.string().max(128).optional(),
+    removedNodeIds: z.array(IdentifierSchema).max(512).optional(),
+  })
+  .strict()
+  .superRefine((snapshot, context) => {
+    if (snapshot.nodeCount < snapshot.nodes.length) {
+      context.addIssue({ code: 'custom', message: 'nodeCount cannot be less than the returned node count.' })
+    }
+    if (snapshot.mode === 'diff' && !snapshot.baseSignature) {
+      context.addIssue({ code: 'custom', message: 'A semantic diff must identify its base snapshot.' })
+    }
+  })
+export type SemanticSnapshot = z.infer<typeof SemanticSnapshotSchema>
+
+const SelectorTextSchema = z.string().trim().min(1).max(500)
+export const AccessibilitySelectorSchema = z
+  .object({
+    packageName: z.string().trim().min(1).max(200).optional(),
+    resourceId: z.string().trim().min(1).max(300).optional(),
+    text: SelectorTextSchema.optional(),
+    contentDescription: SelectorTextSchema.optional(),
+    role: SemanticNodeRoleSchema.optional(),
+    ancestorSignature: z.string().trim().min(1).max(500).optional(),
+  })
+  .strict()
+  .refine((selector) => Object.values(selector).some((value) => value !== undefined), {
+    message: 'An accessibility selector must contain at least one field.',
+  })
+export type AccessibilitySelector = z.infer<typeof AccessibilitySelectorSchema>
+
+export const LaunchableAppSchema = z
+  .object({
+    packageName: z.string().trim().min(1).max(256),
+    /** Bridges may expose either name; PackageManager can launch by package alone. */
+    activityName: z.string().trim().min(1).max(512).optional(),
+    launchActivity: z.string().trim().min(1).max(512).optional(),
+    label: z.string().trim().min(1).max(512),
+    aliases: z.array(z.string().trim().min(1).max(128)).max(20).optional(),
+    versionCode: z.union([z.number().int().nonnegative(), z.string().trim().min(1).max(128)]).optional(),
+    versionName: z.string().max(100).optional(),
+    profileId: z.string().max(200).optional(),
+    updatedAt: TimestampMsSchema.optional(),
+  })
+  .strict()
+export type LaunchableApp = z.infer<typeof LaunchableAppSchema>
+
+export const LauncherPlacementSchema = z
+  .object({
+    launcherPackage: z.string().trim().min(1).max(256),
+    launcherVersionCode: z.union([z.number().int().nonnegative(), z.string().trim().min(1).max(128)]).optional(),
+    launcherVersion: z.union([z.number().int().nonnegative(), z.string().trim().min(1).max(128)]).optional(),
+    displayId: z.union([z.number().int().nonnegative(), z.string().trim().min(1).max(128)]),
+    orientation: z.enum(['portrait', 'landscape']),
+    density: z.number().positive().optional(),
+    densityDpi: z.number().int().positive().optional(),
+    gridRows: z.number().int().positive().max(50),
+    gridColumns: z.number().int().positive().max(50),
+    packageName: z.string().trim().min(1).max(256),
+    launchActivity: z.string().trim().min(1).max(512).optional(),
+    activityName: z.string().trim().min(1).max(512).optional(),
+    pageIndex: z.number().int().nonnegative(),
+    cellRow: z.number().int().nonnegative(),
+    cellColumn: z.number().int().nonnegative(),
+    bounds: SemanticBoundsSchema.optional(),
+    confidence: z.number().min(0).max(1),
+    observedAt: TimestampMsSchema,
+    label: z.string().trim().min(1).max(512).optional(),
+    screenSignature: z.string().trim().min(1).max(512).optional(),
+  })
+  .strict()
+  .superRefine((placement, context) => {
+    if (placement.launcherVersionCode === undefined && placement.launcherVersion === undefined) {
+      context.addIssue({ code: 'custom', message: 'A launcher version is required.' })
+    }
+    if (placement.density === undefined && placement.densityDpi === undefined) {
+      context.addIssue({ code: 'custom', message: 'A launcher density is required.' })
+    }
+    if (placement.cellRow >= placement.gridRows) {
+      context.addIssue({ code: 'custom', message: 'The launcher cell row must fit inside the grid.' })
+    }
+    if (placement.cellColumn >= placement.gridColumns) {
+      context.addIssue({ code: 'custom', message: 'The launcher cell column must fit inside the grid.' })
+    }
+    if (
+      placement.activityName !== undefined &&
+      placement.launchActivity !== undefined &&
+      placement.activityName !== placement.launchActivity
+    ) {
+      context.addIssue({ code: 'custom', message: 'Launcher activity aliases must agree.' })
+    }
+  })
+export type LauncherPlacement = z.infer<typeof LauncherPlacementSchema>
+
+export const SIDE_EFFECT_STATES = ['not_started', 'running', 'applied', 'verified', 'unknown'] as const
+export const SideEffectStateSchema = z.enum(SIDE_EFFECT_STATES)
+export type SideEffectState = z.infer<typeof SideEffectStateSchema>
+
+export const ExecutionCheckpointSchema = z
+  .object({
+    schemaVersion: SchemaVersionSchema,
+    taskId: IdentifierSchema,
+    stepId: IdentifierSchema,
+    callId: IdentifierSchema,
+    attempt: z.number().int().positive(),
+    toolId: ToolIdSchema,
+    /** Backend binding prevents a persisted action from being replayed after a permission-mode switch. */
+    backend: BackendKindSchema.optional(),
+    parameterDigest: ParameterDigestSchema,
+    expectedState: JsonValueSchema,
+    sideEffectState: SideEffectStateSchema,
+    resultDigest: ParameterDigestSchema.nullable(),
+    recordedAt: TimestampMsSchema,
+  })
+  .strict()
+export type ExecutionCheckpoint = z.infer<typeof ExecutionCheckpointSchema>
+
+export const GoalSpecSchema = z
+  .object({
+    objective: z.string().trim().min(1).max(6_000),
+    targetAppName: z.string().trim().min(1).max(200).optional(),
+    constraints: z
+      .object({
+        maxLocalActions: z.number().int().positive().max(20),
+        maxCommits: z.number().int().nonnegative().max(1),
+        maxModelRequests: z.number().int().positive().max(3),
+        maxReplans: z.number().int().nonnegative().max(1),
+        requireVerification: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict()
+export type GoalSpec = z.infer<typeof GoalSpecSchema>

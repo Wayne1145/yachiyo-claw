@@ -1,6 +1,7 @@
 import type { ModelInterface } from '@shared/models/types'
 import type { Message } from '@shared/types'
 import type { SkillInfo } from '@shared/types/skills'
+import { ANDROID_TOOL_STAGE_INITIAL } from '@shared/agent/android-tool-stages'
 import { describe, expect, it, vi } from 'vitest'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
 import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-calls/toolsets/session-attachment-rag'
@@ -269,5 +270,33 @@ describe('buildToolsForSession interactive camera tool', () => {
     } finally {
       unregisterCameraCaptureProvider(sessionId)
     }
+  })
+})
+
+describe('buildToolsForSession device Agent isolation', () => {
+  const model = {
+    name: 'mock',
+    modelId: 'mock-model',
+    isSupportVision: () => true,
+    isSupportToolUse: () => true,
+    isSupportSystemMessage: () => true,
+    chat: vi.fn(),
+    chatStream: vi.fn(),
+    paint: vi.fn(),
+  } as unknown as ModelInterface
+
+  it('returns the initial Android tool stage without exposing unrelated chat tools', async () => {
+    const result = await buildToolsForSession(model, {
+      webBrowsing: true,
+      messages: [],
+      sandboxEnabled: true,
+      cameraSessionId: 'device-agent-session',
+      deviceAgentOnly: true,
+    })
+
+    expect(result.activeTools).toEqual([...ANDROID_TOOL_STAGE_INITIAL])
+    expect(result.tools).not.toHaveProperty('web_search')
+    expect(result.tools).not.toHaveProperty('camera_capture')
+    expect(result.tools).not.toHaveProperty('write_skill')
   })
 })

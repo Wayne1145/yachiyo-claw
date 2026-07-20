@@ -30,6 +30,7 @@
     ".erb/dll",
     "ios",
     "android",
+    "Yachiyo Claw",
     "**/*.stories.tsx",
     "**/*.stories.ts",
     ".storybook",

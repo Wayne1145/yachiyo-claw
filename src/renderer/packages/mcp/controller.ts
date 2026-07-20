@@ -1,9 +1,12 @@
 import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
+import { Capacitor } from '@capacitor/core'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { validateMobileMCPServerConfig } from '@shared/types/mcp'
 import type { ToolSet } from 'ai'
 import Emittery from 'emittery'
 import { isEqual } from 'lodash'
 import { requestAgentApproval } from '@/mobile/agent-approval'
+import { mobileMcpController } from '@/mobile/mcp-mobile-controller'
 import { IPCStdioTransport } from './ipc-stdio-transport'
 import type { MCPServerConfig, MCPServerStatus } from './types'
 
@@ -12,6 +15,7 @@ type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
 
 async function createClient(transportConfig: TransportConfig, name = 'chatbox-mcp-client'): Promise<MCPClient> {
   if (transportConfig.type === 'stdio') {
+    if (Capacitor.isNativePlatform()) throw new Error('stdio MCP transports are unavailable on mobile.')
     const transport = await IPCStdioTransport.create(transportConfig)
     let errorMessage = ''
     try {
@@ -131,7 +135,27 @@ export const mcpController = {
     if (!serverConfig.enabled) {
       return
     }
-    const server = new MCPServer(serverConfig.transport)
+    let runtimeTransport = serverConfig.transport
+    if (Capacitor.isNativePlatform()) {
+      const validated = validateMobileMCPServerConfig(serverConfig)
+      if (!validated.success) {
+        console.error('mcp:mobile:config_rejected', validated.issues.map((issue) => issue.code).join(','))
+        return
+      }
+      try {
+        const headers = await mobileMcpController.resolveHeaders(validated.data)
+        runtimeTransport = {
+          type: 'http',
+          url: validated.data.transport.url,
+          protocol: validated.data.transport.protocol,
+          headers: Object.keys(headers).length ? headers : undefined,
+        }
+      } catch {
+        console.error('mcp:mobile:secret_resolution_failed')
+        return
+      }
+    }
+    const server = new MCPServer(runtimeTransport)
     this.servers.set(serverConfig.id, { instance: server, config: serverConfig })
 
     // 如果有订阅者，重新连接他们
