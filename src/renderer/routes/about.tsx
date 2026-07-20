@@ -26,7 +26,13 @@ import Page from '@/components/layout/Page'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import useVersion from '@/hooks/useVersion'
 import platform from '@/platform'
-import { installUpdate, useUpdateStore } from '@/stores/updateStore'
+import {
+  checkForUpdates,
+  downloadUpdate,
+  openUpdateInstallPermissionSettings,
+  requestInstallUpdate,
+  useUpdateStore,
+} from '@/stores/updateStore'
 import iconPNG from '../../../assets/brand/yachiyo-avatar.png'
 
 export const Route = createFileRoute('/about')({
@@ -82,9 +88,7 @@ function RouteComponent() {
  * Mobile: "New version available" hint linking to app store.
  */
 function UpdateSection({ needCheckUpdate }: { needCheckUpdate: boolean }) {
-  const isDesktop = platform.type === 'desktop'
-
-  if (isDesktop) {
+  if (platform.type === 'desktop' || platform.type === 'mobile') {
     return <DesktopUpdateSection />
   }
 
@@ -130,29 +134,8 @@ function DesktopUpdateSection() {
   const updateVersion = useUpdateStore((s) => s.version)
   const error = useUpdateStore((s) => s.error)
 
-  const handleCheck = async () => {
-    useUpdateStore.setState({ status: 'checking', error: null })
-    try {
-      const result = await platform.checkForUpdate?.()
-      // If check was skipped (another check already in progress), reset UI
-      if (result && !result.started) {
-        const { status: currentStatus } = useUpdateStore.getState()
-        if (currentStatus === 'checking') {
-          useUpdateStore.setState({ status: 'idle' })
-        }
-      }
-    } catch {
-      useUpdateStore.setState({ status: 'idle' })
-    }
-    // Safety timeout: if still stuck at 'checking' after 30s, reset
-    setTimeout(() => {
-      if (useUpdateStore.getState().status === 'checking') {
-        useUpdateStore.setState({ status: 'idle' })
-      }
-    }, 30_000)
-  }
-
-  const handleInstall = installUpdate
+  const handleCheck = checkForUpdates
+  const handleInstall = requestInstallUpdate
 
   switch (status) {
     case 'checking':
@@ -163,6 +146,19 @@ function DesktopUpdateSection() {
       )
 
     case 'available':
+      if (platform.type === 'mobile') {
+        return (
+          <Button size="xs" variant="light" radius="xl" onClick={() => void downloadUpdate()}>
+            {t('Download Update')} {updateVersion ? `(v${updateVersion})` : ''}
+          </Button>
+        )
+      }
+      return (
+        <Text size="xs" c="chatbox-brand" ta="right">
+          {`${t('New version available')}${updateVersion ? ` v${updateVersion}` : ''}`}
+        </Text>
+      )
+
     case 'downloading':
       return (
         <Stack gap={4} flex={1} maw={200}>
@@ -184,10 +180,17 @@ function DesktopUpdateSection() {
           radius="xl"
           className="flex-shrink-0"
           leftSection={<ScalableIcon icon={IconRefresh} size={14} />}
-          onClick={handleInstall}
+          onClick={() => void handleInstall()}
         >
-          {t('Restart & Update')}
+          {platform.type === 'mobile' ? t('Install Update') : t('Restart & Update')}
           {updateVersion ? ` (v${updateVersion})` : ''}
+        </Button>
+      )
+
+    case 'permission-required':
+      return (
+        <Button size="xs" variant="light" radius="xl" onClick={() => void openUpdateInstallPermissionSettings()}>
+          {t('Open Settings')}
         </Button>
       )
 
@@ -198,7 +201,7 @@ function DesktopUpdateSection() {
             <Text size="xs" c="chatbox-error">
               {t('Update failed')}
             </Text>
-            <Button size="xs" variant="default" radius="xl" onClick={handleCheck}>
+            <Button size="xs" variant="default" radius="xl" onClick={() => void handleCheck()}>
               {t('Retry')}
             </Button>
           </Flex>
@@ -221,7 +224,7 @@ function DesktopUpdateSection() {
 
     default:
       return (
-        <Button size="xs" variant="default" radius="xl" className="flex-shrink-0" onClick={handleCheck}>
+        <Button size="xs" variant="default" radius="xl" className="flex-shrink-0" onClick={() => void handleCheck()}>
           {t('Check Update')}
         </Button>
       )

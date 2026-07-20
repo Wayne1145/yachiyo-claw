@@ -5,6 +5,7 @@ import Toasts from '@/components/common/Toasts'
 import DesktopDownloadReminder from '@/components/layout/DesktopDownloadReminder'
 import ExitFullscreenButton from '@/components/layout/ExitFullscreenButton'
 import { AndroidAppShell } from '@/components/yachiyo/AndroidAppShell'
+import { MobileUpdateDialog } from '@/components/yachiyo/MobileUpdateDialog'
 import useAppTheme from '@/hooks/useAppTheme'
 import { useSystemLanguageWhenInit } from '@/hooks/useDefaultSystemLanguage'
 import { useI18nEffect } from '@/hooks/useI18nEffect'
@@ -320,6 +321,7 @@ function Root() {
       {/* <WelcomeDialog /> */}
       <Toasts /> {/* mui */}
       <SettingsModal />
+      <MobileUpdateDialog />
     </Box>
   )
 }

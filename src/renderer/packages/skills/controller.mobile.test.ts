@@ -1,5 +1,6 @@
-import type { SkillHubAdapter } from '@shared/skills'
+import { sha256Hex, type SkillHubAdapter } from '@shared/skills'
 import type { MarketplaceSkill } from '@shared/types/skills'
+import JSZip from 'jszip'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => {
@@ -8,12 +9,14 @@ const state = vi.hoisted(() => {
     values,
     getStoreValue: vi.fn(async (key: string) => values.get(key) ?? null),
     setStoreValue: vi.fn(async (key: string, value: unknown) => void values.set(key, value)),
+    executeMobileSkillScript: vi.fn(async () => ({ success: true, stdout: 'ok', stderr: '', exitCode: 0 })),
   }
 })
 
 vi.mock('@/platform', () => ({
   default: { type: 'mobile', getStoreValue: state.getStoreValue, setStoreValue: state.setStoreValue },
 }))
+vi.mock('@/mobile/mobile-skill-script', () => ({ executeMobileSkillScript: state.executeMobileSkillScript }))
 
 import { installMobileSkillHubSkill, skillsController } from './controller'
 
@@ -50,8 +53,46 @@ describe('mobile Skills controller', () => {
     })
   })
 
-  it('rejects privileged packages and never executes mobile scripts', async () => {
-    await expect(installMobileSkillHubSkill({ ...skill, capabilityManifest: { privileged: true } })).resolves.toMatchObject({ success: false })
-    await expect(skillsController.executeScript('reader', 'run.sh')).resolves.toMatchObject({ success: false, exitCode: 126 })
+  it('validates executable packages and keeps scripts disabled until capabilities are granted', async () => {
+    const scriptContent = 'echo "$1"\n'
+    const scriptBytes = new TextEncoder().encode(scriptContent)
+    const scriptHash = await sha256Hex(scriptBytes)
+    const manifest = {
+      schemaVersion: 1,
+      entrypoints: [
+        {
+          name: 'run',
+          path: 'scripts/run.sh',
+          runtime: 'shell',
+          sha256: scriptHash,
+          size: scriptBytes.byteLength,
+          timeoutMs: 5_000,
+          workingDirectory: 'skill-private',
+          isolation: 'none',
+          capabilities: ['unrestricted-privileged'],
+        },
+      ],
+    }
+    const zip = new JSZip()
+    zip.file('SKILL.md', '---\nname: reader\ndescription: Reads docs\n---\nRun the declared script.')
+    zip.file('yachiyo-skill.json', JSON.stringify(manifest))
+    zip.file('scripts/run.sh', scriptContent)
+    const bytes = await zip.generateAsync({ type: 'arraybuffer' })
+    const executableSkill: MarketplaceSkill = {
+      ...skill,
+      capabilityManifest: { scripts: true, privileged: true },
+    }
+    const adapter = {
+      getSkill: vi.fn(async () => executableSkill),
+      download: vi.fn(async () => ({ slug: 'reader', revision: 'fixed-revision', bytes, contentType: 'application/zip' })),
+      verifyDownload: vi.fn(async () => ({ sha256: 'a'.repeat(64), signatureVerified: false })),
+    } as unknown as SkillHubAdapter
+
+    await expect(installMobileSkillHubSkill(executableSkill, { adapter })).resolves.toEqual({ success: true, skillName: 'reader' })
+    await expect(skillsController.executeScript('reader', 'run')).resolves.toMatchObject({ success: false, exitCode: 126 })
+    await expect(skillsController.configureScriptExecution('reader', true, [])).resolves.toMatchObject({ success: false })
+    await expect(skillsController.configureScriptExecution('reader', true, ['unrestricted-privileged'])).resolves.toEqual({ success: true })
+    await expect(skillsController.executeScript('reader', 'run', ['hello'])).resolves.toMatchObject({ success: true, stdout: 'ok' })
+    expect(state.executeMobileSkillScript).toHaveBeenCalledWith(expect.objectContaining({ skillName: 'reader', args: ['hello'] }))
   })
 })

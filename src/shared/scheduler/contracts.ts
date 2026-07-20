@@ -108,9 +108,19 @@ export interface SchedulerCapabilities {
   schemaVersion: typeof SCHEDULER_SCHEMA_VERSION
   workManager: true
   roomStore: true
+  executionMode: 'foreground-required'
+  wakeMode: 'workmanager-foreground-service'
   headlessExecution: false
+  backgroundAgentRuntime: false
   foregroundDrain: true
+  durableForegroundHandoff: true
+  bootRecovery: true
+  lockedBootDeferredUntilUnlock: true
+  packageReplaceRecovery: true
+  clockChangeRecovery: true
   forceStopRecovery: false
+  approvalReplay: false
+  sideEffectReplay: false
   pendingState: 'awaiting-foreground'
 }
 
@@ -197,4 +207,3 @@ const TRANSITIONS: Record<ScheduleStatus, readonly ScheduleStatus[]> = {
 export function canTransitionScheduleStatus(from: ScheduleStatus, to: ScheduleStatus): boolean {
   return from === to || TRANSITIONS[from].includes(to)
 }
-

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   acknowledgeNativeSchedule,
   drainNativeScheduleOutbox,
+  getNativeSchedulerCapabilities,
   listNativeSchedules,
   runNativeSchedule,
   upsertNativeSchedule,
@@ -14,6 +15,7 @@ const nativePluginMock = vi.hoisted(() => ({
   list: vi.fn(),
   run: vi.fn(),
   upsert: vi.fn(),
+  capabilities: vi.fn(),
 }))
 
 vi.mock('@capacitor/core', () => ({
@@ -49,6 +51,33 @@ describe('YachiyoScheduler bridge', () => {
       scheduleId: 'schedule-1',
       executionId: 'execution-1',
       status: 'succeeded',
+    })
+  })
+
+  it('reports foreground-required execution without claiming a native headless Agent runtime', async () => {
+    nativePluginMock.capabilities.mockResolvedValue({
+      schemaVersion: 1,
+      workManager: true,
+      roomStore: true,
+      executionMode: 'foreground-required',
+      wakeMode: 'workmanager-foreground-service',
+      headlessExecution: false,
+      backgroundAgentRuntime: false,
+      foregroundDrain: true,
+      durableForegroundHandoff: true,
+      bootRecovery: true,
+      lockedBootDeferredUntilUnlock: true,
+      packageReplaceRecovery: true,
+      clockChangeRecovery: true,
+      forceStopRecovery: false,
+      approvalReplay: false,
+      sideEffectReplay: false,
+      pendingState: 'awaiting-foreground',
+    })
+    await expect(getNativeSchedulerCapabilities()).resolves.toMatchObject({
+      executionMode: 'foreground-required',
+      headlessExecution: false,
+      sideEffectReplay: false,
     })
   })
 })

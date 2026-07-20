@@ -84,6 +84,9 @@ describe('Agent approval queue', () => {
     vi.spyOn(yachiyoDeviceAccessNative, 'getPermissionStatus').mockResolvedValue({
       overlay: true,
       batteryOptimizationIgnored: true,
+      notificationsGranted: true,
+      autoStartSettingsAvailable: false,
+      deviceManufacturer: 'generic',
       allFiles: false,
       accessibility: true,
       shizukuInstalled: true,

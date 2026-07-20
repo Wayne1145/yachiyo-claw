@@ -1,7 +1,7 @@
 import type { ModelInterface } from '@shared/models/types'
 import type { KnowledgeBase, Message } from '@shared/types'
 import type { SkillInfo } from '@shared/types/skills'
-import { type ToolSet, tool } from 'ai'
+import { type ToolExecutionOptions, type ToolSet, tool } from 'ai'
 import { z } from 'zod'
 import { getAgentBackend } from '@/mobile/agent-broker'
 import { ANDROID_TOOL_STAGE_INITIAL } from '@shared/agent/android-tool-stages'
@@ -236,7 +236,10 @@ export async function buildToolsForSession(
           },
         })
 
-        tools.execute_skill_script = tool({
+        const scriptExecutionAvailable =
+          platform.type !== 'mobile' || enabledSkills.some((skill) => skill.scriptExecutionEnabled)
+        if (scriptExecutionAvailable)
+          tools.execute_skill_script = tool({
           description:
             "Execute a script from a skill's scripts directory. Use when a loaded skill references executable scripts.",
           inputSchema: z.object({
@@ -244,7 +247,10 @@ export async function buildToolsForSession(
             script_name: z.string().describe('The script filename to execute'),
             arguments: z.array(z.string()).optional().describe('Optional arguments to pass to the script'),
           }),
-          execute: async (input: { skill_name: string; script_name: string; arguments?: string[] }) => {
+          execute: async (
+            input: { skill_name: string; script_name: string; arguments?: string[] },
+            context: ToolExecutionOptions
+          ) => {
             if (!enabledSkillNames.includes(input.skill_name)) {
               return {
                 success: false,
@@ -253,10 +259,14 @@ export async function buildToolsForSession(
                 exitCode: null,
               }
             }
-            const result = await skillsController.executeScript(input.skill_name, input.script_name, input.arguments)
+            const result = await skillsController.executeScript(input.skill_name, input.script_name, input.arguments, {
+              sessionId: options.agentApprovalSessionId || options.agentSessionId,
+              toolCallId: context.toolCallId,
+              abortSignal: context.abortSignal,
+            })
             return result
           },
-        })
+          })
       }
     }
   }

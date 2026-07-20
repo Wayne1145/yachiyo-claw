@@ -5,11 +5,14 @@ import {
   type SemanticNode as SharedSemanticNode,
   type SemanticSnapshot as SharedSemanticSnapshot,
 } from '@shared/agent'
-import type { RootCommandResult } from './yachiyo_agent'
+import type { NativeSkillScriptOptions, RootCommandResult } from './yachiyo_agent'
 
 export interface DevicePermissionStatus {
   overlay: boolean
   batteryOptimizationIgnored: boolean
+  notificationsGranted: boolean
+  autoStartSettingsAvailable: boolean
+  deviceManufacturer: string
   allFiles: boolean
   accessibility: boolean
   shizukuInstalled: boolean
@@ -17,7 +20,14 @@ export interface DevicePermissionStatus {
   shizukuGranted: boolean
 }
 
-export type PermissionTarget = 'overlay' | 'battery' | 'storage' | 'accessibility' | 'shizuku'
+export type PermissionTarget =
+  | 'overlay'
+  | 'battery'
+  | 'notifications'
+  | 'autostart'
+  | 'storage'
+  | 'accessibility'
+  | 'shizuku'
 export type NativeApprovalDecision = 'once' | 'conversation' | 'deny'
 export const MAX_SEMANTIC_BYTES = 16 * 1024
 
@@ -184,6 +194,9 @@ interface YachiyoDeviceAccessNativePlugin {
   openPermissionSettings(options: { target: PermissionTarget }): Promise<void>
   requestShizukuPermission(): Promise<{ granted: boolean }>
   execShizuku(options: { command: string; timeout: number }): Promise<RootCommandResult>
+  execShizukuSkillScript(options: NativeSkillScriptOptions): Promise<RootCommandResult>
+  requestSkillScriptAuthorization(options: NativeSkillScriptOptions): Promise<{ approvalNonce?: string; expiresAt?: number }>
+  cancelShizukuScript(options: { executionId: string }): Promise<{ killed: boolean }>
   accessibilityAction(options: AccessibilityActionOptions): Promise<AccessibilityActionResult>
   launchApp?(options: { packageName: string; activityName?: string }): Promise<AccessibilityActionResult>
   listLaunchableApps(): Promise<LaunchableAppsResult>
@@ -213,6 +226,9 @@ export const yachiyoDeviceAccessNative = {
   openPermissionSettings: (target: PermissionTarget) => nativeAccess.openPermissionSettings({ target }),
   requestShizukuPermission: () => nativeAccess.requestShizukuPermission(),
   execShizuku: (command: string, timeout = 120_000) => nativeAccess.execShizuku({ command, timeout }),
+  execShizukuSkillScript: (options: NativeSkillScriptOptions) => nativeAccess.execShizukuSkillScript(options),
+  requestSkillScriptAuthorization: (options: NativeSkillScriptOptions) => nativeAccess.requestSkillScriptAuthorization(options),
+  cancelShizukuScript: (executionId: string) => nativeAccess.cancelShizukuScript({ executionId }),
   accessibilityAction: (options: AccessibilityActionOptions) => nativeAccess.accessibilityAction(options),
   launchApp: (packageName: string, activityName?: string) =>
     nativeAccess.launchApp

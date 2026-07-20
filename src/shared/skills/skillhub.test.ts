@@ -17,6 +17,15 @@ describe('SkillHub adapter', () => {
   it('rejects unsafe or executable archives', () => {
     expect(() => inspectSkillArchive([{ path: '../SKILL.md', size: 1 }])).toThrow(SkillHubError)
     expect(() => inspectSkillArchive([{ path: 'SKILL.md', size: 1 }, { path: 'scripts/run.sh', size: 1 }])).toThrow('disabled')
+    expect(
+      inspectSkillArchive(
+        [
+          { path: 'SKILL.md', size: 1 },
+          { path: 'scripts/run.sh', size: 1 },
+        ],
+        { allowScripts: true }
+      )
+    ).toMatchObject({ containsScripts: true })
   })
 
   it('computes hashes and rejects malformed signatures', async () => {

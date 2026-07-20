@@ -4,6 +4,7 @@ export const MOBILE_PROVIDER_IMPORT_PATH = `/settings/provider?import=${MOBILE_P
 const MAX_PROVIDER_IMPORT_LENGTH = 256 * 1024
 
 let pendingProviderImport: string | null = null
+let pendingMcpOAuthCallback: string | null = null
 
 export type MobileDeepLinkResult =
   | { kind: 'navigate'; path: typeof MOBILE_PROVIDER_IMPORT_PATH }
@@ -40,6 +41,15 @@ export function acceptMobileDeepLink(url: string): MobileDeepLinkResult {
       return { kind: 'handled' }
     }
 
+    if (parsedUrl.hostname === 'oauth' && parsedUrl.pathname === '/mcp') {
+      if (url.length > 16 * 1024) {
+        return { kind: 'rejected', reason: 'config-too-large' }
+      }
+      // The authorization code remains transient and is consumed by the OAuth controller.
+      pendingMcpOAuthCallback = normalizedUrl
+      return { kind: 'handled' }
+    }
+
     return { kind: 'rejected', reason: 'unsupported-route' }
   } catch {
     return { kind: 'rejected', reason: 'invalid-url' }
@@ -50,4 +60,10 @@ export function consumePendingProviderImport(): string | null {
   const encodedConfig = pendingProviderImport
   pendingProviderImport = null
   return encodedConfig
+}
+
+export function consumePendingMcpOAuthCallback(): string | null {
+  const callback = pendingMcpOAuthCallback
+  pendingMcpOAuthCallback = null
+  return callback
 }

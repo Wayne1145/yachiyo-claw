@@ -5,6 +5,9 @@ import { hasAgentAccessBackend, shouldOpenPermissionWizard } from './device-perm
 const permissions = (patch: Partial<DevicePermissionStatus> = {}): DevicePermissionStatus => ({
   overlay: true,
   batteryOptimizationIgnored: true,
+  notificationsGranted: true,
+  autoStartSettingsAvailable: false,
+  deviceManufacturer: 'generic',
   allFiles: false,
   accessibility: false,
   shizukuInstalled: true,
@@ -27,5 +30,11 @@ describe('Android permission guidance', () => {
 
   it('does not require optional all-files access', () => {
     expect(shouldOpenPermissionWizard(permissions({ shizukuGranted: true, allFiles: false }), false, false)).toBe(false)
+  })
+
+  it('requires notification permission so scheduled-task wakes remain visible', () => {
+    expect(
+      shouldOpenPermissionWizard(permissions({ shizukuGranted: true, notificationsGranted: false }), false, false)
+    ).toBe(true)
   })
 })

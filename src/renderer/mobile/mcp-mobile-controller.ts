@@ -8,6 +8,12 @@ import {
 } from '@shared/types/mcp'
 import { decryptMobileProtectedValue, encryptMobileProtectedValue } from '@/platform/native/yachiyo_secure_storage'
 import { McpHttpService } from './mcp-http-service'
+import {
+  beginMcpOAuth,
+  consumePendingMcpOAuthCallback,
+  finishMcpOAuth,
+  MobileMcpOAuthProvider,
+} from './mcp-oauth-provider'
 
 const CONFIG_STORAGE_KEY = 'yachiyo.mobile.mcp.servers.v1'
 const SECRET_STORAGE_PREFIX = 'yachiyo.mobile.mcp.secret.v1:'
@@ -122,9 +128,8 @@ function secretHeaderName(ref: MCPSecretRefValue): string {
 }
 
 /**
- * Mobile MCP configuration and secret-reference controller. It deliberately does
- * not implement OAuth or a transport client; those remain explicit follow-up
- * capabilities and all connection code must consume `resolveHeaders` ephemerally.
+ * Mobile MCP configuration, OAuth and secret-reference controller. Persisted
+ * configuration contains metadata only; tokens and verifiers stay in the native vault.
  */
 export class MobileMcpController {
   private readonly storage: MobileMcpConfigStorage
@@ -184,7 +189,8 @@ export class MobileMcpController {
     const parsed = assertMobileMCPServerConfig(config, { allowLan: this.allowLan })
     const headers: Record<string, string> = {}
     for (const ref of parsed.transport.secretRefs) {
-      if (ref.kind === 'oauth-refresh-token') throw new Error('mobile_mcp_oauth_not_implemented')
+      if (parsed.transport.oauth?.enabled && ref.kind.startsWith('oauth-')) continue
+      if (ref.kind === 'oauth-refresh-token') throw new Error('mobile_mcp_oauth_config_required')
       const value = await this.vault.get(ref)
       if (!value) throw new Error(`mobile_mcp_secret_missing:${ref.id}`)
       headers[secretHeaderName(ref)] = ref.kind === 'oauth-access-token' ? `Bearer ${value}` : value
@@ -192,10 +198,45 @@ export class MobileMcpController {
     return headers
   }
 
+  createOAuthProvider(config: unknown): MobileMcpOAuthProvider | undefined {
+    const parsed = assertMobileMCPServerConfig(config, { allowLan: this.allowLan })
+    if (!parsed.transport.oauth?.enabled) return undefined
+    return new MobileMcpOAuthProvider({
+      config: parsed,
+      storage: this.storage,
+      vault: this.vault,
+    })
+  }
+
+  async beginOAuth(config: unknown): Promise<MCPMobileServerConfigValue> {
+    const parsed = this.upsert(config)
+    if (!parsed.transport.oauth?.enabled) throw new Error('mcp_oauth_not_enabled')
+    await beginMcpOAuth({ config: parsed, storage: this.storage, vault: this.vault })
+    return parsed
+  }
+
+  async finishOAuthCallback(callbackUrl: string): Promise<MCPMobileServerConfigValue> {
+    const pending = await consumePendingMcpOAuthCallback({ callbackUrl, storage: this.storage })
+    const config = this.list().find((candidate) => candidate.id === pending.serverId)
+    if (!config) throw new Error('mobile_mcp_server_not_found')
+    await finishMcpOAuth({
+      config,
+      storage: this.storage,
+      vault: this.vault,
+      authorizationCode: pending.code,
+    })
+    return config
+  }
+
   /** Build a transport with ephemeral headers; no secret is written into the manifest. */
   async createHttpService(config: unknown): Promise<McpHttpService> {
     const parsed = assertMobileMCPServerConfig(config, { allowLan: this.allowLan })
     const headers = await this.resolveHeaders(parsed)
+    if (parsed.transport.oauth?.enabled) {
+      const tokens = await this.createOAuthProvider(parsed)?.tokens()
+      if (!tokens?.access_token) throw new Error('mobile_mcp_oauth_login_required')
+      headers.Authorization = `${tokens.token_type || 'Bearer'} ${tokens.access_token}`
+    }
     return new McpHttpService({
       endpoint: parsed.transport.url,
       headers,
@@ -219,9 +260,8 @@ export class MobileMcpController {
     }
   }
 
-  /** Native OAuth is intentionally not claimed as implemented by this controller. */
-  getAuthStatus(): { oauth2Pkce: 'not-implemented'; secretReferences: 'supported' } {
-    return { oauth2Pkce: 'not-implemented', secretReferences: 'supported' }
+  getAuthStatus(): { oauth2Pkce: 'supported'; discovery: 'rfc9728'; secretReferences: 'supported' } {
+    return { oauth2Pkce: 'supported', discovery: 'rfc9728', secretReferences: 'supported' }
   }
 }
 

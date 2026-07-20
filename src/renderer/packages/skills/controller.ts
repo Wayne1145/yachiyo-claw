@@ -6,9 +6,14 @@ import type {
   SkillInstallRecord,
   SkillMetadata,
   SkillSource,
+  SkillExecutionMode,
+  SkillScriptCapability,
+  SkillScriptEntrypoint,
 } from '@shared/types/skills'
+import { SkillExecutableManifestSchema } from '@shared/types/skills'
 import JSZip from 'jszip'
 import platform from '@/platform'
+import { executeMobileSkillScript } from '@/mobile/mobile-skill-script'
 
 const MOBILE_SKILLS_KEY = 'yachiyo-mobile-skills-v1'
 
@@ -20,7 +25,9 @@ interface MobileSkillRecord {
   installedAt: string
   source?: SkillSource
   installRecord?: SkillInstallRecord
-  executionMode?: 'declarative'
+  executionMode?: SkillExecutionMode
+  scriptFiles?: Record<string, { entrypoint: SkillScriptEntrypoint; scriptBase64: string }>
+  grantedScriptCapabilities?: SkillScriptCapability[]
 }
 
 function validMobileSkills(value: unknown): MobileSkillRecord[] {
@@ -90,19 +97,36 @@ function isSkillHubSkill(skill: MarketplaceSkill): boolean {
   }
 }
 
-async function decodeSkillHubPackage(download: Awaited<ReturnType<SkillHubAdapter['download']>>) {
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+  }
+  return btoa(binary)
+}
+
+async function decodeSkillHubPackage(
+  download: Awaited<ReturnType<SkillHubAdapter['download']>>,
+  allowScripts: boolean
+) {
   const bytes = new Uint8Array(download.bytes)
   if (bytes.byteLength > 32 * 1024 * 1024) throw new Error('Skill package exceeds the mobile size limit')
   const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b
   if (!isZip) {
     inspectSkillArchive([{ path: 'SKILL.md', size: bytes.byteLength }])
-    return { content: new TextDecoder().decode(bytes), files: [{ path: 'SKILL.md', size: bytes.byteLength }] }
+    return {
+      content: new TextDecoder().decode(bytes),
+      files: [{ path: 'SKILL.md', size: bytes.byteLength }],
+      scriptFiles: {} as Record<string, { entrypoint: SkillScriptEntrypoint; scriptBase64: string }>,
+    }
   }
   const zip = await JSZip.loadAsync(bytes)
   const entries: Array<{ path: string; size: number; type?: 'file' | 'directory' | 'symlink' }> = []
   const files: SkillFileManifest[] = []
   let content = ''
+  let skillMdPath = ''
   let expandedSize = 0
+  const contents = new Map<string, Uint8Array>()
   for (const [relativePath, file] of Object.entries(zip.files)) {
     const path = (file.unsafeOriginalName || relativePath).replace(/\\/g, '/')
     const unixPermissions = typeof file.unixPermissions === 'number' ? file.unixPermissions : 0
@@ -111,33 +135,66 @@ async function decodeSkillHubPackage(download: Awaited<ReturnType<SkillHubAdapte
     expandedSize += data.byteLength
     if (expandedSize > 32 * 1024 * 1024) throw new Error('Skill package expands beyond the mobile size limit')
     entries.push({ path, size: data.byteLength, type })
-    if (!file.dir) files.push({ path, size: data.byteLength })
-    if (!file.dir && path.split('/').at(-1)?.toLowerCase() === 'skill.md') content = new TextDecoder().decode(data)
+    if (!file.dir) {
+      files.push({ path, size: data.byteLength, sha256: await sha256Hex(data) })
+      contents.set(path, data)
+    }
+    if (!file.dir && path.split('/').at(-1)?.toLowerCase() === 'skill.md') {
+      if (skillMdPath) throw new Error('Skill package must contain exactly one SKILL.md')
+      skillMdPath = path
+      content = new TextDecoder().decode(data)
+    }
   }
-  inspectSkillArchive(entries)
+  inspectSkillArchive(entries, { allowScripts })
   if (!content) throw new Error('Skill package does not contain SKILL.md')
-  return { content, files }
+  const skillRoot = skillMdPath.includes('/') ? skillMdPath.slice(0, skillMdPath.lastIndexOf('/') + 1) : ''
+  const manifestPath = `${skillRoot}yachiyo-skill.json`
+  const manifestBytes = contents.get(manifestPath)
+  if (!allowScripts) {
+    if (manifestBytes) throw new Error('Executable manifest requires the scripts capability')
+    return { content, files, scriptFiles: {} as Record<string, { entrypoint: SkillScriptEntrypoint; scriptBase64: string }> }
+  }
+  if (!manifestBytes) throw new Error('Script Skill package must contain yachiyo-skill.json next to SKILL.md')
+  const manifest = SkillExecutableManifestSchema.parse(JSON.parse(new TextDecoder().decode(manifestBytes)))
+  const scriptFiles: Record<string, { entrypoint: SkillScriptEntrypoint; scriptBase64: string }> = {}
+  for (const entrypoint of manifest.entrypoints) {
+    const scriptBytes = contents.get(`${skillRoot}${entrypoint.path}`)
+    if (!scriptBytes) throw new Error(`Missing declared Skill script: ${entrypoint.path}`)
+    if (scriptBytes.byteLength !== entrypoint.size) throw new Error(`Skill script size mismatch: ${entrypoint.name}`)
+    if ((await sha256Hex(scriptBytes)) !== entrypoint.sha256.toLowerCase()) {
+      throw new Error(`Skill script hash mismatch: ${entrypoint.name}`)
+    }
+    scriptFiles[entrypoint.name] = { entrypoint, scriptBase64: encodeBase64(scriptBytes) }
+  }
+  return { content, files, scriptFiles }
 }
 
 export async function installMobileSkillHubSkill(
   skill: MarketplaceSkill,
   options: { adapter?: SkillHubAdapter; requireSignature?: boolean } = {}
 ): Promise<SkillInstallResult> {
-  if (skill.capabilityManifest?.scripts || skill.capabilityManifest?.privileged) {
-    return { success: false, skillName: skill.name, error: 'Mobile Skills cannot request scripts or privileged capabilities.' }
-  }
   try {
     const adapter = options.adapter || new SkillHubAdapter()
     const slug = skill.slug || skill.skillId
     const details = await adapter.getSkill(slug).catch(() => skill)
     if (!details.revision) throw new Error('SkillHub package must pin an immutable revision')
-    if (details.capabilityManifest?.scripts || details.capabilityManifest?.privileged) {
-      throw new Error('Mobile Skills cannot request scripts or privileged capabilities.')
-    }
     const download = await adapter.download(slug, details.revision)
     const integrity = await adapter.verifyDownload(download, details)
     if (options.requireSignature && !integrity.signatureVerified) throw new Error('SkillHub signature is required')
-    const decoded = await decodeSkillHubPackage(download)
+    const scriptsRequested = details.capabilityManifest?.scripts === true
+    const decoded = await decodeSkillHubPackage(download, scriptsRequested)
+    if (scriptsRequested && Object.keys(decoded.scriptFiles).length === 0) {
+      throw new Error('Script Skill packages must be ZIP archives with a validated executable manifest')
+    }
+    const entrypoints = Object.values(decoded.scriptFiles).map((script) => script.entrypoint)
+    const declaredCapabilities = details.capabilityManifest || {}
+    for (const entrypoint of entrypoints) {
+      for (const capability of entrypoint.capabilities) {
+        if (capability === 'unrestricted-privileged' && !declaredCapabilities.privileged) {
+          throw new Error(`Script entrypoint ${entrypoint.name} uses undeclared capability: ${capability}`)
+        }
+      }
+    }
     const parsed = parseMobileSkill(decoded.content, slug)
     if (!parsed) throw new Error('Invalid SKILL.md')
     const now = new Date().toISOString()
@@ -150,7 +207,11 @@ export async function installMobileSkillHubSkill(
       filesHash: integrity.sha256,
       signature: details.signature,
       publisher: details.publisher,
-      capabilityManifest: { ...details.capabilityManifest, scripts: false, privileged: false },
+      capabilityManifest: {
+        ...details.capabilityManifest,
+        scripts: scriptsRequested,
+        scriptEntrypoints: entrypoints.length ? entrypoints : undefined,
+      },
       installedAt: now,
     }
     const installRecord: SkillInstallRecord = {
@@ -163,13 +224,21 @@ export async function installMobileSkillHubSkill(
       files: decoded.files,
       contentHash: integrity.sha256 || (await sha256Hex(download.bytes)),
       signatureVerified: integrity.signatureVerified,
-      executionMode: 'declarative',
+      executionMode: scriptsRequested ? 'script-disabled' : 'declarative',
       enabled: true,
       installedAt: now,
       updatedAt: now,
     }
     const current = (await readMobileSkills()).filter((entry) => entry.metadata.name !== parsed.metadata.name)
-    current.push({ ...parsed, installedAt: now, source, installRecord, executionMode: 'declarative' })
+    current.push({
+      ...parsed,
+      installedAt: now,
+      source,
+      installRecord,
+      executionMode: scriptsRequested ? 'script-disabled' : 'declarative',
+      scriptFiles: decoded.scriptFiles,
+      grantedScriptCapabilities: [],
+    })
     await writeMobileSkills(current)
     return { success: true, skillName: parsed.metadata.name }
   } catch (error) {
@@ -225,6 +294,8 @@ export const skillsController = {
             installedAt: skill.installedAt,
             skillPath: skill.skillPath,
           },
+          scriptExecutionEnabled: skill.executionMode === 'script-enabled',
+          signatureVerified: skill.installRecord?.signatureVerified,
         }))
     }
     return window.electronAPI.invoke('skills:discover')
@@ -248,16 +319,72 @@ export const skillsController = {
     await window.electronAPI.invoke('skills:open-directory')
   },
 
-  executeScript(skillName: string, scriptName: string, args?: string[]): Promise<SkillScriptResult> {
+  async executeScript(
+    skillName: string,
+    scriptName: string,
+    args?: string[],
+    context: { sessionId?: string; toolCallId?: string; abortSignal?: AbortSignal } = {}
+  ): Promise<SkillScriptResult> {
     if (platform.type === 'mobile') {
-      return Promise.resolve({
-        success: false,
-        stdout: '',
-        stderr: `移动端 Skill 脚本执行尚未启用：${skillName}/${scriptName}`,
-        exitCode: 126,
-      })
+      const skill = (await readMobileSkills()).find((candidate) => candidate.metadata.name === skillName)
+      if (!skill) return { success: false, stdout: '', stderr: 'skill_not_installed', exitCode: 127 }
+      if (skill.executionMode !== 'script-enabled') {
+        return { success: false, stdout: '', stderr: 'skill_script_execution_disabled', exitCode: 126 }
+      }
+      const script = skill.scriptFiles?.[scriptName]
+      if (!script) return { success: false, stdout: '', stderr: 'skill_script_not_declared', exitCode: 127 }
+      try {
+        return await executeMobileSkillScript({
+          skillName,
+          script,
+          args,
+          grantedCapabilities: skill.grantedScriptCapabilities || [],
+          signatureVerified: skill.installRecord?.signatureVerified === true,
+          ...context,
+        })
+      } catch (error) {
+        return {
+          success: false,
+          stdout: '',
+          stderr: error instanceof Error ? error.message : String(error),
+          exitCode: 1,
+        }
+      }
     }
     return window.electronAPI.invoke('skills:execute-script', { skillName, scriptName, args })
+  },
+
+  async configureScriptExecution(
+    skillName: string,
+    enabled: boolean,
+    grantedCapabilities: SkillScriptCapability[] = []
+  ): Promise<{ success: boolean; error?: string }> {
+    if (platform.type !== 'mobile') return { success: false, error: 'mobile_only' }
+    const current = await readMobileSkills()
+    const index = current.findIndex((candidate) => candidate.metadata.name === skillName)
+    if (index < 0) return { success: false, error: 'skill_not_installed' }
+    const skill = current[index]
+    const scripts = Object.values(skill.scriptFiles || {})
+    if (!scripts.length) return { success: false, error: 'skill_has_no_declared_scripts' }
+    const normalizedGrants = Array.from(new Set(grantedCapabilities))
+    const required = Array.from(new Set(scripts.flatMap((script) => script.entrypoint.capabilities)))
+    if (enabled && required.some((capability) => !normalizedGrants.includes(capability))) {
+      return { success: false, error: `missing_skill_capabilities:${required.join(',')}` }
+    }
+    current[index] = {
+      ...skill,
+      executionMode: enabled ? 'script-enabled' : 'script-disabled',
+      grantedScriptCapabilities: enabled ? normalizedGrants : [],
+      installRecord: skill.installRecord
+        ? {
+            ...skill.installRecord,
+            executionMode: enabled ? 'script-enabled' : 'script-disabled',
+            updatedAt: new Date().toISOString(),
+          }
+        : undefined,
+    }
+    await writeMobileSkills(current)
+    return { success: true }
   },
 
   installSkill(owner: string, repo: string, skillPath: string): Promise<SkillInstallResult> {

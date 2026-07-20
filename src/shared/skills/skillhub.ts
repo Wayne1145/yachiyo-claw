@@ -115,6 +115,9 @@ function normalizeSkill(value: unknown, fallback?: string): MarketplaceSkill {
           scripts: typeof capabilities.scripts === 'boolean' ? capabilities.scripts : undefined,
           privileged: typeof capabilities.privileged === 'boolean' ? capabilities.privileged : undefined,
           tools: Array.isArray(capabilities.tools) ? capabilities.tools.filter((tool) => typeof tool === 'string') : undefined,
+          scriptEntrypoints: Array.isArray(capabilities.scriptEntrypoints ?? capabilities.script_entrypoints)
+            ? (capabilities.scriptEntrypoints ?? capabilities.script_entrypoints)
+            : undefined,
         }
       : undefined,
   })
@@ -232,7 +235,7 @@ export class SkillHubAdapter {
 
 export function inspectSkillArchive(
   entries: SkillArchiveEntry[],
-  policy: { maxFiles?: number; maxTotalBytes?: number } = {}
+  policy: { maxFiles?: number; maxTotalBytes?: number; allowScripts?: boolean } = {}
 ) {
   if (entries.length > (policy.maxFiles ?? MAX_ARCHIVE_FILES)) throw new SkillHubError('Skill archive has too many files.', 'archive')
   const seen = new Set<string>()
@@ -246,7 +249,7 @@ export function inspectSkillArchive(
       throw new SkillHubError(`Unsafe path in Skill archive: ${entry.path}`, 'archive')
     }
     if (!Number.isFinite(entry.size) || entry.size < 0) throw new SkillHubError('Invalid Skill archive size.', 'archive')
-    if (segments.includes('scripts') || SCRIPT_EXTENSIONS.has(extension)) {
+    if (!policy.allowScripts && (segments.includes('scripts') || SCRIPT_EXTENSIONS.has(extension))) {
       throw new SkillHubError('Executable Skill files are disabled on mobile.', 'archive')
     }
     seen.add(path)
@@ -255,7 +258,12 @@ export function inspectSkillArchive(
     if (segments.at(-1)?.toLowerCase() === 'skill.md') hasSkillMd = true
   }
   if (!hasSkillMd) throw new SkillHubError('Skill archive must contain SKILL.md.', 'archive')
-  return { files: entries, totalBytes, hasSkillMd, containsScripts: false, warnings: [] as string[] }
+  const containsScripts = entries.some((entry) => {
+    const path = entry.path.replace(/\\/g, '/')
+    const extension = path.includes('.') ? path.slice(path.lastIndexOf('.')).toLowerCase() : ''
+    return path.split('/').includes('scripts') || SCRIPT_EXTENSIONS.has(extension)
+  })
+  return { files: entries, totalBytes, hasSkillMd, containsScripts, warnings: [] as string[] }
 }
 
 function decode(value: string): ArrayBuffer {

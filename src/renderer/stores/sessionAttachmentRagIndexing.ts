@@ -9,10 +9,10 @@ import type { AttachmentPreparationResult, PreprocessedFile } from '../types/inp
 const log = getLogger('session-attachment-rag-indexing')
 
 function shouldIndexPreparedAttachment(
-  file: Pick<AttachmentPreparationResult, 'ragMode' | 'storageKey' | 'error' | 'sessionAttachmentAvailability'>
+  file: Pick<AttachmentPreparationResult, 'ragMode' | 'storageKey' | 'error' | 'sessionAttachmentAvailability'>,
 ) {
   return (
-    platform.type === 'desktop' &&
+    platform.type !== 'web' &&
     file.ragMode === 'session-retrieval' &&
     !!file.storageKey &&
     !file.error &&
@@ -22,7 +22,7 @@ function shouldIndexPreparedAttachment(
 
 function shouldIndexMessageFile(file: MessageFile) {
   return (
-    platform.type === 'desktop' &&
+    platform.type !== 'web' &&
     file.ragMode === 'session-retrieval' &&
     !!file.storageKey &&
     isSessionAttachmentRagSupportedFilePath(file.name) &&
@@ -34,7 +34,7 @@ function mapPreparedAttachmentState(
   preparedFile: AttachmentPreparationResult,
   file: File,
   attachment: SessionAttachment,
-  extras: { draftMessageId?: string } = {}
+  extras: { draftMessageId?: string } = {},
 ): PreprocessedFile {
   return {
     ...preparedFile,
@@ -80,7 +80,7 @@ export async function startPreparedSessionAttachmentIndexing(params: {
   const draftMessageId = params.draftMessageId || uuidv4()
   const attachmentStorageKey = preparedFile.storageKey
   log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Starting attachment indexing: file="${file.name}", session=${sessionId}, draftMessage=${draftMessageId}, parser=${preparedFile.parserType}, bytes=${preparedFile.byteLength ?? 0}`
+    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Starting attachment indexing: file="${file.name}", session=${sessionId}, draftMessage=${draftMessageId}, parser=${preparedFile.parserType}, bytes=${preparedFile.byteLength ?? 0}`,
   )
   const attachment = await controller.create({
     sessionId,
@@ -95,7 +95,7 @@ export async function startPreparedSessionAttachmentIndexing(params: {
 
   if (shouldContinue && !shouldContinue()) {
     log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Aborting attachment indexing after create: attachmentId=${attachment.id}, file="${file.name}"`
+      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Aborting attachment indexing after create: attachmentId=${attachment.id}, file="${file.name}"`,
     )
     await controller.deleteAttachment(attachment.id)
     return undefined
@@ -138,7 +138,7 @@ export async function ensureMessageFileSessionAttachment(params: {
   }
 
   log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Creating message attachment task: session=${sessionId}, message=${messageId}, file="${file.name}", parser=${file.parserType}, bytes=${file.byteLength ?? 0}`
+    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Creating message attachment task: session=${sessionId}, message=${messageId}, file="${file.name}", parser=${file.parserType}, bytes=${file.byteLength ?? 0}`,
   )
   const attachment = await controller.create({
     sessionId,
@@ -151,7 +151,7 @@ export async function ensureMessageFileSessionAttachment(params: {
     parserType: file.parserType,
   })
   log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Message attachment task created: attachmentId=${attachment.id}, file="${file.name}", status=${attachment.status}`
+    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Message attachment task created: attachmentId=${attachment.id}, file="${file.name}", status=${attachment.status}`,
   )
 
   return mapMessageFileAttachmentState(file, attachment)

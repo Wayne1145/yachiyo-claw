@@ -18,6 +18,7 @@ interface PermissionRowProps {
   actionLabel?: string
   onAction?: () => void
   actionLoading?: boolean
+  statusUnknown?: boolean
 }
 
 function PermissionRow({
@@ -28,11 +29,12 @@ function PermissionRow({
   actionLabel = '去设置',
   onAction,
   actionLoading,
+  statusUnknown,
 }: PermissionRowProps) {
   return (
     <Flex className="yachiyo-permission-row" align="center" gap="sm">
-      <div className="yachiyo-permission-status" data-granted={granted}>
-        {granted ? <IconCheck size={16} /> : <IconX size={16} />}
+      <div className="yachiyo-permission-status" data-granted={statusUnknown ? undefined : granted}>
+        {statusUnknown ? <IconExternalLink size={16} /> : granted ? <IconCheck size={16} /> : <IconX size={16} />}
       </div>
       <div className="yachiyo-permission-copy">
         <Flex align="center" gap={6}>
@@ -49,7 +51,7 @@ function PermissionRow({
           {description}
         </Text>
       </div>
-      {!granted && onAction && (
+      {(!granted || statusUnknown) && onAction && (
         <Button
           size="compact-sm"
           variant="light"
@@ -108,6 +110,7 @@ export function AndroidPermissionWizard() {
     return (
       status.overlay &&
       status.batteryOptimizationIgnored &&
+      status.notificationsGranted &&
       (rootCapability?.available || status.shizukuGranted || status.accessibility)
     )
   }, [rootCapability?.available, status])
@@ -169,11 +172,28 @@ export function AndroidPermissionWizard() {
               onAction={() => openSettings('overlay')}
             />
             <PermissionRow
+              label="任务通知"
+              description="显示定时任务唤醒和待继续状态；通知不包含提示词、密钥或执行结果。"
+              granted={status.notificationsGranted}
+              onAction={() => openSettings('notifications')}
+            />
+            <PermissionRow
               label="忽略电池优化"
               description="避免长时间 Agent 任务在后台被系统中断。"
               granted={status.batteryOptimizationIgnored}
               onAction={() => openSettings('battery')}
             />
+            {status.autoStartSettingsAvailable && (
+              <PermissionRow
+                label="厂商自启动管理"
+                description={`${status.deviceManufacturer || '当前设备'} 的授权状态无法被应用可靠读取，请确认允许自启动和后台运行。`}
+                granted={false}
+                optional
+                statusUnknown
+                actionLabel="去确认"
+                onAction={() => openSettings('autostart')}
+              />
+            )}
             <PermissionRow
               label="Root"
               description={

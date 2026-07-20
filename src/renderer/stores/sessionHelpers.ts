@@ -83,7 +83,7 @@ export function computePreviewMetadata(
   options: {
     includeFullTokenCounts?: boolean
     stats?: ContentStats
-  } = {}
+  } = {},
 ): {
   lineCount: number
   byteLength: number
@@ -160,19 +160,21 @@ function hasUsableSessionAttachmentRagLicense(): boolean {
 }
 
 async function canUseSessionAttachmentRag(): Promise<boolean> {
+  // Android has a local lexical RAG index and does not depend on the retired Chatbox paid capability.
+  if (platform.type === 'mobile') return true
   const licenseKey = settingActions.getLicenseKey() || ''
   const hasUsableLicense = hasUsableSessionAttachmentRagLicense()
   const capabilityCacheKey = `${licenseKey}:${hasUsableLicense ? 'active' : 'inactive'}`
   if (sessionRagCapabilityCache?.key === capabilityCacheKey) {
     log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability cache hit: embedding=${sessionRagCapabilityCache.value}, hasLicense=${Boolean(licenseKey)}`
+      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability cache hit: embedding=${sessionRagCapabilityCache.value}, hasLicense=${Boolean(licenseKey)}`,
     )
     return sessionRagCapabilityCache.value
   }
 
   if (!hasUsableLicense) {
     log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability skipped: missing active Chatbox license, hasLicense=${Boolean(licenseKey)}, method=${settingsStore.getState().licenseActivationMethod ?? 'none'}, platform=${platform.type}`
+      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability skipped: missing active Chatbox license, hasLicense=${Boolean(licenseKey)}, method=${settingsStore.getState().licenseActivationMethod ?? 'none'}, platform=${platform.type}`,
     )
     sessionRagCapabilityCache = { key: capabilityCacheKey, value: false }
     return false
@@ -181,7 +183,7 @@ async function canUseSessionAttachmentRag(): Promise<boolean> {
   const value = !!(await remote.getSessionRagConfig({ licenseKey: licenseKey || undefined }).catch(() => undefined))
     ?.capabilities?.session_attachment_embedding
   log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability fetched: embedding=${value}, hasLicense=${Boolean(licenseKey)}, platform=${platform.type}`
+    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability fetched: embedding=${value}, hasLicense=${Boolean(licenseKey)}, platform=${platform.type}`,
   )
   sessionRagCapabilityCache = { key: capabilityCacheKey, value }
   return value
@@ -192,7 +194,7 @@ async function canUseSessionAttachmentRag(): Promise<boolean> {
  */
 async function parseFileWithLocalParser(
   file: File,
-  uniqKey: string
+  uniqKey: string,
 ): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
   const result = await platform.parseFileLocally(file)
 
@@ -214,7 +216,7 @@ async function parseFileWithLocalParser(
 async function fallbackToChatboxAIParser(
   file: File,
   uniqKey: string,
-  reason: 'local_parser_failed' | 'empty_content'
+  reason: 'local_parser_failed' | 'empty_content',
 ): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
   log.warn(`Falling back to Chatbox AI parser for "${file.name}" due to ${reason}`)
 
@@ -228,7 +230,7 @@ async function fallbackToChatboxAIParser(
 
 async function parseFileWithLocalFallback(
   file: File,
-  uniqKey: string
+  uniqKey: string,
 ): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
   try {
     const result = await parseFileWithLocalParser(file, uniqKey)
@@ -252,7 +254,7 @@ async function parseFileWithLocalFallback(
  */
 async function parseFileWithChatboxAI(
   file: File,
-  uniqKey: string
+  uniqKey: string,
 ): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
   const licenseKey = settingActions.getLicenseKey()
   const uploadedKey = await remote.uploadAndCreateUserFile(licenseKey || '', file)
@@ -274,7 +276,7 @@ async function parseFileWithChatboxAI(
 async function parseFileWithMineruService(
   file: File,
   uniqKey: string,
-  apiToken: string
+  apiToken: string,
 ): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
   // Check if platform supports MinerU parsing
   if (!platform.parseFileWithMineru) {
@@ -309,7 +311,7 @@ async function parseFileWithMineruService(
  */
 export async function prepareFileAttachment(
   file: File,
-  settings: SessionSettings
+  settings: SessionSettings,
 ): Promise<AttachmentPreparationResult> {
   try {
     const uniqKey = StorageKeyGenerator.fileUniqKey(file)
@@ -332,13 +334,13 @@ export async function prepareFileAttachment(
         : undefined
       if (sessionAttachmentWarningReason) {
         log.info(
-          `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Cached parsed content is very large: file="${file.name}", bytes=${stats.byteLength}, limit=${SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH}`
+          `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Cached parsed content is very large: file="${file.name}", bytes=${stats.byteLength}, limit=${SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH}`,
         )
       }
 
       const isSessionAttachmentRagFileType = isSessionAttachmentRagSupportedFilePath(file.name)
       const exceedsSessionAttachmentRagThreshold =
-        platform.type === 'desktop' &&
+        platform.type !== 'web' &&
         isSessionAttachmentRagFileType &&
         stats.byteLength > SESSION_ATTACHMENT_RAG_INLINE_BYTE_THRESHOLD
       const sessionAttachmentRagAllowed = exceedsSessionAttachmentRagThreshold
@@ -351,7 +353,7 @@ export async function prepareFileAttachment(
         stats,
       })
       log.debug(
-        `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Cached preprocess decision: file="${file.name}", bytes=${stats.byteLength}, tokens=${tokenCountMap[TOKEN_CACHE_KEYS.default] ?? 0}, ragFileType=${isSessionAttachmentRagFileType}, exceedsThreshold=${exceedsSessionAttachmentRagThreshold}, ragMode=${shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline'}, allowed=${sessionAttachmentRagAllowed}`
+        `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Cached preprocess decision: file="${file.name}", bytes=${stats.byteLength}, tokens=${tokenCountMap[TOKEN_CACHE_KEYS.default] ?? 0}, ragFileType=${isSessionAttachmentRagFileType}, exceedsThreshold=${exceedsSessionAttachmentRagThreshold}, ragMode=${shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline'}, allowed=${sessionAttachmentRagAllowed}`,
       )
 
       await storage.setItem(`${uniqKey}_tokenMap`, tokenCountMap)
@@ -427,13 +429,13 @@ export async function prepareFileAttachment(
       : undefined
     if (sessionAttachmentWarningReason) {
       log.info(
-        `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Parsed content is very large: file="${file.name}", parser=${result.parserType}, bytes=${stats.byteLength}, limit=${SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH}`
+        `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Parsed content is very large: file="${file.name}", parser=${result.parserType}, bytes=${stats.byteLength}, limit=${SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH}`,
       )
     }
 
     const isSessionAttachmentRagFileType = isSessionAttachmentRagSupportedFilePath(file.name)
     const exceedsSessionAttachmentRagThreshold =
-      platform.type === 'desktop' &&
+      platform.type !== 'web' &&
       isSessionAttachmentRagFileType &&
       stats.byteLength > SESSION_ATTACHMENT_RAG_INLINE_BYTE_THRESHOLD
     const sessionAttachmentRagAllowed = exceedsSessionAttachmentRagThreshold
@@ -449,7 +451,7 @@ export async function prepareFileAttachment(
     await storage.setItem(`${result.storageKey}_parserType`, result.parserType)
 
     log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Preprocess decision: file="${file.name}", parser=${result.parserType}, bytes=${stats.byteLength}, tokens=${tokenCountMap[TOKEN_CACHE_KEYS.default] ?? 0}, ragFileType=${isSessionAttachmentRagFileType}, exceedsThreshold=${exceedsSessionAttachmentRagThreshold}, ragMode=${shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline'}, allowed=${sessionAttachmentRagAllowed}`
+      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Preprocess decision: file="${file.name}", parser=${result.parserType}, bytes=${stats.byteLength}, tokens=${tokenCountMap[TOKEN_CACHE_KEYS.default] ?? 0}, ragFileType=${isSessionAttachmentRagFileType}, exceedsThreshold=${exceedsSessionAttachmentRagThreshold}, ragMode=${shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline'}, allowed=${sessionAttachmentRagAllowed}`,
     )
 
     return {
@@ -483,7 +485,7 @@ export async function prepareFileAttachment(
  */
 export async function preprocessLink(
   url: string,
-  settings: SessionSettings
+  settings: SessionSettings,
 ): Promise<{
   url: string
   title: string
@@ -618,7 +620,7 @@ export function constructUserMessage(
     tokenCountMap?: Record<string, number>
     lineCount?: number
     byteLength?: number
-  }> = []
+  }> = [],
 ): Message {
   // 只使用原始文本，不添加文件和链接内容
   const msg = createMessage('user', text)
@@ -701,7 +703,7 @@ export async function exportChat(session: Session, scope: ExportChatScope, forma
 export function mergeSettings(
   globalSettings: Settings,
   sessionSetting?: SessionSettings,
-  sessionType?: 'picture' | 'chat' | 'guide'
+  sessionType?: 'picture' | 'chat' | 'guide',
 ): SessionSettings {
   if (!sessionSetting) {
     return SessionSettingsSchema.parse(globalSettings)
@@ -819,7 +821,7 @@ export async function searchSessions(searchInput: string, sessionId?: string, on
 
     // Load full sessions for this page in parallel to amortize I/O latency.
     const sessions = await Promise.all(
-      page.items.map((meta) => storage.getItem<Session | null>(StorageKeyGenerator.session(meta.id), null))
+      page.items.map((meta) => storage.getItem<Session | null>(StorageKeyGenerator.session(meta.id), null)),
     )
 
     const batch: Session[] = []

@@ -18,6 +18,61 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <title>Yachiyo Claw</title>
     <script>
+      // Android 11 may ship WebView 83. Some bundled dependencies call
+      // structuredClone while their modules are being evaluated, so this must
+      // run synchronously before the module entry rather than from TypeScript.
+      if (typeof globalThis.structuredClone !== "function") {
+        globalThis.structuredClone = function structuredClonePolyfill(value) {
+          var seen = new WeakMap();
+
+          function clone(input) {
+            if (input === null || typeof input !== "object") return input;
+            if (seen.has(input)) return seen.get(input);
+            if (input instanceof Date) return new Date(input.getTime());
+            if (input instanceof RegExp) return new RegExp(input.source, input.flags);
+            if (input instanceof ArrayBuffer) return input.slice(0);
+            if (ArrayBuffer.isView(input)) {
+              if (input instanceof DataView) {
+                return new DataView(clone(input.buffer), input.byteOffset, input.byteLength);
+              }
+              return new input.constructor(input);
+            }
+
+            var output;
+            if (input instanceof Map) {
+              output = new Map();
+              seen.set(input, output);
+              input.forEach(function (entryValue, entryKey) {
+                output.set(clone(entryKey), clone(entryValue));
+              });
+              return output;
+            }
+            if (input instanceof Set) {
+              output = new Set();
+              seen.set(input, output);
+              input.forEach(function (entryValue) {
+                output.add(clone(entryValue));
+              });
+              return output;
+            }
+
+            output = Array.isArray(input)
+              ? []
+              : Object.create(Object.getPrototypeOf(input));
+            seen.set(input, output);
+            Reflect.ownKeys(input).forEach(function (key) {
+              var descriptor = Object.getOwnPropertyDescriptor(input, key);
+              if (descriptor && "value" in descriptor) descriptor.value = clone(descriptor.value);
+              if (descriptor) Object.defineProperty(output, key, descriptor);
+            });
+            return output;
+          }
+
+          return clone(value);
+        };
+      }
+    </script>
+    <script>
       var initialTheme = localStorage.getItem("initial-theme");
       if (initialTheme === "light" || initialTheme === "dark") {
         document.documentElement.setAttribute("data-theme", initialTheme);

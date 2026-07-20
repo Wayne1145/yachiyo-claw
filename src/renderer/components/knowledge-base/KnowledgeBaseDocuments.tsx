@@ -101,7 +101,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
 
     // Check if there are any files being processed
     const hasProcessingFiles = allFiles.some(
-      (file) => file.status === 'pending' || file.status === 'processing' || file.status === 'paused'
+      (file) => file.status === 'pending' || file.status === 'processing' || file.status === 'paused',
     )
 
     if (!hasProcessingFiles) return
@@ -129,7 +129,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
     return failedFiles.some(
       (file) =>
         file.error !== KNOWLEDGE_BASE_PARSED_CONTENT_TOO_LARGE_ERROR &&
-        !PARSER_NO_SUGGESTION_LIST.includes(file.parser_type || 'local')
+        !PARSER_NO_SUGGESTION_LIST.includes(file.parser_type || 'local'),
     )
   }, [failedFiles])
 
@@ -263,7 +263,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
             t('{{count}} file(s) exceed the {{limit}} knowledge base upload limit.', {
               count: oversizedFiles.length,
               limit: KNOWLEDGE_BASE_MAX_FILE_SIZE_LABEL,
-            })
+            }),
           )
         } else {
           setSizeRejectedFiles([])
@@ -277,6 +277,10 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         const correctedFiles: FileMeta[] = []
         for (const file of uploadableFiles) {
           const correctedFile = correctMimeType(file)
+          if (platform.type === 'mobile' && !correctedFile.path) {
+            const parsed = await platform.parseFileLocally(file)
+            correctedFile.path = parsed.key || ''
+          }
           correctedFiles.push(correctedFile)
         }
 
@@ -285,7 +289,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
           correctedFiles.map(async (file) => {
             await knowledgeBaseController.uploadFile(knowledgeBase.id, file)
             return file
-          })
+          }),
         )
 
         // Count successes and failures
@@ -301,7 +305,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
               t('Failed to upload {{filename}}: {{error}}', {
                 filename: fileName,
                 error: (result.reason as Error)?.message || 'Unknown error',
-              })
+              }),
             )
           }
         })
@@ -317,7 +321,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
               success: successfulUploads.length,
               total: files.length,
               failed: blockedUploadCount,
-            })
+            }),
           )
         } else if (blockedUploadCount === files.length) {
           // Don't show additional error toast here since individual errors were already shown
@@ -350,11 +354,11 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         toastError(
           t('Upload failed: {{error}}', {
             error: (error as Error)?.message || 'Unknown error',
-          })
+          }),
         )
       }
     },
-    [knowledgeBase?.id, knowledgeBase?.name, correctMimeType, refetch, refetchCount, invalidateFiles, isExpanded, t]
+    [knowledgeBase?.id, knowledgeBase?.name, correctMimeType, refetch, refetchCount, invalidateFiles, isExpanded, t],
   )
 
   // Validate file type against supported types
@@ -385,7 +389,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
 
       return hasValidExtension || hasValidMimeType
     },
-    [getSupportedFileTypes]
+    [getSupportedFileTypes],
   )
 
   // Handle drag and drop events
@@ -438,7 +442,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
             count: invalidFiles.length,
             files: invalidFileNames,
             formats: supportedTypes.display.join(', '),
-          })
+          }),
         )
       }
 
@@ -452,7 +456,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         await uploadFiles(fileListLike)
       }
     },
-    [uploadFiles, validateFileType, getSupportedFileTypes, t]
+    [uploadFiles, validateFileType, getSupportedFileTypes, t],
   )
 
   // Handle file deletion
@@ -468,7 +472,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         console.error('Failed to delete file:', error)
       }
     },
-    [knowledgeBase?.id, invalidateFiles]
+    [knowledgeBase?.id, invalidateFiles],
   )
 
   // Handle file retry
@@ -487,7 +491,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         console.error('Failed to retry file:', error)
       }
     },
-    [knowledgeBase?.id, refetch, refetchCount, invalidateFiles]
+    [knowledgeBase?.id, refetch, refetchCount, invalidateFiles],
   )
 
   // Handle file pause
@@ -506,7 +510,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         console.error('Failed to pause file:', error)
       }
     },
-    [knowledgeBase?.id, refetch, refetchCount, invalidateFiles]
+    [knowledgeBase?.id, refetch, refetchCount, invalidateFiles],
   )
 
   // Handle file resume
@@ -525,7 +529,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
         console.error('Failed to resume file:', error)
       }
     },
-    [knowledgeBase?.id, refetch, refetchCount, invalidateFiles]
+    [knowledgeBase?.id, refetch, refetchCount, invalidateFiles],
   )
 
   // Format date
@@ -681,7 +685,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
       toastError(
         t('Failed to open file dialog: {{error}}', {
           error: (error as Error)?.message || 'Unknown error',
-        })
+        }),
       )
     }
   }, [knowledgeBase?.id, getSupportedFileTypes, uploadFiles, t])
@@ -853,7 +857,7 @@ const KnowledgeBaseDocuments: React.FC<KnowledgeBaseDocumentsProps> = ({ knowled
                     </Button>
                     <Tooltip
                       label={t(
-                        'If you have never had a license before, you can claim it after logging in on the official website.'
+                        'If you have never had a license before, you can claim it after logging in on the official website.',
                       )}
                       withArrow
                       multiline

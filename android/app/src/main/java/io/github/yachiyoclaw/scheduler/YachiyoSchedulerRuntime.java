@@ -82,12 +82,20 @@ public final class YachiyoSchedulerRuntime {
     }
 
     public JSONObject reconcile(long now) throws Exception {
+        return reconcile(now, ExistingWorkPolicy.KEEP);
+    }
+
+    public JSONObject reconcileAfterSystemEvent(long now, boolean replaceExistingWork) throws Exception {
+        return reconcile(now, replaceExistingWork ? ExistingWorkPolicy.REPLACE : ExistingWorkPolicy.KEEP);
+    }
+
+    private JSONObject reconcile(long now, ExistingWorkPolicy policy) throws Exception {
         int recoveredLeases = store.recoverExpiredLeases(now);
         List<ScheduleSnapshot> snapshots = store.reconcile(now);
         int enqueued = 0;
         for (ScheduleSnapshot snapshot : snapshots) {
             if (snapshot.schedule.enabled) {
-                enqueue(snapshot, ExistingWorkPolicy.KEEP, now);
+                enqueue(snapshot, policy, now);
                 enqueued++;
             }
         }
@@ -97,6 +105,7 @@ public final class YachiyoSchedulerRuntime {
         result.put("enqueued", enqueued);
         result.put("headlessExecution", false);
         result.put("pendingState", SchedulerState.AWAITING_FOREGROUND);
+        result.put("executionMode", "foreground-required");
         return result;
     }
 
@@ -178,5 +187,4 @@ public final class YachiyoSchedulerRuntime {
         return UNIQUE_WORK_PREFIX + scheduleId;
     }
 }
-
 

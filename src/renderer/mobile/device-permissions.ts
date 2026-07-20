@@ -10,5 +10,10 @@ export function shouldOpenPermissionWizard(
   deferredForSession: boolean
 ): boolean {
   if (deferredForSession) return false
-  return !status.overlay || !status.batteryOptimizationIgnored || !hasAgentAccessBackend(status, rootAvailable)
+  return (
+    !status.overlay ||
+    !status.notificationsGranted ||
+    !status.batteryOptimizationIgnored ||
+    !hasAgentAccessBackend(status, rootAvailable)
+  )
 }

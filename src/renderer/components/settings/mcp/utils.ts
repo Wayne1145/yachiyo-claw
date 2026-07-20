@@ -1,7 +1,7 @@
 import * as shellQuote from 'shell-quote'
 import { v4 as uuid } from 'uuid'
 import { z } from 'zod'
-import type { MCPServerConfig } from '@/packages/mcp/types'
+import type { MCPSecretRef, MCPServerConfig } from '@/packages/mcp/types'
 
 const envUtils = {
   parse: (env: string): Record<string, string> => {
@@ -25,18 +25,24 @@ const envUtils = {
   },
 }
 
-export type MCPServerConfigFormValues = MCPServerConfig<
-  | {
-      type: 'stdio'
-      command: string
-      env?: string
-    }
-  | {
-      type: 'http'
-      url: string
-      headers?: string
-    }
->
+export type MCPServerConfigFormValues = {
+  id: string
+  name: string
+  enabled: boolean
+  transport:
+    | { type: 'stdio'; command: string; env?: string }
+    | {
+        type: 'http'
+        url: string
+        headers?: string
+        secretRefs?: MCPSecretRef[]
+        protocol?: 'streamable-http' | 'sse'
+        oauthEnabled?: boolean
+        oauthClientId?: string
+        oauthScopes?: string
+        oauthResourceMetadataUrl?: string
+      }
+}
 
 export function getConfigFromFormValues(values: MCPServerConfigFormValues): MCPServerConfig {
   let transport: MCPServerConfig['transport']
@@ -53,6 +59,17 @@ export function getConfigFromFormValues(values: MCPServerConfigFormValues): MCPS
       type: values.transport.type,
       url: values.transport.url,
       headers: values.transport.headers ? envUtils.parse(values.transport.headers) : undefined,
+      secretRefs: values.transport.secretRefs,
+      protocol: values.transport.protocol,
+      oauth: values.transport.oauthEnabled
+        ? {
+            enabled: true,
+            clientId: values.transport.oauthClientId?.trim() || undefined,
+            scopes: values.transport.oauthScopes?.split(/[\s,]+/).filter(Boolean),
+            redirectUri: 'yachiyoclaw://oauth/mcp',
+            resourceMetadataUrl: values.transport.oauthResourceMetadataUrl?.trim() || undefined,
+          }
+        : undefined,
     }
   }
   return {
@@ -76,6 +93,12 @@ export function getFormValuesFromConfig(config: MCPServerConfig): MCPServerConfi
       type: config.transport.type,
       url: config.transport.url,
       headers: config.transport.headers ? envUtils.stringify(config.transport.headers) : undefined,
+      secretRefs: config.transport.secretRefs,
+      protocol: config.transport.protocol,
+      oauthEnabled: config.transport.oauth?.enabled,
+      oauthClientId: config.transport.oauth?.clientId,
+      oauthScopes: config.transport.oauth?.scopes?.join(' '),
+      oauthResourceMetadataUrl: config.transport.oauth?.resourceMetadataUrl,
     }
   }
   return {

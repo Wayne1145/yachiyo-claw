@@ -4,6 +4,7 @@ export type {
   MCPMobileServerConfigValue,
   MCPMobileValidationIssue,
   MCPSecretKind,
+  MCPOAuthConfig,
   MCPSecretRef,
   MCPSecretRefValue,
   MCPServerManifest,
@@ -16,6 +17,7 @@ export type {
 export {
   assertMobileMCPServerConfig,
   MCPMobileServerConfigSchema,
+  MCPOAuthConfigSchema,
   MCPSecretRefSchema,
   MCPServerManifestSchema,
   validateMobileMCPServerConfig,

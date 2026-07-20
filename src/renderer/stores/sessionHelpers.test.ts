@@ -7,6 +7,7 @@ const {
   authTokensState,
   sessionRagCapabilityState,
   parserState,
+  platformState,
   mockParseFileLocally,
   mockGetSessionRagConfig,
   mockUploadAndCreateUserFile,
@@ -29,6 +30,7 @@ const {
     authTokensState: authTokens,
     sessionRagCapabilityState: sessionRagCapability,
     parserState: parser,
+    platformState: { type: 'desktop' as 'desktop' | 'mobile' | 'web' },
     mockParseFileLocally: vi.fn(),
     mockGetSessionRagConfig: vi.fn(async () => ({
       models: { embedding: 'chatbox-ai:text-embedding-3-small', rerank: 'chatbox-ai:rerank' },
@@ -49,7 +51,9 @@ const {
 
 vi.mock('@/platform', () => ({
   default: {
-    type: 'desktop',
+    get type() {
+      return platformState.type
+    },
     parseFileLocally: mockParseFileLocally,
   },
 }))
@@ -157,6 +161,7 @@ describe('preprocessFile local parser fallback', () => {
     authTokensState.hasTokens = true
     sessionRagCapabilityState.enabled = true
     parserState.type = 'local'
+    platformState.type = 'desktop'
     mockParseFileLocally.mockReset()
     mockGetSessionRagConfig.mockClear()
     mockUploadAndCreateUserFile.mockReset()
@@ -251,6 +256,22 @@ describe('preprocessFile local parser fallback', () => {
     expect(result.sessionAttachmentAvailability).toBe('allowed')
     expect(result.tokenCountMap?.default).toBeUndefined()
     expect(result.tokenCountMap?.default_preview).toBeDefined()
+  })
+
+  it('uses the local mobile RAG index without a Chatbox license', async () => {
+    platformState.type = 'mobile'
+    licenseState.key = undefined
+    sessionRagCapabilityState.enabled = false
+    const file = createFile('mobile-large.pdf')
+    const parsedContent = '移动端本地检索内容。'.repeat(32 * 1024)
+    blobStore.set('local-key', parsedContent)
+    mockParseFileLocally.mockResolvedValueOnce({ isSupported: true, key: 'local-key' })
+
+    const result = await prepareFileAttachment(file, { provider: '', modelId: '' })
+
+    expect(mockGetSessionRagConfig).not.toHaveBeenCalled()
+    expect(result.ragMode).toBe('session-retrieval')
+    expect(result.tokenCountMap?.default).toBeUndefined()
   })
 
   it('keeps over-threshold CSV attachments inline instead of session retrieval', async () => {
@@ -362,8 +383,8 @@ describe('preprocessFile local parser fallback', () => {
   it('recognizes raw session RAG indexing failures from existing failed attachments', () => {
     expect(
       isSessionAttachmentRagIndexingError(
-        'ConnectionFailed("Unable to open connection to local database /Users/me/databases/chatbox_session_rag_vectors.db: 14")'
-      )
+        'ConnectionFailed("Unable to open connection to local database /Users/me/databases/chatbox_session_rag_vectors.db: 14")',
+      ),
     ).toBe(true)
     expect(isSessionAttachmentRagIndexingError('local_parser_failed')).toBe(false)
   })

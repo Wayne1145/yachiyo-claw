@@ -87,6 +87,8 @@ export interface SkillInfo extends SkillMetadata {
   isBuiltin: boolean
   bodyTokenEstimate?: number
   source?: SkillSource
+  scriptExecutionEnabled?: boolean
+  signatureVerified?: boolean
 }
 
 // ===== Zod Schemas =====
@@ -110,6 +112,7 @@ export const SkillCapabilityManifestSchema = z
     scripts: z.boolean().optional(),
     privileged: z.boolean().optional(),
     tools: z.array(z.string().min(1).max(128)).max(256).optional(),
+    scriptEntrypoints: z.array(z.lazy(() => SkillScriptEntrypointSchema)).max(32).optional(),
   })
   .strict()
 
@@ -131,6 +134,56 @@ export const SkillFileManifestSchema = z
     executable: z.boolean().optional(),
   })
   .strict()
+
+export const SkillScriptRuntimeSchema = z.enum(['shell', 'python', 'javascript'])
+export const SkillScriptCapabilitySchema = z.enum(['unrestricted-privileged'])
+export const SkillScriptEntrypointSchema = z
+  .object({
+    name: SkillIdentifierSchema,
+    path: z
+      .string()
+      .min(1)
+      .max(512)
+      .refine(
+        (value) =>
+          !value.startsWith('/') &&
+          !/^[A-Za-z]:/.test(value) &&
+          !value.includes('\\') &&
+          !value.split('/').some((segment) => !segment || segment === '.' || segment === '..'),
+        'Script path must be a safe package-relative path'
+      ),
+    runtime: SkillScriptRuntimeSchema,
+    sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+    size: z.number().int().positive().max(256 * 1024),
+    timeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
+    workingDirectory: z.enum(['skill-private', 'workspace']).default('skill-private'),
+    isolation: z.literal('none'),
+    capabilities: z.array(SkillScriptCapabilitySchema).length(1),
+  })
+  .strict()
+
+export const SkillExecutableManifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    entrypoints: z.array(SkillScriptEntrypointSchema).min(1).max(32),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    const names = new Set<string>()
+    const paths = new Set<string>()
+    for (const [index, entrypoint] of manifest.entrypoints.entries()) {
+      if (names.has(entrypoint.name)) {
+        context.addIssue({ code: 'custom', message: 'Duplicate script entrypoint name', path: ['entrypoints', index, 'name'] })
+      }
+      if (paths.has(entrypoint.path)) {
+        context.addIssue({ code: 'custom', message: 'Duplicate script entrypoint path', path: ['entrypoints', index, 'path'] })
+      }
+      names.add(entrypoint.name)
+      paths.add(entrypoint.path)
+    }
+  })
+
+export const SkillExecutionModeSchema = z.enum(['declarative', 'script-disabled', 'script-enabled'])
 
 export const MarketplaceSkillSchema = z
   .object({
@@ -163,7 +216,7 @@ export const SkillInstallRecordSchema = z
     files: z.array(SkillFileManifestSchema).max(4096),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/i),
     signatureVerified: z.boolean(),
-    executionMode: z.literal('declarative'),
+    executionMode: SkillExecutionModeSchema,
     enabled: z.boolean(),
     installedAt: z.string().datetime(),
     updatedAt: z.string().datetime().optional(),
@@ -177,3 +230,8 @@ export type SkillCapabilityManifest = z.infer<typeof SkillCapabilityManifestSche
 export type SkillSignature = z.infer<typeof SkillSignatureSchema>
 export type SkillFileManifest = z.infer<typeof SkillFileManifestSchema>
 export type SkillInstallRecord = z.infer<typeof SkillInstallRecordSchema>
+export type SkillScriptRuntime = z.infer<typeof SkillScriptRuntimeSchema>
+export type SkillScriptCapability = z.infer<typeof SkillScriptCapabilitySchema>
+export type SkillScriptEntrypoint = z.infer<typeof SkillScriptEntrypointSchema>
+export type SkillExecutableManifest = z.infer<typeof SkillExecutableManifestSchema>
+export type SkillExecutionMode = z.infer<typeof SkillExecutionModeSchema>

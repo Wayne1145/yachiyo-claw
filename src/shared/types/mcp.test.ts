@@ -87,5 +87,29 @@ describe('mobile MCP configuration contract', () => {
     })
     expect(validateMobileMCPServerConfig(lanConfig, { allowLan: true }).success).toBe(true)
   })
-})
 
+  it('accepts OAuth PKCE metadata but restricts redirects to the app callback', () => {
+    const oauthConfig = {
+      ...validConfig,
+      transport: {
+        ...validConfig.transport,
+        oauth: {
+          enabled: true,
+          clientId: 'mobile-client',
+          scopes: ['mcp:tools'],
+          redirectUri: 'yachiyoclaw://oauth/mcp',
+        },
+      },
+    }
+    expect(validateMobileMCPServerConfig(oauthConfig).success).toBe(true)
+    expect(
+      validateMobileMCPServerConfig({
+        ...oauthConfig,
+        transport: {
+          ...oauthConfig.transport,
+          oauth: { ...oauthConfig.transport.oauth, redirectUri: 'https://attacker.example/callback' },
+        },
+      }).success
+    ).toBe(false)
+  })
+})

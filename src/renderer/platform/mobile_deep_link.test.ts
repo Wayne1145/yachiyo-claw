@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { acceptMobileDeepLink, consumePendingProviderImport, MOBILE_PROVIDER_IMPORT_PATH } from './mobile_deep_link'
+import {
+  acceptMobileDeepLink,
+  consumePendingMcpOAuthCallback,
+  consumePendingProviderImport,
+  MOBILE_PROVIDER_IMPORT_PATH,
+} from './mobile_deep_link'
 
 describe('mobile provider import deep links', () => {
   afterEach(() => {
     consumePendingProviderImport()
+    consumePendingMcpOAuthCallback()
   })
 
   it('keeps provider credentials out of the navigation path and consumes them once', () => {
@@ -44,5 +50,12 @@ describe('mobile provider import deep links', () => {
       kind: 'handled',
     })
     expect(consumePendingProviderImport()).toBeNull()
+  })
+
+  it('holds an MCP OAuth callback in memory for one-time exchange', () => {
+    const callback = 'yachiyoclaw://oauth/mcp?code=sensitive-code&state=random-state'
+    expect(acceptMobileDeepLink(callback)).toEqual({ kind: 'handled' })
+    expect(consumePendingMcpOAuthCallback()).toBe(callback)
+    expect(consumePendingMcpOAuthCallback()).toBeNull()
   })
 })

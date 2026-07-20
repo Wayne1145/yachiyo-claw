@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useUpdateStore } from './updateStore'
+import platform from '@/platform'
+import { requestInstallUpdate, useUpdateStore } from './updateStore'
 
 function resetStore() {
   useUpdateStore.setState({
@@ -110,6 +111,28 @@ describe('updateStore', () => {
     it('sets dismissedVersion to null when no version', () => {
       useUpdateStore.getState().dismiss()
       expect(useUpdateStore.getState().dismissedVersion).toBeNull()
+    })
+  })
+
+  describe('Android install permission', () => {
+    it('keeps the verified download ready while unknown-source permission is requested', async () => {
+      vi.spyOn(platform, 'installUpdate').mockRejectedValueOnce(new Error('install_permission_required'))
+      useUpdateStore.setState({ status: 'downloaded', version: '0.0.5' })
+
+      await requestInstallUpdate()
+
+      expect(useUpdateStore.getState().status).toBe('permission-required')
+      expect(useUpdateStore.getState().version).toBe('0.0.5')
+    })
+
+    it('reports other installer failures without discarding the selected version', async () => {
+      vi.spyOn(platform, 'installUpdate').mockRejectedValueOnce(new Error('verified_update_missing'))
+      useUpdateStore.setState({ status: 'downloaded', version: '0.0.5' })
+
+      await requestInstallUpdate()
+
+      expect(useUpdateStore.getState().status).toBe('error')
+      expect(useUpdateStore.getState().version).toBe('0.0.5')
     })
   })
 

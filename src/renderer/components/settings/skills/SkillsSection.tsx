@@ -12,12 +12,15 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core'
+import { modals } from '@mantine/modals'
 import type { SkillInfo } from '@shared/types/skills'
 import {
   IconBrandGithub,
   IconDots,
   IconFolderOpen,
   IconPlus,
+  IconPlayerPlay,
+  IconPlayerStop,
   IconRefresh,
   IconSearch,
   IconTrash,
@@ -329,6 +332,56 @@ export const SkillsSection: FC = () => {
     [t]
   )
 
+  const handleScriptExecution = useCallback(
+    async (skill: SkillInfo, enabled: boolean) => {
+      const capabilities = Array.from(
+        new Set(skill.source?.capabilityManifest?.scriptEntrypoints?.flatMap((entrypoint) => entrypoint.capabilities) || [])
+      )
+      const apply = async () => {
+        const result = await skillsController.configureScriptExecution(skill.name, enabled, capabilities)
+        if (!result.success) {
+          toastError(result.error || t('Failed to update Skill script permission'))
+          return
+        }
+        toast.success(enabled ? t('Skill script execution enabled') : t('Skill script execution disabled'))
+        await fetchSkills()
+      }
+      if (!enabled) return apply()
+      const confirmUnrestrictedExecution = () =>
+        modals.openConfirmModal({
+          title: t('Enable unrestricted privileged script execution?'),
+          children: (
+            <Text size="sm">
+              {t(
+                'These scripts are not sandboxed. They can access the device, network, and files available to the selected Root or Shizuku backend. Every run still requires a native one-time approval.'
+              )}
+            </Text>
+          ),
+          labels: { confirm: t('Enable'), cancel: t('Cancel') },
+          confirmProps: { color: 'red' },
+          onConfirm: () => void apply(),
+        })
+      if (skill.signatureVerified !== true) {
+        modals.openConfirmModal({
+          title: t('Unsigned script Skill'),
+          children: (
+            <Text size="sm">
+              {t(
+                'This Skill package has no verified publisher signature. Its hash protects the downloaded bytes from later changes, but does not establish who authored them.'
+              )}
+            </Text>
+          ),
+          labels: { confirm: t('Continue'), cancel: t('Cancel') },
+          confirmProps: { color: 'red' },
+          onConfirm: confirmUnrestrictedExecution,
+        })
+        return
+      }
+      confirmUnrestrictedExecution()
+    },
+    [fetchSkills, t]
+  )
+
   return (
     <>
       <Flex justify="space-between" align="center" mb="lg" wrap="wrap" gap="xs">
@@ -418,6 +471,20 @@ export const SkillsSection: FC = () => {
           {userSkills.map((skill) => {
             const originalSkill = getOriginalUserSkill(skill)
             const actionItems: ActionMenuItemProps[] = [
+              ...(originalSkill.source?.capabilityManifest?.scripts
+                ? [
+                    {
+                      text: originalSkill.scriptExecutionEnabled
+                        ? t('Disable Script Execution')
+                        : t('Enable Script Execution'),
+                      icon: originalSkill.scriptExecutionEnabled ? IconPlayerStop : IconPlayerPlay,
+                      color: originalSkill.scriptExecutionEnabled ? undefined : 'red',
+                      onClick: () => {
+                        void handleScriptExecution(originalSkill, !originalSkill.scriptExecutionEnabled)
+                      },
+                    } satisfies ActionMenuItemProps,
+                  ]
+                : []),
               {
                 text: t('Check Update'),
                 icon: IconRefresh,

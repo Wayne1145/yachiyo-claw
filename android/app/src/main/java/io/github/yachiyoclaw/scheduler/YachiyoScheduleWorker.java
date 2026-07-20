@@ -4,6 +4,7 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Reliable wake stage. Full headless AgentRuntime execution is intentionally not claimed yet:
@@ -31,6 +32,11 @@ public final class YachiyoScheduleWorker extends Worker {
         long now = System.currentTimeMillis();
         YachiyoSchedulerStore store = YachiyoSchedulerRuntime.get(getApplicationContext()).store();
         try {
+            // WorkManager runs the wake stage as a short foreground service. It never starts the
+            // Activity or executes model/tool side effects while the renderer is unavailable.
+            setForegroundAsync(
+                YachiyoSchedulerNotification.foregroundInfo(getApplicationContext(), executionId)
+            ).get(10, TimeUnit.SECONDS);
             // A unique WorkRequest can still race with a reconcile or a package restore. CAS claim
             // makes duplicate workers harmless and increments the durable attempt counter.
             if (!store.claim(scheduleId, executionId, now)) return Result.success();
@@ -43,5 +49,4 @@ public final class YachiyoScheduleWorker extends Worker {
         }
     }
 }
-
 

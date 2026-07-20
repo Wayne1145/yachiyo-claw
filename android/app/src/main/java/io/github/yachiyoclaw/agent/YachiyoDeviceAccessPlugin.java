@@ -1,5 +1,6 @@
 package io.github.yachiyoclaw.agent;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
@@ -40,6 +41,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.FileOutputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -56,6 +58,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ConcurrentHashMap;
 import moe.shizuku.server.IShizukuService;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -81,7 +84,10 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
     private TextView streamText;
     private LinearLayout approvalRoot;
     private PluginCall pendingApprovalCall;
+    private String pendingSkillApprovalDigest;
     private BroadcastReceiver packageChangeReceiver;
+    private final ConcurrentHashMap<String, Object> activeShizukuProcesses = new ConcurrentHashMap<>();
+    private final Set<String> cancelledShizukuExecutions = ConcurrentHashMap.newKeySet();
 
     @Override
     public void load() {
@@ -120,6 +126,13 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         result.put("overlay", Settings.canDrawOverlays(getContext()));
         PowerManager powerManager = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
         result.put("batteryOptimizationIgnored", powerManager.isIgnoringBatteryOptimizations(getContext().getPackageName()));
+        result.put(
+            "notificationsGranted",
+            Build.VERSION.SDK_INT < 33 ||
+                getContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        );
+        result.put("autoStartSettingsAvailable", YachiyoBackgroundSettings.hasOemAutoStartPage(getContext()));
+        result.put("deviceManufacturer", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
         result.put("allFiles", Environment.isExternalStorageManager());
         result.put("accessibility", isAccessibilityEnabled());
         result.put("shizukuInstalled", isPackageInstalled("moe.shizuku.privileged.api"));
@@ -137,8 +150,17 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
                 intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri());
                 break;
             case "battery":
-                intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri());
-                break;
+                YachiyoBackgroundSettings.openBatteryOptimization(getContext());
+                call.resolve();
+                return;
+            case "notifications":
+                YachiyoBackgroundSettings.openNotifications(getContext());
+                call.resolve();
+                return;
+            case "autostart":
+                YachiyoBackgroundSettings.openAutoStart(getContext());
+                call.resolve();
+                return;
             case "storage":
                 intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, packageUri());
                 break;
@@ -200,6 +222,110 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
                 call.reject("shizuku_execution_failed", error);
             }
         });
+    }
+
+    @PluginMethod
+    public void execShizukuSkillScript(PluginCall call) {
+        executor.submit(() -> {
+            try {
+                SkillScriptRequest request = SkillScriptRequest.from(call);
+                if (!request.backend.equals("shizuku")) throw new SecurityException("skill_script_backend_mismatch");
+                String approvalNonce = call.getString("approvalNonce", "");
+                if (!SkillScriptApprovalStore.consume(approvalNonce, request.bindingDigest())) {
+                    throw new SecurityException("skill_script_native_approval_required");
+                }
+                if (cancelledShizukuExecutions.contains(request.executionId)) throw new InterruptedException("skill_script_cancelled");
+                String directory = "/data/local/tmp/yachiyo-skills/" + getContext().getPackageName() + "/" + request.skillName;
+                String scriptPath = directory + "/" + request.scriptSha256 + ".script";
+                String stageCommand =
+                    "umask 077; mkdir -p " + SkillScriptRequest.shellQuote(directory) +
+                    " && cat > " + SkillScriptRequest.shellQuote(scriptPath) +
+                    " && chmod 700 " + SkillScriptRequest.shellQuote(scriptPath);
+                JSObject staged = executeShizukuProcess(
+                    new String[] { "/system/bin/sh", "-c", stageCommand },
+                    null,
+                    request.script,
+                    Math.min(request.timeoutMs, 30_000),
+                    request.executionId
+                );
+                if (staged.getInteger("exitCode", 1) != 0) {
+                    call.resolve(staged);
+                    return;
+                }
+                if (cancelledShizukuExecutions.contains(request.executionId)) throw new InterruptedException("skill_script_cancelled");
+                String[] command = new String[request.args.size() + 2];
+                command[0] = request.executable();
+                command[1] = scriptPath;
+                for (int index = 0; index < request.args.size(); index++) command[index + 2] = request.args.get(index);
+                String workingDirectory = request.workingDirectoryMode.equals("workspace") ? request.workspaceDirectory : directory;
+                call.resolve(executeShizukuProcess(command, workingDirectory, null, request.timeoutMs, request.executionId));
+            } catch (Exception error) {
+                call.reject("shizuku_skill_script_failed", error);
+            } finally {
+                String executionId = call.getString("executionId", "");
+                activeShizukuProcesses.remove(executionId);
+                cancelledShizukuExecutions.remove(executionId);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void requestSkillScriptAuthorization(PluginCall call) {
+        if (!Settings.canDrawOverlays(getContext())) {
+            call.reject("overlay_permission_required");
+            return;
+        }
+        final SkillScriptRequest request;
+        try {
+            request = SkillScriptRequest.from(call);
+        } catch (Exception error) {
+            call.reject("invalid_skill_script_authorization", error);
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            if (pendingApprovalCall != null) {
+                call.reject("approval_already_pending");
+                return;
+            }
+            try {
+                pendingApprovalCall = call;
+                pendingSkillApprovalDigest = request.bindingDigest();
+                String signature = request.signatureVerified ? "signed package" : "UNSIGNED PACKAGE";
+                showApprovalInternal(
+                    "Run unrestricted privileged Skill script?",
+                    request.skillName + "/" + request.entrypointName + " (" + request.runtime + ", " + request.backend + ", " + signature + ")\n" +
+                        "No network, device, or filesystem isolation is enforced. Arguments: " + request.args.size(),
+                    true,
+                    false
+                );
+            } catch (Exception error) {
+                pendingApprovalCall = null;
+                pendingSkillApprovalDigest = null;
+                call.reject("skill_script_authorization_failed", error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void cancelShizukuScript(PluginCall call) {
+        String executionId = call.getString("executionId", "").trim();
+        if (!executionId.matches("^[A-Za-z0-9._-]{8,128}$")) {
+            call.reject("invalid_skill_execution_id");
+            return;
+        }
+        cancelledShizukuExecutions.add(executionId);
+        Object process = activeShizukuProcesses.get(executionId);
+        boolean killed = false;
+        if (process != null) {
+            try {
+                process.getClass().getMethod("destroy").invoke(process);
+                killed = true;
+            } catch (Exception ignored) {}
+            activeShizukuProcesses.remove(executionId, process);
+        }
+        JSObject result = new JSObject();
+        result.put("killed", killed);
+        call.resolve(result);
     }
 
     /**
@@ -710,7 +836,8 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
             showApprovalInternal(
                 call.getString("title", "Agent operation"),
                 call.getString("detail", ""),
-                call.getBoolean("dangerous", false)
+                call.getBoolean("dangerous", false),
+                true
             );
         });
     }
@@ -736,10 +863,23 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
     }
 
     private JSObject executeShizuku(String command, int timeoutMs) throws Exception {
+        return executeShizukuProcess(new String[] { "/system/bin/sh", "-c", command }, null, null, timeoutMs, null);
+    }
+
+    private JSObject executeShizukuProcess(String[] command, String directory, byte[] stdin, int timeoutMs, String executionId) throws Exception {
         if (!hasShizukuPermission()) throw new SecurityException("shizuku_permission_required");
         IShizukuService service = IShizukuService.Stub.asInterface(Shizuku.getBinder());
-        Object process = service.newProcess(new String[] { "sh", "-c", command }, null, null);
+        Object process = service.newProcess(command, null, directory);
+        if (executionId != null) activeShizukuProcesses.put(executionId, process);
         Class<?> processClass = process.getClass();
+        if (stdin != null) {
+            ParcelFileDescriptor stdinDescriptor = (ParcelFileDescriptor) processClass.getMethod("getOutputStream").invoke(process);
+            if (stdinDescriptor == null) throw new IOException("shizuku_stdin_unavailable");
+            try (FileOutputStream output = new FileOutputStream(stdinDescriptor.getFileDescriptor()); stdinDescriptor) {
+                output.write(stdin);
+                output.flush();
+            }
+        }
         ParcelFileDescriptor stdoutDescriptor = (ParcelFileDescriptor) processClass.getMethod("getInputStream").invoke(process);
         ParcelFileDescriptor stderrDescriptor = (ParcelFileDescriptor) processClass.getMethod("getErrorStream").invoke(process);
         Future<String> stdout = collectDescriptor(stdoutDescriptor);
@@ -760,6 +900,7 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         result.put("stderr", stderr.get(2, TimeUnit.SECONDS));
         result.put("exitCode", exitCode);
         result.put("timedOut", timedOut);
+        if (executionId != null) activeShizukuProcesses.remove(executionId, process);
         return result;
     }
 
@@ -889,7 +1030,7 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         capsuleRoot.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(280).setInterpolator(new DecelerateInterpolator()).start();
     }
 
-    private void showApprovalInternal(String title, String detail, boolean dangerous) {
+    private void showApprovalInternal(String title, String detail, boolean dangerous, boolean allowConversation) {
         windowManager = (WindowManager) getContext().getSystemService(Context.WINDOW_SERVICE);
         approvalRoot = new LinearLayout(getContext());
         approvalRoot.setOrientation(LinearLayout.VERTICAL);
@@ -924,7 +1065,9 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         approvalRoot.addView(actions, actionsParams);
         actions.addView(approvalButton("Deny", "deny", Color.rgb(245, 205, 215)));
         actions.addView(approvalButton("Allow once", "once", Color.WHITE));
-        actions.addView(approvalButton("Allow for conversation", "conversation", Color.rgb(255, 205, 221)));
+        if (allowConversation) {
+            actions.addView(approvalButton("Allow for conversation", "conversation", Color.rgb(255, 205, 221)));
+        }
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             Math.min(dp(380), getContext().getResources().getDisplayMetrics().widthPixels - dp(24)),
@@ -971,9 +1114,16 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         approvalRoot = null;
         PluginCall call = pendingApprovalCall;
         pendingApprovalCall = null;
+        String skillDigest = pendingSkillApprovalDigest;
+        pendingSkillApprovalDigest = null;
         if (call != null) {
             JSObject result = new JSObject();
             result.put("decision", decision);
+            if (skillDigest != null && !"deny".equals(decision)) {
+                SkillScriptApprovalStore.Approval approval = SkillScriptApprovalStore.issue(skillDigest);
+                result.put("approvalNonce", approval.nonce);
+                result.put("expiresAt", approval.expiresAt);
+            }
             call.resolve(result);
         }
     }
@@ -1020,6 +1170,13 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        for (Object process : activeShizukuProcesses.values()) {
+            try {
+                process.getClass().getMethod("destroy").invoke(process);
+            } catch (Exception ignored) {}
+        }
+        activeShizukuProcesses.clear();
+        cancelledShizukuExecutions.clear();
         if (packageChangeReceiver != null) {
             try {
                 getContext().unregisterReceiver(packageChangeReceiver);

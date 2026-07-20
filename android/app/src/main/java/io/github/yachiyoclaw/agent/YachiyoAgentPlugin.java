@@ -20,6 +20,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -76,6 +77,48 @@ public class YachiyoAgentPlugin extends Plugin {
                 call.resolve(response);
             } catch (Exception error) {
                 call.reject("root_execution_failed", error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void execRootSkillScript(PluginCall call) {
+        executor.submit(() -> {
+            try {
+                SkillScriptRequest request = SkillScriptRequest.from(call);
+                if (!request.backend.equals("root")) throw new SecurityException("skill_script_backend_mismatch");
+                String approvalNonce = call.getString("approvalNonce", "");
+                if (!SkillScriptApprovalStore.consume(approvalNonce, request.bindingDigest())) {
+                    throw new SecurityException("skill_script_native_approval_required");
+                }
+                java.io.File scriptDirectory = new java.io.File(
+                    getContext().getCacheDir(),
+                    "skill-scripts/" + request.skillName
+                );
+                if (!scriptDirectory.isDirectory() && !scriptDirectory.mkdirs()) throw new IOException("skill_script_directory_failed");
+                java.io.File scriptFile = new java.io.File(scriptDirectory, request.scriptSha256 + ".script");
+                Files.write(scriptFile.toPath(), request.script);
+                scriptFile.setReadable(true, true);
+                scriptFile.setWritable(true, true);
+
+                StringBuilder command = new StringBuilder();
+                String workingDirectory = request.workingDirectoryMode.equals("workspace")
+                    ? request.workspaceDirectory
+                    : scriptDirectory.getAbsolutePath();
+                command.append("cd ").append(SkillScriptRequest.shellQuote(workingDirectory));
+                command.append(" && ").append(SkillScriptRequest.shellQuote(request.executable()));
+                command.append(" ").append(SkillScriptRequest.shellQuote(scriptFile.getAbsolutePath()));
+                // Arguments cross the Capacitor boundary as an array and are quoted only here.
+                for (String argument : request.args) command.append(" ").append(SkillScriptRequest.shellQuote(argument));
+                CommandResult result = execute(command.toString(), request.timeoutMs);
+                JSObject response = new JSObject();
+                response.put("stdout", result.stdout);
+                response.put("stderr", result.stderr);
+                response.put("exitCode", result.exitCode);
+                response.put("timedOut", result.timedOut);
+                call.resolve(response);
+            } catch (Exception error) {
+                call.reject("root_skill_script_failed", error);
             }
         });
     }

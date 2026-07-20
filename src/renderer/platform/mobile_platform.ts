@@ -1,8 +1,10 @@
 import { App } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
+import { Capacitor } from '@capacitor/core'
 import { Device } from '@capacitor/device'
 import * as defaults from '@shared/defaults'
 import type { Config, Settings, ShortcutSetting } from '@shared/types'
+import { getLatestYachiyoAndroidRelease, type YachiyoAndroidRelease } from '@shared/releases/yachiyo'
 import localforage from 'localforage'
 import { v4 as uuidv4 } from 'uuid'
 import { parseLocale } from '@/i18n/parser'
@@ -18,6 +20,7 @@ import {
 import { requestAgentApproval } from '@/mobile/agent-approval'
 import { yachiyoAgentNative } from '@/platform/native/yachiyo_agent'
 import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
+import { yachiyoUpdateNative } from '@/platform/native/yachiyo_update'
 import type { ImageGenerationStorage } from '@/storage/ImageGenerationStorage'
 import type { SessionMetaStorage } from '@/storage/SessionMetaStorage'
 import { SQLiteImageGenerationStorage } from '@/storage/SQLiteImageGenerationStorage'
@@ -27,7 +30,7 @@ import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { getBrowser, getOS } from '../packages/navigator'
 import type { Platform, PlatformType } from './interfaces'
 import type { KnowledgeBaseController } from './knowledge-base/interface'
-import { acceptMobileDeepLink } from './mobile_deep_link'
+import { acceptMobileDeepLink, consumePendingMcpOAuthCallback } from './mobile_deep_link'
 import MobileExporter from './mobile_exporter'
 import mobileLogger from './mobile_logger'
 import { MobileKnowledgeBaseController, MobileSessionAttachmentRagController } from './mobile-rag-controller'
@@ -48,6 +51,16 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   private _mobileKnowledgeBaseController: MobileKnowledgeBaseController | null = null
   private _mobileSessionAttachmentRagController: MobileSessionAttachmentRagController | null = null
   private agentWorkingDirectory = getAgentWorkingDirectory()
+  private pendingUpdate: YachiyoAndroidRelease | null = null
+  private updateCheckRunning = false
+  private readonly updaterCheckingListeners = new Set<() => void>()
+  private readonly updaterAvailableListeners = new Set<(data: { version: string }) => void>()
+  private readonly updaterNotAvailableListeners = new Set<() => void>()
+  private readonly updaterProgressListeners = new Set<
+    (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void
+  >()
+  private readonly updaterDownloadedListeners = new Set<(data: { version: string }) => void>()
+  private readonly updaterErrorListeners = new Set<(data: { message: string }) => void>()
 
   constructor() {
     super()
@@ -56,6 +69,17 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     App.addListener('appUrlOpen', (event) => {
       this.handleDeepLink(event.url)
     })
+    if (Capacitor.isNativePlatform()) {
+      void yachiyoUpdateNative.addListener('progress', (event) => {
+        for (const listener of this.updaterProgressListeners) listener(event)
+      })
+      void yachiyoUpdateNative.addListener('downloaded', (event) => {
+        for (const listener of this.updaterDownloadedListeners) listener(event)
+      })
+      void yachiyoUpdateNative.addListener('error', (event) => {
+        for (const listener of this.updaterErrorListeners) listener(event)
+      })
+    }
   }
 
   // 处理深度链接
@@ -63,6 +87,13 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     const result = acceptMobileDeepLink(url)
     if (result.kind === 'navigate') {
       this.triggerNavigation(result.path)
+    } else if (result.kind === 'handled') {
+      const callbackUrl = consumePendingMcpOAuthCallback()
+      if (callbackUrl) {
+        void import('@/packages/mcp/controller')
+          .then(({ mcpController }) => mcpController.completeMobileOAuth(callbackUrl))
+          .catch(() => console.warn('MCP OAuth callback could not be completed.'))
+      }
     } else if (result.kind === 'rejected') {
       // Only a fixed reason code is logged; URLs can contain provider credentials.
       console.warn('Rejected mobile deep link:', result.reason)
@@ -117,7 +148,35 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     return () => null
   }
   public onUpdateDownloaded(callback: () => void): () => void {
-    return () => null
+    const listener = () => callback()
+    this.updaterDownloadedListeners.add(listener)
+    return () => this.updaterDownloadedListeners.delete(listener)
+  }
+  public onUpdaterChecking(callback: () => void): () => void {
+    this.updaterCheckingListeners.add(callback)
+    return () => this.updaterCheckingListeners.delete(callback)
+  }
+  public onUpdaterAvailable(callback: (data: { version: string }) => void): () => void {
+    this.updaterAvailableListeners.add(callback)
+    return () => this.updaterAvailableListeners.delete(callback)
+  }
+  public onUpdaterNotAvailable(callback: () => void): () => void {
+    this.updaterNotAvailableListeners.add(callback)
+    return () => this.updaterNotAvailableListeners.delete(callback)
+  }
+  public onUpdaterProgress(
+    callback: (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void,
+  ): () => void {
+    this.updaterProgressListeners.add(callback)
+    return () => this.updaterProgressListeners.delete(callback)
+  }
+  public onUpdaterDownloaded(callback: (data: { version: string }) => void): () => void {
+    this.updaterDownloadedListeners.add(callback)
+    return () => this.updaterDownloadedListeners.delete(callback)
+  }
+  public onUpdaterError(callback: (data: { message: string }) => void): () => void {
+    this.updaterErrorListeners.add(callback)
+    return () => this.updaterErrorListeners.delete(callback)
   }
   public async openLink(url: string): Promise<void> {
     try {
@@ -253,8 +312,46 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     return
   }
 
-  installUpdate(): Promise<void> {
-    throw new Error('Method not implemented.')
+  public async checkForUpdate(): Promise<{ started: boolean }> {
+    if (this.updateCheckRunning) return { started: false }
+    this.updateCheckRunning = true
+    for (const listener of this.updaterCheckingListeners) listener()
+    try {
+      this.pendingUpdate = await getLatestYachiyoAndroidRelease(await this.getVersion())
+      if (!this.pendingUpdate) {
+        for (const listener of this.updaterNotAvailableListeners) listener()
+      } else {
+        for (const listener of this.updaterAvailableListeners) listener({ version: this.pendingUpdate.version })
+      }
+      return { started: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'update_check_failed'
+      for (const listener of this.updaterErrorListeners) listener({ message })
+      throw error
+    } finally {
+      this.updateCheckRunning = false
+    }
+  }
+
+  public async downloadUpdate(): Promise<void> {
+    const update = this.pendingUpdate
+    if (!update) throw new Error('update_metadata_missing')
+    await yachiyoUpdateNative.downloadUpdate({
+      version: update.version,
+      url: update.apk.url,
+      size: update.apk.size,
+      sha256: update.apk.sha256,
+      sha256SidecarUrl: update.apk.sha256SidecarUrl,
+    })
+  }
+
+  public async openUpdateInstallPermissionSettings(): Promise<void> {
+    await yachiyoUpdateNative.openInstallPermissionSettings()
+  }
+
+  public async installUpdate(): Promise<void> {
+    const result = await yachiyoUpdateNative.installUpdate()
+    if (result.permissionRequired) throw new Error('install_permission_required')
   }
 
   public getKnowledgeBaseController(): KnowledgeBaseController {
@@ -309,7 +406,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     if (!approved) return { stdout: '', stderr: '用户拒绝了此操作', exitCode: 126 }
     const result = await executeRootShell(
       `cd ${shellQuote(this.agentWorkingDirectory)} && ${params.command}`,
-      params.timeout ?? 120_000
+      params.timeout ?? 120_000,
     )
     return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode }
   }

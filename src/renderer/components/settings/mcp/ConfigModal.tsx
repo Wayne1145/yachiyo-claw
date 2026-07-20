@@ -7,18 +7,21 @@ import {
   Paper,
   Radio,
   Stack,
+  Switch,
   Text,
   Textarea,
   TextInput,
   Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
+import { Capacitor } from '@capacitor/core'
 import pTimeout from 'p-timeout'
 import { type FC, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/layout/Overlay'
 import { MCPServer } from '@/packages/mcp/controller'
 import type { MCPServerConfig } from '@/packages/mcp/types'
+import { mobileMcpController } from '@/mobile/mcp-mobile-controller'
 import { trackEvent } from '@/utils/track'
 import { getConfigFromFormValues, getFormValuesFromConfig, type MCPServerConfigFormValues } from './utils'
 
@@ -69,6 +72,7 @@ const ConfigForm: FC<{
   const { t } = useTranslation()
   const formRef = useRef<HTMLFormElement>(null)
   const [testing, setTesting] = useState(false)
+  const [authorizing, setAuthorizing] = useState(false)
   const [testingResult, setTestingResult] = useState<ConnectionTestingResult | null>()
   const testingAbortController = useRef<AbortController | null>(null)
 
@@ -87,6 +91,12 @@ const ConfigForm: FC<{
     setTestingResult(null)
     trackEvent('test_mcp_server_connection', { type: config.transport.type })
     try {
+      if (Capacitor.isNativePlatform()) {
+        const result = await mobileMcpController.testConnection(config)
+        if (!result.ok) throw new Error(result.error || 'MCP connection failed')
+        setTestingResult({ config, tools: [] })
+        return
+      }
       const server = new MCPServer(config.transport)
       testingAbortController.current = new AbortController()
       await pTimeout(server.start(), {
@@ -109,6 +119,21 @@ const ConfigForm: FC<{
       setTestingResult({ config, error: err as Error, tools: [] })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const startOAuth = async () => {
+    if (formRef.current && !formRef.current.reportValidity()) return
+    const config = getConfigFromFormValues(form.getValues())
+    if (config.transport.type !== 'http' || !config.transport.oauth?.enabled) return
+    setAuthorizing(true)
+    setTestingResult(null)
+    try {
+      await mobileMcpController.beginOAuth(config)
+    } catch (error) {
+      setTestingResult({ config, error: error as Error, tools: [] })
+    } finally {
+      setAuthorizing(false)
     }
   }
 
@@ -155,13 +180,42 @@ const ConfigForm: FC<{
         {form.values.transport.type === 'http' && (
           <>
             <TextInput label="URL" required placeholder="https://..." {...form.getInputProps('transport.url')} />
-            <Textarea
-              label="HTTP Header"
-              placeholder="NAME=VALUE"
-              autosize
-              minRows={3}
-              {...form.getInputProps('transport.headers')}
-            />
+            {!Capacitor.isNativePlatform() && (
+              <Textarea
+                label="HTTP Header"
+                placeholder="NAME=VALUE"
+                autosize
+                minRows={3}
+                {...form.getInputProps('transport.headers')}
+              />
+            )}
+            {Capacitor.isNativePlatform() && (
+              <>
+                <Switch
+                  label="OAuth 2.1 (PKCE)"
+                  {...form.getInputProps('transport.oauthEnabled', { type: 'checkbox' })}
+                />
+                {form.values.transport.oauthEnabled && (
+                  <Stack gap="sm">
+                    <TextInput
+                      label="Client ID"
+                      placeholder="Leave blank for dynamic registration"
+                      {...form.getInputProps('transport.oauthClientId')}
+                    />
+                    <TextInput
+                      label="Scopes"
+                      placeholder="mcp:tools mcp:resources"
+                      {...form.getInputProps('transport.oauthScopes')}
+                    />
+                    <TextInput
+                      label="Resource metadata URL"
+                      placeholder="https://.../.well-known/oauth-protected-resource"
+                      {...form.getInputProps('transport.oauthResourceMetadataUrl')}
+                    />
+                  </Stack>
+                )}
+              </>
+            )}
           </>
         )}
         <Group justify="space-between">
@@ -173,6 +227,13 @@ const ConfigForm: FC<{
             <Text />
           )}
           <Group justify="flex-end" gap="sm">
+            {Capacitor.isNativePlatform() &&
+              form.values.transport.type === 'http' &&
+              form.values.transport.oauthEnabled && (
+                <Button variant="light" onClick={startOAuth} loading={authorizing} disabled={testing}>
+                  {t('Login with OAuth')}
+                </Button>
+              )}
             {testing && (
               <Button variant="subtle" color="red" onClick={() => testingAbortController.current?.abort()}>
                 {t('Cancel')}

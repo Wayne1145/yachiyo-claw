@@ -1,5 +1,7 @@
 import { experimental_createMCPClient as createMCPClient } from '@ai-sdk/mcp'
 import { Capacitor } from '@capacitor/core'
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { validateMobileMCPServerConfig } from '@shared/types/mcp'
 import type { ToolSet } from 'ai'
@@ -7,13 +9,18 @@ import Emittery from 'emittery'
 import { isEqual } from 'lodash'
 import { requestAgentApproval } from '@/mobile/agent-approval'
 import { mobileMcpController } from '@/mobile/mcp-mobile-controller'
+import { createSafeMcpOAuthFetch } from '@/mobile/mcp-oauth-provider'
 import { IPCStdioTransport } from './ipc-stdio-transport'
 import type { MCPServerConfig, MCPServerStatus } from './types'
 
 type TransportConfig = MCPServerConfig['transport']
 type MCPClient = Awaited<ReturnType<typeof createMCPClient>>
 
-async function createClient(transportConfig: TransportConfig, name = 'chatbox-mcp-client'): Promise<MCPClient> {
+async function createClient(
+  transportConfig: TransportConfig,
+  name = 'chatbox-mcp-client',
+  authProvider?: OAuthClientProvider
+): Promise<MCPClient> {
   if (transportConfig.type === 'stdio') {
     if (Capacitor.isNativePlatform()) throw new Error('stdio MCP transports are unavailable on mobile.')
     const transport = await IPCStdioTransport.create(transportConfig)
@@ -37,9 +44,27 @@ async function createClient(transportConfig: TransportConfig, name = 'chatbox-mc
     }
   }
   if (transportConfig.type === 'http') {
+    const safeFetch = Capacitor.isNativePlatform() ? createSafeMcpOAuthFetch() : undefined
+    const createSseClient = async () => {
+      const transport = new SSEClientTransport(new URL(transportConfig.url), {
+        requestInit: { headers: transportConfig.headers },
+        authProvider,
+        fetch: safeFetch,
+      })
+      return createMCPClient({
+        name,
+        transport,
+        onUncaughtError(error: unknown) {
+          console.error('mcp:client:onUncaughtError', error)
+        },
+      })
+    }
+    if (transportConfig.protocol === 'sse') return createSseClient()
     try {
       const transport = new StreamableHTTPClientTransport(new URL(transportConfig.url), {
         requestInit: { headers: transportConfig.headers },
+        authProvider,
+        fetch: safeFetch,
       })
       return await createMCPClient({
         name,
@@ -50,17 +75,10 @@ async function createClient(transportConfig: TransportConfig, name = 'chatbox-mc
       })
     } catch (err) {
       console.error('Streamable HTTP connection failed', err)
-      return await createMCPClient({
-        name,
-        transport: {
-          type: 'sse',
-          url: transportConfig.url,
-          headers: transportConfig.headers,
-        },
-        onUncaughtError(error: unknown) {
-          console.error('mcp:client:onUncaughtError', error)
-        },
-      })
+      // OAuth errors must preserve the original PKCE transaction. Retrying via
+      // SSE here would start a second authorization and overwrite its verifier.
+      if (authProvider || transportConfig.protocol === 'streamable-http') throw err
+      return createSseClient()
     }
   }
   throw new Error('Unknown transport type')
@@ -71,7 +89,10 @@ export class MCPServer extends Emittery<{ status: MCPServerStatus }> {
   private client?: MCPClient
   private tools?: ToolSet
 
-  constructor(private readonly transportConfig: TransportConfig) {
+  constructor(
+    private readonly transportConfig: TransportConfig,
+    private readonly authProvider?: OAuthClientProvider
+  ) {
     super()
   }
 
@@ -90,7 +111,7 @@ export class MCPServer extends Emittery<{ status: MCPServerStatus }> {
     }
     this.status = { state: 'starting' }
     try {
-      this.client = await createClient(this.transportConfig)
+      this.client = await createClient(this.transportConfig, 'yachiyo-mcp-client', this.authProvider)
       this.tools = await this.client.tools()
     } catch (err) {
       console.error('mcp:client:start', err)
@@ -136,6 +157,7 @@ export const mcpController = {
       return
     }
     let runtimeTransport = serverConfig.transport
+    let authProvider: OAuthClientProvider | undefined
     if (Capacitor.isNativePlatform()) {
       const validated = validateMobileMCPServerConfig(serverConfig)
       if (!validated.success) {
@@ -143,7 +165,9 @@ export const mcpController = {
         return
       }
       try {
+        mobileMcpController.upsert(validated.data)
         const headers = await mobileMcpController.resolveHeaders(validated.data)
+        authProvider = mobileMcpController.createOAuthProvider(validated.data)
         runtimeTransport = {
           type: 'http',
           url: validated.data.transport.url,
@@ -155,7 +179,7 @@ export const mcpController = {
         return
       }
     }
-    const server = new MCPServer(runtimeTransport)
+    const server = new MCPServer(runtimeTransport, authProvider)
     this.servers.set(serverConfig.id, { instance: server, config: serverConfig })
 
     // 如果有订阅者，重新连接他们
@@ -167,6 +191,20 @@ export const mcpController = {
     }
 
     await server.start()
+  },
+
+  async completeMobileOAuth(callbackUrl: string): Promise<string> {
+    if (!Capacitor.isNativePlatform()) throw new Error('mobile_mcp_oauth_native_only')
+    const config = await mobileMcpController.finishOAuthCallback(callbackUrl)
+    const { settingsStore } = await import('@/stores/settingsStore')
+    settingsStore.getState().setSettings((draft) => {
+      const index = draft.mcp.servers.findIndex((server) => server.id === config.id)
+      if (index >= 0) draft.mcp.servers[index] = config
+      else draft.mcp.servers.push(config)
+    })
+    await this.stopServer(config.id)
+    await this.startServer(config)
+    return config.id
   },
 
   async stopServer(id: string) {

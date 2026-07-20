@@ -276,9 +276,19 @@ public final class YachiyoSchedulerPlugin extends Plugin {
         result.put("schemaVersion", SchedulerState.SCHEMA_VERSION);
         result.put("workManager", true);
         result.put("roomStore", true);
+        result.put("executionMode", "foreground-required");
+        result.put("wakeMode", "workmanager-foreground-service");
         result.put("headlessExecution", false);
+        result.put("backgroundAgentRuntime", false);
         result.put("foregroundDrain", true);
+        result.put("durableForegroundHandoff", true);
+        result.put("bootRecovery", true);
+        result.put("lockedBootDeferredUntilUnlock", true);
+        result.put("packageReplaceRecovery", true);
+        result.put("clockChangeRecovery", true);
         result.put("forceStopRecovery", false);
+        result.put("approvalReplay", false);
+        result.put("sideEffectReplay", false);
         result.put("pendingState", SchedulerState.AWAITING_FOREGROUND);
         call.resolve(result);
     }
@@ -322,5 +332,4 @@ public final class YachiyoSchedulerPlugin extends Plugin {
         call.reject(message, "SCHEDULER_" + operation.toUpperCase() + "_FAILED");
     }
 }
-
 

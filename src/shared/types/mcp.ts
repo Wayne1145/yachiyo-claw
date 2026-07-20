@@ -8,6 +8,15 @@ export type MCPServerConfig<TransportConfig = MCPTransportConfig> = {
   manifest?: MCPServerManifest
 }
 
+export type MCPOAuthConfig = {
+  enabled: boolean
+  /** Optional pre-registered public client id. Omit to use dynamic registration. */
+  clientId?: string
+  scopes?: string[]
+  redirectUri?: string
+  resourceMetadataUrl?: string
+}
+
 export type MCPTransportConfig =
   | {
       type: 'stdio'
@@ -24,6 +33,7 @@ export type MCPTransportConfig =
       secretRefs?: MCPSecretRef[]
       /** Streamable HTTP is preferred on mobile; SSE is a compatibility fallback. */
       protocol?: 'streamable-http' | 'sse'
+      oauth?: MCPOAuthConfig
     }
 
 export type MCPServerStatus = {
@@ -61,6 +71,7 @@ export type MCPMobileServerConfig = {
     url: string
     protocol?: 'streamable-http' | 'sse'
     secretRefs: MCPSecretRef[]
+    oauth?: MCPOAuthConfig
   }
   manifest?: MCPServerManifest
 }
@@ -136,6 +147,23 @@ export const MCPServerManifestSchema = z
   })
   .strict()
 
+export const MCPOAuthConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    clientId: z.string().trim().min(1).max(512).optional(),
+    scopes: z.array(z.string().trim().min(1).max(256)).max(64).optional(),
+    redirectUri: z
+      .string()
+      .url()
+      .refine(
+        (value) => value === 'yachiyoclaw://oauth/mcp' || value === 'yachiyoclaw-dev://oauth/mcp',
+        'MCP OAuth redirects must use the Yachiyo Claw callback.'
+      )
+      .optional(),
+    resourceMetadataUrl: z.string().url().optional(),
+  })
+  .strict()
+
 export const MCPMobileServerConfigSchema = z
   .object({
     id: z.string().min(1).max(256),
@@ -147,6 +175,7 @@ export const MCPMobileServerConfigSchema = z
         url: z.string().url(),
         protocol: z.enum(['streamable-http', 'sse']).optional(),
         secretRefs: z.array(MCPSecretRefSchema).max(64).default([]),
+        oauth: MCPOAuthConfigSchema.optional(),
       })
       .strict(),
     manifest: MCPServerManifestSchema.optional(),
