@@ -98,12 +98,8 @@ dependencies {
     implementation 'com.google.mediapipe:tasks-text:0.10.26'
     implementation 'org.apache.commons:commons-compress:1.27.1'
     implementation project(':capacitor-android')
-    // Keep Shizuku and its transitive artifacts in the workspace so Android
-    // builds do not depend on Maven Central being reachable.
-    implementation files('libs/shizuku/aidl-13.1.5.aar')
-    implementation files('libs/shizuku/shared-13.1.5.aar')
-    implementation files('libs/shizuku/api-13.1.5.aar')
-    implementation files('libs/shizuku/provider-13.1.5.aar')
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
