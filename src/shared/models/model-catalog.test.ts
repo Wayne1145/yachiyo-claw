@@ -70,7 +70,7 @@ describe('HuggingFaceModelCatalogAdapter', () => {
     })
     expect(fetch).toHaveBeenCalledWith(
       'https://hf.test/api/models?search=Qwen&limit=1&full=true&config=true',
-      expect.objectContaining({ method: 'GET' })
+      expect.objectContaining({ method: 'GET' }),
     )
   })
 
@@ -92,8 +92,26 @@ describe('HuggingFaceModelCatalogAdapter', () => {
     expect(artifacts[0]).toMatchObject({ format: 'litertlm', runtime: 'litert-lm', sizeBytes: 1234 })
     expect(fetch).toHaveBeenCalledWith(
       'https://hf.test/api/models/owner/model/tree/0123456789abcdef0123456789abcdef01234567?recursive=true&expand=true',
-      expect.objectContaining({ method: 'GET' })
+      expect.objectContaining({ method: 'GET' }),
     )
+  })
+
+  it('maps TFLite text embedder artifacts to the MediaPipe runtime', async () => {
+    const fetch = createFetch([
+      jsonResponse([
+        {
+          type: 'file',
+          path: 'model.tflite',
+          size: 1234,
+          lfs: { oid: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' },
+        },
+      ]),
+    ])
+    const adapter = new HuggingFaceModelCatalogAdapter({ fetch, baseUrl: 'https://hf.test' })
+
+    const artifacts = await adapter.listArtifacts('owner/embedder', '0123456789abcdef0123456789abcdef01234567')
+
+    expect(artifacts[0]).toMatchObject({ format: 'tflite', runtime: 'mediapipe-text', required: true })
   })
 
   it('rejects malformed upstream entries instead of guessing an id', async () => {
@@ -155,7 +173,10 @@ describe('ModelScopeModelCatalogAdapter', () => {
 
   it('accepts a normalized search result envelope', async () => {
     const fetch = createFetch([
-      jsonResponse({ Code: 200, Data: { Models: [{ Id: 'owner/model', Name: 'model', Revision: 'master' }] } }),
+      jsonResponse({
+        Code: 200,
+        Data: { Model: { Models: [{ Path: 'owner', Name: 'model', Revision: 'master' }], TotalCount: 1 } },
+      }),
     ])
     const adapter = new ModelScopeModelCatalogAdapter({ fetch, baseUrl: 'https://ms.test' })
 
@@ -164,8 +185,21 @@ describe('ModelScopeModelCatalogAdapter', () => {
     expect(models).toHaveLength(1)
     expect(models[0]).toMatchObject({ id: 'owner/model', source: 'modelscope', revision: 'master' })
     expect(fetch).toHaveBeenCalledWith(
-      'https://ms.test/api/v1/models?PageNumber=1&PageSize=5&Name=owner',
-      expect.objectContaining({ method: 'GET' })
+      'https://ms.test/api/v1/dolphin/models',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          PageNumber: 1,
+          PageSize: 5,
+          SortBy: 'Default',
+          Target: '',
+          IsAigc: false,
+          Name: 'owner',
+          Criterion: [],
+          SingleCriterion: [],
+          IsStar: false,
+        }),
+      }),
     )
   })
 })
@@ -249,7 +283,7 @@ describe('ModelCompatibilityEngine', () => {
         'runtime_unavailable',
         'insufficient_ram',
         'insufficient_storage',
-      ])
+      ]),
     )
   })
 })
@@ -280,8 +314,7 @@ describe('ModelCatalogController', () => {
     await expect(
       controller.createDownloadJob({
         model: createCompatibilityModel({ artifacts: [{ ...model.artifacts[0], sha256: undefined, hash: undefined }] }),
-      })
+      }),
     ).rejects.toBeInstanceOf(ModelCatalogError)
   })
 })
-

@@ -46,7 +46,10 @@ function normalizeVersion(value: string): string {
 
 export function normalizeYachiyoSha256(value?: string | null): string | undefined {
   if (!value) return undefined
-  const normalized = value.trim().replace(/^sha256:/i, '').toLowerCase()
+  const normalized = value
+    .trim()
+    .replace(/^sha256:/i, '')
+    .toLowerCase()
   return /^[a-f0-9]{64}$/.test(normalized) ? normalized : undefined
 }
 
@@ -75,8 +78,10 @@ function apkPreference(asset: GitHubReleaseAsset): number {
 function findSha256Sidecar(assets: GitHubReleaseAsset[], apkName: string): GitHubReleaseAsset | undefined {
   const exactName = `${apkName}.sha256`.toLowerCase()
   const stemName = apkName.replace(/\.apk$/i, '.sha256').toLowerCase()
-  return assets.find((asset) => asset.name?.toLowerCase() === exactName) ??
+  return (
+    assets.find((asset) => asset.name?.toLowerCase() === exactName) ??
     assets.find((asset) => asset.name?.toLowerCase() === stemName)
+  )
 }
 
 export async function getLatestYachiyoAndroidRelease(
@@ -94,15 +99,28 @@ export async function getLatestYachiyoAndroidRelease(
   if (!isNewerYachiyoVersion(currentVersion, release.tag_name)) return null
 
   const assets = release.assets ?? []
-  const apk = assets
-    .map((asset) => ({ asset, score: apkPreference(asset) }))
+  const selected = assets
+    .map((asset) => {
+      const sidecar = asset.name ? findSha256Sidecar(assets, asset.name) : undefined
+      const sidecarUrl = sidecar?.browser_download_url
+      return {
+        asset,
+        score: apkPreference(asset),
+        sha256: normalizeYachiyoSha256(asset.digest),
+        sha256SidecarUrl: sidecarUrl && isAllowedYachiyoReleaseAssetUrl(sidecarUrl) ? sidecarUrl : undefined,
+      }
+    })
     .filter(({ asset, score }) => score >= 0 && Boolean(asset.name && asset.browser_download_url))
-    .filter(({ asset }) => isAllowedYachiyoReleaseAssetUrl(asset.browser_download_url!))
-    .sort((left, right) => right.score - left.score || (right.asset.size ?? 0) - (left.asset.size ?? 0))[0]?.asset
+    .filter(
+      ({ asset }) =>
+        typeof asset.browser_download_url === 'string' && isAllowedYachiyoReleaseAssetUrl(asset.browser_download_url)
+    )
+    // Never advertise an APK that the native downloader cannot authenticate.
+    .filter(({ sha256, sha256SidecarUrl }) => Boolean(sha256 || sha256SidecarUrl))
+    .sort((left, right) => right.score - left.score || (right.asset.size ?? 0) - (left.asset.size ?? 0))[0]
+  const apk = selected?.asset
   if (!apk?.name || !apk.browser_download_url) return null
 
-  const sidecar = findSha256Sidecar(assets, apk.name)
-  const sidecarUrl = sidecar?.browser_download_url
   return {
     version: normalizeVersion(release.tag_name),
     tag: release.tag_name,
@@ -113,8 +131,8 @@ export async function getLatestYachiyoAndroidRelease(
       name: apk.name,
       url: apk.browser_download_url,
       size: Math.max(0, apk.size ?? 0),
-      sha256: normalizeYachiyoSha256(apk.digest),
-      sha256SidecarUrl: sidecarUrl && isAllowedYachiyoReleaseAssetUrl(sidecarUrl) ? sidecarUrl : undefined,
+      sha256: selected.sha256,
+      sha256SidecarUrl: selected.sha256SidecarUrl,
     },
   }
 }

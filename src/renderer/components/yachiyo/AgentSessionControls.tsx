@@ -172,11 +172,13 @@ export function AgentSessionControls({
       <div className="yachiyo-agent-header-controls" data-enabled={enabled ? 'true' : 'false'}>
         <Button
           className="yachiyo-agent-toggle"
-          variant={enabled ? 'filled' : 'light'}
+          variant={enabled ? 'filled' : 'outline'}
+          color={enabled ? undefined : 'gray'}
+          aria-pressed={enabled}
           leftSection={<IconBolt size={17} />}
           onClick={() => void toggle()}
         >
-          {enabled ? 'Agent 已启用' : '启用 Agent 能力'}
+          {enabled ? 'Agent 已启用' : 'Agent 能力未启用'}
         </Button>
         <Button
           className="yachiyo-agent-settings-button"

@@ -61,7 +61,11 @@ export function hasConfiguredModelProvider(
     if (customProviderIds.has(providerId)) return Boolean(provider.models?.length)
     if (provider.apiKey?.trim() || provider.oauth?.accessToken?.trim()) return true
     if (provider.accessKey?.trim() && provider.secretKey?.trim()) return true
-    return (providerId === 'ollama' || providerId === 'lm-studio') && Boolean(provider.models?.length)
+    return (
+      providerId === ModelProviderEnum.Local ||
+      providerId === ModelProviderEnum.Ollama ||
+      providerId === ModelProviderEnum.LMStudio
+    ) && Boolean(provider.models?.length)
   })
 }
 

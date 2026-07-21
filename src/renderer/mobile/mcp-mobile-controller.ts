@@ -35,6 +35,12 @@ export type MobileMcpControllerOptions = {
   vault?: MobileMcpSecretVault
   isNativePlatform?: () => boolean
   allowLan?: boolean
+  oauthFetch?: typeof fetch
+  oauthOpenExternal?: (url: string) => Promise<void>
+  oauthProtect?: (plaintext: string) => Promise<string>
+  oauthUnprotect?: (envelope: string) => Promise<string>
+  oauthNow?: () => number
+  httpFetch?: typeof fetch
 }
 
 export type MobileMcpRejectedConfig = {
@@ -136,12 +142,19 @@ export class MobileMcpController {
   private readonly vault: MobileMcpSecretVault
   private readonly isNativePlatform: () => boolean
   private readonly allowLan: boolean
+  private readonly oauthOptions: Pick<
+    MobileMcpControllerOptions,
+    'oauthFetch' | 'oauthOpenExternal' | 'oauthProtect' | 'oauthUnprotect' | 'oauthNow'
+  >
+  private readonly httpFetch?: typeof fetch
 
   constructor(options: MobileMcpControllerOptions = {}) {
     this.storage = options.storage || getDefaultStorage()
     this.isNativePlatform = options.isNativePlatform || (() => Capacitor.isNativePlatform())
     this.allowLan = options.allowLan ?? false
     this.vault = options.vault || defaultVault(this.storage, this.isNativePlatform)
+    this.oauthOptions = options
+    this.httpFetch = options.httpFetch
   }
 
   list(): MCPMobileServerConfigValue[] {
@@ -205,18 +218,35 @@ export class MobileMcpController {
       config: parsed,
       storage: this.storage,
       vault: this.vault,
+      fetchImpl: this.oauthOptions.oauthFetch,
+      openExternal: this.oauthOptions.oauthOpenExternal,
+      protect: this.oauthOptions.oauthProtect,
+      now: this.oauthOptions.oauthNow,
     })
   }
 
   async beginOAuth(config: unknown): Promise<MCPMobileServerConfigValue> {
     const parsed = this.upsert(config)
     if (!parsed.transport.oauth?.enabled) throw new Error('mcp_oauth_not_enabled')
-    await beginMcpOAuth({ config: parsed, storage: this.storage, vault: this.vault })
+    await beginMcpOAuth({
+      config: parsed,
+      storage: this.storage,
+      vault: this.vault,
+      fetchImpl: this.oauthOptions.oauthFetch,
+      openExternal: this.oauthOptions.oauthOpenExternal,
+      protect: this.oauthOptions.oauthProtect,
+      now: this.oauthOptions.oauthNow,
+    })
     return parsed
   }
 
   async finishOAuthCallback(callbackUrl: string): Promise<MCPMobileServerConfigValue> {
-    const pending = await consumePendingMcpOAuthCallback({ callbackUrl, storage: this.storage })
+    const pending = await consumePendingMcpOAuthCallback({
+      callbackUrl,
+      storage: this.storage,
+      unprotect: this.oauthOptions.oauthUnprotect,
+      now: this.oauthOptions.oauthNow?.(),
+    })
     const config = this.list().find((candidate) => candidate.id === pending.serverId)
     if (!config) throw new Error('mobile_mcp_server_not_found')
     await finishMcpOAuth({
@@ -224,6 +254,10 @@ export class MobileMcpController {
       storage: this.storage,
       vault: this.vault,
       authorizationCode: pending.code,
+      fetchImpl: this.oauthOptions.oauthFetch,
+      openExternal: this.oauthOptions.oauthOpenExternal,
+      protect: this.oauthOptions.oauthProtect,
+      now: this.oauthOptions.oauthNow,
     })
     return config
   }
@@ -242,6 +276,7 @@ export class MobileMcpController {
       headers,
       policy: { allowLan: this.allowLan },
       protocolVersion: parsed.manifest?.protocolVersion,
+      fetchImpl: this.httpFetch,
     })
   }
 

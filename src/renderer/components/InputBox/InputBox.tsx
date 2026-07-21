@@ -22,6 +22,7 @@ import {
 import { KNOWLEDGE_BASE_MAX_FILE_SIZE, KNOWLEDGE_BASE_MAX_FILE_SIZE_LABEL } from '@shared/knowledge-base'
 import { getModel } from '@shared/providers'
 import { formatNumber } from '@shared/utils'
+import { getMessageText } from '@shared/utils/message'
 import {
   IconAdjustmentsHorizontal,
   IconAlertCircle,
@@ -33,14 +34,14 @@ import {
   IconFolder,
   IconHammer,
   IconLink,
+  IconMicrophone,
   IconPhoto,
   IconPlayerStopFilled,
   IconPlus,
   IconSettings,
-  IconMicrophone,
+  IconVocabulary,
   IconVolume,
   IconVolumeOff,
-  IconVocabulary,
   IconWorldWww,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
@@ -53,6 +54,7 @@ import { useDropzone } from 'react-dropzone'
 import { useTranslation } from 'react-i18next'
 import { v4 as uuidv4 } from 'uuid'
 import { createModelDependencies } from '@/adapters'
+import { ContextUsageBar } from '@/components/common/ContextUsageBar'
 import useInputBoxHistory from '@/hooks/useInputBoxHistory'
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase'
 import { useMessageInput } from '@/hooks/useMessageInput'
@@ -60,6 +62,12 @@ import { useProviders } from '@/hooks/useProviders'
 import { useSaveBlob } from '@/hooks/useSaveBlob'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { cn } from '@/lib/utils'
+import {
+  getSpeechRecognitionErrorMessage,
+  recognizeAndroidSpeech,
+  speakText,
+  stopAndroidSpeechRecognition,
+} from '@/mobile/speech-runtime'
 import {
   getContextMessageIds,
   isAutoCompactionEnabled,
@@ -82,9 +90,6 @@ import { useSession, useSessionSettings } from '@/stores/chatStore'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { delay } from '@/utils'
-import { recognizeAndroidSpeech, speakText } from '@/mobile/speech-runtime'
-import { ContextUsageBar } from '@/components/common/ContextUsageBar'
-import { getMessageText } from '@shared/utils/message'
 import { featureFlags } from '@/utils/feature-flags'
 import { trackEvent } from '@/utils/track'
 import {
@@ -107,10 +112,10 @@ import { CompressionModal } from '../common/CompressionModal'
 import { ScalableIcon } from '../common/ScalableIcon'
 import Disclaimer from '../Disclaimer'
 import ProviderImageIcon from '../icons/ProviderImageIcon'
-import { CharacterSelector } from '../yachiyo/CharacterSelector'
 import KnowledgeBaseMenu from '../knowledge-base/KnowledgeBaseMenu'
 import ModelSelector from '../ModelSelector'
 import MCPMenu from '../mcp/MCPMenu'
+import { CharacterSelector } from '../yachiyo/CharacterSelector'
 import { FileMiniCard, ImageMiniCard, LinkMiniCard } from './Attachments'
 import { ImageUploadInput } from './ImageUploadInput'
 import {
@@ -324,7 +329,59 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
 
     const { session: currentSession } = useSession(sessionId || null)
     const [autoSpeak, setAutoSpeak] = useState(() => localStorage.getItem('yachiyo.chat.auto-speak') === 'true')
+    const [speechRecording, setSpeechRecording] = useState(false)
+    const [speechProcessing, setSpeechProcessing] = useState(false)
+    const speechInFlightRef = useRef(false)
+    const speechAttemptRef = useRef(0)
     const spokenAssistantRef = useRef<string>()
+
+    const startVoiceInput = useCallback(() => {
+      if (speechInFlightRef.current) return
+      speechInFlightRef.current = true
+      const attempt = ++speechAttemptRef.current
+      const baseInput = messageInputFieldRef.current?.getValue() || ''
+      const separator = baseInput && !/\s$/.test(baseInput) ? ' ' : ''
+      const applyRecognitionText = (text: string) => {
+        if (speechAttemptRef.current !== attempt || !text) return
+        messageInputFieldRef.current?.setValue(`${baseInput}${separator}${text}`)
+      }
+      setSpeechRecording(true)
+      setSpeechProcessing(false)
+      void recognizeAndroidSpeech({ onPartial: applyRecognitionText })
+        .then(applyRecognitionText)
+        .catch((error) => toastActions.add(getSpeechRecognitionErrorMessage(error)))
+        .finally(() => {
+          if (speechAttemptRef.current !== attempt) return
+          speechInFlightRef.current = false
+          setSpeechRecording(false)
+          setSpeechProcessing(false)
+          messageInputFieldRef.current?.getElement()?.focus()
+        })
+    }, [])
+
+    const toggleVoiceInput = useCallback(() => {
+      if (!speechInFlightRef.current) {
+        startVoiceInput()
+        return
+      }
+      setSpeechRecording(false)
+      setSpeechProcessing(true)
+      void stopAndroidSpeechRecognition().catch((error) => {
+        toastActions.add(getSpeechRecognitionErrorMessage(error))
+        speechInFlightRef.current = false
+        setSpeechProcessing(false)
+      })
+    }, [startVoiceInput])
+
+    useEffect(
+      () => () => {
+        if (!speechInFlightRef.current) return
+        speechAttemptRef.current += 1
+        speechInFlightRef.current = false
+        void stopAndroidSpeechRecognition()
+      },
+      []
+    )
 
     useEffect(() => {
       if (!autoSpeak || !currentSession) return
@@ -1594,12 +1651,22 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
               >
                 {platform.type === 'mobile' && (
                   <>
-                    <Tooltip label="语音输入" position="top" withArrow>
+                    <Tooltip
+                      label={speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '语音输入'}
+                      position="top"
+                      withArrow
+                    >
                       <UnstyledButton
-                        aria-label="语音输入"
-                        className="flex items-center px-2 py-1 rounded-lg"
-                        onClick={() => void recognizeAndroidSpeech().then((text) => messageInputFieldRef.current?.setValue(text))}
-                      ><IconMicrophone size={toolbarIconSize} /></UnstyledButton>
+                        aria-label={speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '开始语音输入'}
+                        aria-pressed={speechRecording}
+                        className="yachiyo-chat-voice-button flex items-center px-2 py-1 rounded-lg"
+                        data-recording={speechRecording ? 'true' : 'false'}
+                        data-processing={speechProcessing ? 'true' : 'false'}
+                        disabled={speechProcessing}
+                        onClick={toggleVoiceInput}
+                      >
+                        <IconMicrophone size={toolbarIconSize} stroke={speechRecording ? 2.5 : 2} />
+                      </UnstyledButton>
                     </Tooltip>
                     <Tooltip label="自动播放回答" position="top" withArrow>
                       <UnstyledButton

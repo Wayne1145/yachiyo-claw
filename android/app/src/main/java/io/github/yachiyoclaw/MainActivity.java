@@ -9,6 +9,8 @@ import io.github.yachiyoclaw.media.YachiyoVoicePlugin;
 import io.github.yachiyoclaw.scheduler.YachiyoSchedulerPlugin;
 import io.github.yachiyoclaw.memory.YachiyoMemoryPlugin;
 import io.github.yachiyoclaw.update.YachiyoUpdatePlugin;
+import io.github.yachiyoclaw.model.YachiyoModelManagerPlugin;
+import io.github.yachiyoclaw.sandbox.YachiyoSandboxPlugin;
 
 public class MainActivity extends BridgeActivity {
 
@@ -21,6 +23,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(YachiyoSchedulerPlugin.class);
         registerPlugin(YachiyoMemoryPlugin.class);
         registerPlugin(YachiyoUpdatePlugin.class);
+        registerPlugin(YachiyoModelManagerPlugin.class);
+        registerPlugin(YachiyoSandboxPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -436,7 +436,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
       }
       lastUsedModelStore.getState().setTaskModel(provider, modelId)
     },
-    [session.id, session.settings, queryClient]
+    [session.id, session.settings, queryClient],
   )
 
   const handleSelectDirectory = useCallback(
@@ -451,7 +451,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
         queryClient.setQueryData([TASK_SESSION_QUERY_KEY, session.id], updated)
       }
     },
-    [session.id, session.workingDirectory, queryClient]
+    [session.id, session.workingDirectory, queryClient],
   )
 
   const handleSend = useCallback(async () => {
@@ -476,7 +476,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
     requestAnimationFrame(() => {
       if (scrollAreaRef.current) {
         const viewport = scrollAreaRef.current.querySelector(
-          '[data-radix-scroll-area-viewport], .mantine-ScrollArea-viewport'
+          '[data-radix-scroll-area-viewport], .mantine-ScrollArea-viewport',
         )
         if (viewport) {
           viewport.scrollTop = viewport.scrollHeight
@@ -500,7 +500,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
   }, [session])
 
   return (
-    <Flex direction="column" h="100%" className="overflow-hidden">
+    <Flex direction="column" h="100%" className="yachiyo-task-chat overflow-hidden">
       {!inAndroidAppShell && (
         <Flex h={48} align="center" px="md" className="shrink-0 title-bar">
           {(!showSidebar || isSmallScreen) && (
@@ -578,11 +578,11 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
         </ScrollArea>
       </BlockCodeCollapsedStateProvider>
 
-      <Box className="py-3 px-4 shrink-0">
+      <Box className="yachiyo-task-composer py-3 px-4 shrink-0">
         <Box maw={800} mx="auto">
           <Stack
             gap={6}
-            className="rounded-md bg-[var(--chatbox-background-secondary)] px-3 py-2 min-h-[92px]"
+            className="yachiyo-task-composer-panel rounded-md bg-[var(--chatbox-background-secondary)] px-3 py-2 min-h-[92px]"
             style={{ border: '1px solid var(--chatbox-border-primary)' }}
           >
             <ContextUsageBar used={totalTokens} limit={contextWindow} />

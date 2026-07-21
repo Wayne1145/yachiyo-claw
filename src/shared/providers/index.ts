@@ -6,6 +6,7 @@ import type { ModelDependencies } from '../types/adapters'
 // Yachiyo is the product default. Import order determines provider list order.
 // Import order determines display order in UI (side-effect registration into Map)
 import './definitions/yachiyo'
+import './definitions/local'
 import './definitions/chatboxai'
 import './definitions/openai'
 import './definitions/openai-responses'

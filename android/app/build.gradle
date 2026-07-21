@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 def newDreamStudioKeystore = rootProject.file('../.keys/newdreamstudio.keystore')
 def hasNewDreamStudioKeystore = newDreamStudioKeystore.exists()
@@ -13,13 +14,25 @@ android {
         applicationId "io.github.yachiyoclaw"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "0.0.5"
+        versionCode 6
+        versionName "0.0.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
         }
     }
     signingConfigs {
@@ -81,6 +94,9 @@ dependencies {
     implementation "androidx.work:work-runtime:$androidxWorkVersion"
     implementation "androidx.room:room-runtime:$androidxRoomVersion"
     annotationProcessor "androidx.room:room-compiler:$androidxRoomVersion"
+    implementation 'com.google.ai.edge.litertlm:litertlm-android:0.11.0'
+    implementation 'com.google.mediapipe:tasks-text:0.10.26'
+    implementation 'org.apache.commons:commons-compress:1.27.1'
     implementation project(':capacitor-android')
     // Keep Shizuku and its transitive artifacts in the workspace so Android
     // builds do not depend on Maven Central being reachable.

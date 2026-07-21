@@ -30,6 +30,12 @@ public class UpdateDownloadPolicyTest {
         assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireAllowedRedirect(
             new URL("https://example.com/app.apk")
         ));
+        assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireAllowedRedirect(
+            new URL("https://release-assets.githubusercontent.com:444/github-production-release-asset/app.apk")
+        ));
+        assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireAllowedRedirect(
+            new URL("https://user@release-assets.githubusercontent.com/github-production-release-asset/app.apk")
+        ));
     }
 
     @Test
@@ -38,5 +44,12 @@ public class UpdateDownloadPolicyTest {
         assertEquals(digest, UpdateDownloadPolicy.parseSha256("sha256:" + digest));
         assertEquals(digest, UpdateDownloadPolicy.parseSha256(digest + "  app.apk"));
         assertNull(UpdateDownloadPolicy.parseSha256("not-a-hash"));
+    }
+
+    @Test
+    public void acceptsOnlyBoundedFilesystemSafeVersions() {
+        assertEquals("0.0.6-beta.1", UpdateDownloadPolicy.safeVersion("0.0.6-beta.1"));
+        assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.safeVersion("../0.0.6"));
+        assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.safeVersion("v".repeat(65)));
     }
 }

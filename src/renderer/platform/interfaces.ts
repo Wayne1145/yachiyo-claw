@@ -106,7 +106,7 @@ export interface Platform extends Storage {
 
   getSessionMetaStorage(): SessionMetaStorage
 
-  // Sandbox operations (Desktop only)
+  // Sandboxed workspace operations. Android uses an app-private PRoot guest.
   sandboxInit?(config: { workingDirectory: string }): Promise<{ success: boolean; error?: string }>
   sandboxExec?(params: {
     command: string

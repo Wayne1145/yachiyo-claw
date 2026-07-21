@@ -31,12 +31,14 @@ import {
   parseLive2DActionMarkers,
   setSelectedLive2DModelId,
 } from '@/mobile/live2d-models'
-import { recognizeAndroidSpeech, speakText, stopAndroidSpeechRecognition, stopSpeaking } from '@/mobile/speech-runtime'
+import { getLive2DRenderQuality, setLive2DRenderQuality, type Live2DRenderQuality } from '@/mobile/live2d-performance'
 import {
-  getLive2DRenderQuality,
-  setLive2DRenderQuality,
-  type Live2DRenderQuality,
-} from '@/mobile/live2d-performance'
+  getSpeechRecognitionErrorMessage,
+  recognizeAndroidSpeech,
+  speakText,
+  stopAndroidSpeechRecognition,
+  stopSpeaking,
+} from '@/mobile/speech-runtime'
 import { useSession } from '@/stores/chatStore'
 import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
@@ -66,6 +68,7 @@ export function AndroidInteractive({
   const [taskId, setTaskId] = useState<string>()
   const [submitting, setSubmitting] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState('')
   const [notice, setNotice] = useState<string>()
   const [cameraEnabled, setCameraEnabled] = useState(false)
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user')
@@ -78,6 +81,8 @@ export function AndroidInteractive({
   const spokenRef = useRef<{ id?: string; length: number }>({ length: 0 })
   const speechQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechGenerationRef = useRef(0)
+  const voiceRecognitionAttemptRef = useRef(0)
+  const interactiveRecognitionActiveRef = useRef(false)
   const handledMessageRef = useRef<{ id?: string; markers: Set<string> }>({ markers: new Set() })
   const { session } = useSession(sessionId || null)
   const { data: task } = useTaskSessionRecord(taskId || null)
@@ -161,10 +166,17 @@ export function AndroidInteractive({
     return () => window.clearTimeout(timeout)
   }, [bubbleText])
 
+  useEffect(() => {
+    if (!voiceTranscript || recording) return
+    const timeout = window.setTimeout(() => setVoiceTranscript(''), 3000)
+    return () => window.clearTimeout(timeout)
+  }, [recording, voiceTranscript])
+
   useEffect(
     () => () => {
       speechGenerationRef.current += 1
       void stopSpeaking()
+      if (interactiveRecognitionActiveRef.current) void stopAndroidSpeechRecognition()
     },
     []
   )
@@ -395,6 +407,11 @@ export function AndroidInteractive({
             <div>{bubbleText}</div>
           </div>
         )}
+        {voiceTranscript && (
+          <div className="yachiyo-live-transcript" aria-live="polite">
+            {voiceTranscript}
+          </div>
+        )}
         {notice && (
           <button type="button" className="yachiyo-interactive-notice" onClick={() => setNotice(undefined)}>
             {notice}
@@ -409,19 +426,38 @@ export function AndroidInteractive({
           className="yachiyo-interactive-round-button yachiyo-interactive-mic"
           data-recording={recording ? 'true' : 'false'}
           onPointerDown={() => {
+            if (interactiveRecognitionActiveRef.current) return
+            const attempt = ++voiceRecognitionAttemptRef.current
+            interactiveRecognitionActiveRef.current = true
             setRecording(true)
-            void recognizeAndroidSpeech()
+            setVoiceTranscript('')
+            void recognizeAndroidSpeech({
+              onPartial: (text) => {
+                if (voiceRecognitionAttemptRef.current === attempt) setVoiceTranscript(text)
+              },
+            })
               .then((text) => {
-                if (text) void submit(text)
+                if (voiceRecognitionAttemptRef.current !== attempt || !text) return
+                setVoiceTranscript(text)
+                void submit(text)
               })
-              .catch((error) => setNotice(error instanceof Error ? error.message : '语音识别失败'))
-              .finally(() => setRecording(false))
+              .catch((error) => setNotice(getSpeechRecognitionErrorMessage(error)))
+              .finally(() => {
+                if (voiceRecognitionAttemptRef.current === attempt) {
+                  interactiveRecognitionActiveRef.current = false
+                  setRecording(false)
+                }
+              })
           }}
           onPointerUp={() => {
             setRecording(false)
             void stopAndroidSpeechRecognition()
           }}
-          onPointerCancel={() => setRecording(false)}
+          onPointerCancel={() => {
+            setRecording(false)
+            void stopAndroidSpeechRecognition()
+          }}
+          onContextMenu={(event) => event.preventDefault()}
         >
           {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
           <span>{recording ? '松开发送' : '按住说话'}</span>

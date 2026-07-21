@@ -1,5 +1,5 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
-import type { DownloadJob, ModelRuntime } from '@shared/models/model-catalog'
+import type { DeviceCompatibilityProfile, DownloadJob, ModelRuntime } from '@shared/models/model-catalog'
 import type { LocalInferenceAdapter } from '@shared/types/adapters'
 
 export interface NativeModelManagerCapabilities {
@@ -23,13 +23,16 @@ export interface NativeModelProgressEvent {
 
 interface NativeModelManagerPlugin {
   list(): Promise<{ schemaVersion: 1; jobs: DownloadJob[] }>
-  enqueue(options: { jobId: string; modelId: string }): Promise<{ accepted: boolean; jobId: string }>
+  enqueue(options: { job: DownloadJob }): Promise<{ accepted: boolean; jobId: string }>
   pause(options: { jobId: string }): Promise<{ accepted: boolean; jobId: string }>
   resume(options: { jobId: string }): Promise<{ accepted: boolean; jobId: string }>
   cancel(options: { jobId: string }): Promise<{ accepted: boolean; jobId: string }>
   reconcile(): Promise<{ schemaVersion: 1; recovered: number }>
   capabilities(): Promise<NativeModelManagerCapabilities>
-  healthCheck(options: { modelId: string }): Promise<{ status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }>
+  deviceProfile(): Promise<DeviceCompatibilityProfile>
+  healthCheck(options: {
+    modelId: string
+  }): Promise<{ status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }>
   infer(options: { modelId: string; messages: unknown[]; tools?: unknown }): Promise<{
     events: Array<
       | { type: 'text'; text: string }
@@ -37,6 +40,9 @@ interface NativeModelManagerPlugin {
       | { type: 'status'; status: string }
     >
   }>
+  embed(options: { modelId: string; texts: string[] }): Promise<{ modelId: string; embeddings: number[][] }>
+  unload(options?: { modelId?: string }): Promise<void>
+  deleteModel(options: { modelId: string }): Promise<void>
   addListener(eventName: 'progress', listener: (event: NativeModelProgressEvent) => void): Promise<PluginListenerHandle>
 }
 
@@ -44,7 +50,7 @@ export const yachiyoModelManagerNative = registerPlugin<NativeModelManagerPlugin
 
 export function createNativeModelDownloadSink() {
   return {
-    enqueue: (job: DownloadJob) => yachiyoModelManagerNative.enqueue({ jobId: job.id, modelId: job.modelId }).then(() => undefined),
+    enqueue: (job: DownloadJob) => yachiyoModelManagerNative.enqueue({ job }).then(() => undefined),
     pause: (job: DownloadJob) => yachiyoModelManagerNative.pause({ jobId: job.id }).then(() => undefined),
     resume: (job: DownloadJob) => yachiyoModelManagerNative.resume({ jobId: job.id }).then(() => undefined),
     cancel: (job: DownloadJob) => yachiyoModelManagerNative.cancel({ jobId: job.id }).then(() => undefined),
@@ -59,7 +65,7 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
 
   async *stream(
     modelId: string,
-    input: { messages: unknown[]; tools?: unknown; signal?: AbortSignal }
+    input: { messages: unknown[]; tools?: unknown; signal?: AbortSignal },
   ): AsyncGenerator<
     | { type: 'text'; text: string }
     | { type: 'tool-call'; name: string; arguments: unknown; callId: string }
@@ -76,12 +82,41 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
   }
 
   async unload(modelId?: string): Promise<void> {
-    // Native runtimes unload on memory pressure; keeping this optional avoids
-    // inventing a second privileged command surface in the bridge.
-    void modelId
+    await yachiyoModelManagerNative.unload({ modelId })
   }
 }
 
-export function subscribeNativeModelProgress(listener: (event: NativeModelProgressEvent) => void): Promise<PluginListenerHandle> {
+function parseLocalEmbeddingModelId(model?: string): string | undefined {
+  const normalized = model?.trim()
+  if (!normalized) return undefined
+  const separator = normalized.indexOf(':')
+  if (separator < 0) return normalized
+  const provider = normalized.slice(0, separator)
+  return provider === 'yachiyo-local' ? normalized.slice(separator + 1) : undefined
+}
+
+/** Uses installed .tflite jobs only; cloud embedding model identifiers deliberately fall back to lexical RAG. */
+export class NativeMobileRagEmbeddingProvider {
+  async embed(params: { texts: string[]; model?: string }): Promise<number[][]> {
+    let modelId = parseLocalEmbeddingModelId(params.model)
+    if (!modelId) {
+      if (params.model) throw new Error('mobile_rag_local_embedding_not_selected')
+      const jobs = (await yachiyoModelManagerNative.list()).jobs
+      modelId = jobs.find(
+        (job) => job.status === 'completed' && job.artifacts.some((artifact) => artifact.format === 'tflite'),
+      )?.modelId
+    }
+    if (!modelId) throw new Error('local_embedding_model_not_downloaded')
+    return (await yachiyoModelManagerNative.embed({ modelId, texts: params.texts })).embeddings
+  }
+}
+
+export const getNativeModelDeviceProfile = () => yachiyoModelManagerNative.deviceProfile()
+export const listNativeModelJobs = () => yachiyoModelManagerNative.list()
+export const deleteNativeModel = (modelId: string) => yachiyoModelManagerNative.deleteModel({ modelId })
+
+export function subscribeNativeModelProgress(
+  listener: (event: NativeModelProgressEvent) => void,
+): Promise<PluginListenerHandle> {
   return yachiyoModelManagerNative.addListener('progress', listener)
 }

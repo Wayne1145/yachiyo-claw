@@ -54,7 +54,7 @@ public final class YachiyoUpdatePlugin extends Plugin {
             apkUrl = UpdateDownloadPolicy.requireInitialReleaseUrl(call.getString("url"));
             providedDigest = UpdateDownloadPolicy.parseSha256(call.getString("sha256"));
             String sidecar = call.getString("sha256SidecarUrl");
-            sidecarUrl = sidecar == null || sidecar.isBlank() ? null : UpdateDownloadPolicy.requireInitialReleaseUrl(sidecar);
+            sidecarUrl = sidecar == null || sidecar.trim().isEmpty() ? null : UpdateDownloadPolicy.requireInitialReleaseUrl(sidecar);
             if (providedDigest == null && sidecarUrl == null) throw new IllegalArgumentException("update_digest_required");
             if (expectedSize > UpdateDownloadPolicy.MAX_APK_BYTES) throw new IllegalArgumentException("update_too_large");
         } catch (Exception error) {
@@ -156,7 +156,7 @@ public final class YachiyoUpdatePlugin extends Plugin {
                 if (total > UpdateDownloadPolicy.MAX_SIDECAR_BYTES) throw new IOException("update_sidecar_too_large");
                 output.write(buffer, 0, read);
             }
-            String digest = UpdateDownloadPolicy.parseSha256(output.toString(StandardCharsets.UTF_8));
+            String digest = UpdateDownloadPolicy.parseSha256(new String(output.toByteArray(), StandardCharsets.UTF_8));
             if (digest == null) throw new IOException("update_sidecar_invalid");
             return digest;
         } finally {

@@ -8,18 +8,11 @@ import { getLatestYachiyoAndroidRelease, type YachiyoAndroidRelease } from '@sha
 import localforage from 'localforage'
 import { v4 as uuidv4 } from 'uuid'
 import { parseLocale } from '@/i18n/parser'
-import {
-  executeRootShell,
-  getAgentBackend,
-  getAgentWorkingDirectory,
-  getCachedRootCapability,
-  isAgentFullAccessEnabled,
-  killRootCommand,
-  setAgentWorkingDirectory,
-} from '@/mobile/agent-broker'
+import { getAgentWorkingDirectory, setAgentWorkingDirectory } from '@/mobile/agent-broker'
 import { requestAgentApproval } from '@/mobile/agent-approval'
 import { yachiyoAgentNative } from '@/platform/native/yachiyo_agent'
-import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
+import { NativeMobileRagEmbeddingProvider } from '@/platform/native/yachiyo_model_manager'
+import { yachiyoSandboxNative } from '@/platform/native/yachiyo_sandbox'
 import { yachiyoUpdateNative } from '@/platform/native/yachiyo_update'
 import type { ImageGenerationStorage } from '@/storage/ImageGenerationStorage'
 import type { SessionMetaStorage } from '@/storage/SessionMetaStorage'
@@ -50,6 +43,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   private _sessionMetaStorage: SessionMetaStorage | null = null
   private _mobileKnowledgeBaseController: MobileKnowledgeBaseController | null = null
   private _mobileSessionAttachmentRagController: MobileSessionAttachmentRagController | null = null
+  private readonly mobileRagEmbeddingProvider = new NativeMobileRagEmbeddingProvider()
   private agentWorkingDirectory = getAgentWorkingDirectory()
   private pendingUpdate: YachiyoAndroidRelease | null = null
   private updateCheckRunning = false
@@ -356,14 +350,18 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public getKnowledgeBaseController(): KnowledgeBaseController {
     if (!this._mobileKnowledgeBaseController) {
-      this._mobileKnowledgeBaseController = new MobileKnowledgeBaseController(this)
+      this._mobileKnowledgeBaseController = new MobileKnowledgeBaseController(this, {
+        embeddingProvider: this.mobileRagEmbeddingProvider,
+      })
     }
     return this._mobileKnowledgeBaseController
   }
 
   public getSessionAttachmentRagController(): SessionAttachmentRagController {
     if (!this._mobileSessionAttachmentRagController) {
-      this._mobileSessionAttachmentRagController = new MobileSessionAttachmentRagController(this)
+      this._mobileSessionAttachmentRagController = new MobileSessionAttachmentRagController(this, {
+        embeddingProvider: this.mobileRagEmbeddingProvider,
+      })
     }
     return this._mobileSessionAttachmentRagController
   }
@@ -391,60 +389,58 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async sandboxInit(config: { workingDirectory: string }) {
     this.agentWorkingDirectory = config.workingDirectory
-    if (!isAgentFullAccessEnabled()) return { success: true }
-    if (getAgentBackend() === 'accessibility') return { success: true }
-    const result = await executeRootShell(`mkdir -p ${shellQuote(this.agentWorkingDirectory)}`, 10_000)
-    return result.exitCode === 0 ? { success: true } : { success: false, error: result.stderr }
+    return yachiyoSandboxNative.init(config)
   }
 
   public async sandboxExec(params: { command: string; timeout?: number }) {
     const approved = await requestAgentApproval({
-      title: '执行 Shell 命令',
+      title: '执行 Linux 沙箱命令',
       detail: params.command,
       risk: 'dangerous',
     })
     if (!approved) return { stdout: '', stderr: '用户拒绝了此操作', exitCode: 126 }
-    const result = await executeRootShell(
-      `cd ${shellQuote(this.agentWorkingDirectory)} && ${params.command}`,
-      params.timeout ?? 120_000,
-    )
-    return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode }
+    return yachiyoSandboxNative.exec(params)
   }
 
   public async sandboxKill() {
-    return killRootCommand()
+    return yachiyoSandboxNative.kill()
   }
 
   public async sandboxCheckAvailability() {
-    if (!isAgentFullAccessEnabled()) {
-      return { available: false, reason: 'full_access_required' }
-    }
-    const backend = getAgentBackend()
-    if (backend === 'accessibility') {
-      const permissions = await yachiyoDeviceAccessNative.getPermissionStatus()
-      return {
-        available: permissions.accessibility,
-        reason: permissions.accessibility ? undefined : 'accessibility_unavailable',
-      }
-    }
-    if (backend === 'shizuku') {
-      const permissions = await yachiyoDeviceAccessNative.getPermissionStatus()
-      return {
-        available: permissions.shizukuGranted,
-        reason: permissions.shizukuGranted ? undefined : 'shizuku_unavailable',
-      }
-    }
-    const root = getCachedRootCapability()
-    return { available: Boolean(root?.available), reason: root?.available ? undefined : 'root_check_required' }
+    const result = await yachiyoSandboxNative.checkAvailability()
+    return { available: result.available, reason: result.reason }
   }
 
   public async sandboxStatus() {
-    const availability = await this.sandboxCheckAvailability()
-    return {
-      state: availability.available ? 'ready' : 'unavailable',
-      workingDirectory: this.agentWorkingDirectory,
-      platform: `android-${getAgentBackend()}`,
-    }
+    return yachiyoSandboxNative.status()
+  }
+
+  public async sandboxRead(params: { filePath: string }) {
+    return yachiyoSandboxNative.read(params)
+  }
+
+  public async sandboxWrite(params: { filePath: string; content: string }) {
+    return yachiyoSandboxNative.write(params)
+  }
+
+  public async sandboxEdit(params: { filePath: string; search: string; replace: string }) {
+    return yachiyoSandboxNative.edit(params)
+  }
+
+  public async sandboxLs(params: { dirPath: string }) {
+    return yachiyoSandboxNative.list(params)
+  }
+
+  public async sandboxGrep(params: { pattern: string; dirPath?: string; include?: string }) {
+    return yachiyoSandboxNative.grep(params)
+  }
+
+  public async sandboxFind(params: { dirPath: string; pattern?: string }) {
+    return yachiyoSandboxNative.find(params)
+  }
+
+  public async sandboxReset() {
+    return yachiyoSandboxNative.reset()
   }
 
   public async openDirectoryDialog(): Promise<{ canceled: boolean; path?: string }> {
@@ -479,8 +475,4 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   public onMaximizedChange() {
     return () => null
   }
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`
 }

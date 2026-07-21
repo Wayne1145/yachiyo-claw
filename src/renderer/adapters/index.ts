@@ -12,6 +12,7 @@ import * as settingActions from '@/stores/settingActions'
 import { settingsStore } from '@/stores/settingsStore'
 import { apiRequest } from '@/utils/request'
 import { RendererSentryAdapter } from './sentry'
+import { NativeLocalInferenceAdapter } from '@/platform/native/yachiyo_model_manager'
 
 export async function createModelDependencies(): Promise<ModelDependencies> {
   // 获取平台信息
@@ -118,6 +119,7 @@ export async function createModelDependencies(): Promise<ModelDependencies> {
           }
         : undefined,
     platformType: platform.type,
+    localInference: platform.type === 'mobile' ? new NativeLocalInferenceAdapter() : undefined,
   }
 }
 

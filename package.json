@@ -1,7 +1,7 @@
 {
   "name": "yachiyo-claw",
   "productName": "Yachiyo Claw",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "engines": {
     "node": ">=22.12.0 <25.0.0",
     "pnpm": ">=10.17.0"
@@ -11,6 +11,7 @@
   "main": "out/main/main.js",
   "scripts": {
     "generate:model-snapshot": "pnpm exec tsx scripts/generate-model-snapshot.ts",
+    "verify:android-update-release": "node scripts/verify-android-update-release.mjs",
     "build": "electron-vite build",
     "build:main": "electron-vite build",
     "build:preload": "electron-vite build",
@@ -339,6 +340,7 @@
     "lodash": "^4.17.21",
     "ofetch": "^1.0.1",
     "officeparser": "5.0.0",
+    "pdfjs-dist": "5.4.624",
     "sanitize-filename": "^1.6.3",
     "uuid": "^9.0.0"
   },

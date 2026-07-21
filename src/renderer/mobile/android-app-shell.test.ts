@@ -87,6 +87,13 @@ describe('Android app shell state', () => {
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
+        customProviders: [],
+        licenseKey: '',
+        providers: { [ModelProviderEnum.Local]: { models: [{ modelId: 'offline-model' }] } },
+      })
+    ).toBe(true)
+    expect(
+      hasConfiguredModelProvider({
         customProviders: [
           { id: 'custom-provider-empty', name: 'Empty', type: ModelProviderType.OpenAI, isCustom: true },
         ],

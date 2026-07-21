@@ -11,7 +11,7 @@ import {
   type TTSConfig,
   WSS_URL,
 } from '@twn39/edgetts-js'
-import { yachiyoVoiceNative } from '@/platform/native/yachiyo_voice'
+import { type NativeSpeechRecognitionStatus, yachiyoVoiceNative } from '@/platform/native/yachiyo_voice'
 import { getSpeechCredentials } from './speech-credentials'
 import { getSpeechSettings, parseSpeechHeaders, resolveSpeechEndpoint } from './speech-settings'
 
@@ -20,11 +20,20 @@ export interface SpeechPlaybackCallbacks {
   onEnd?: () => void
 }
 
+export interface SpeechRecognitionCallbacks {
+  onPartial?: (text: string) => void
+  onStateChange?: (state: 'starting' | 'listening' | 'speech' | 'processing' | 'finished') => void
+}
+
 let playbackGeneration = 0
 let activeAudio: HTMLAudioElement | undefined
 let activeAudioUrl: string | undefined
 let activeAudioCancel: (() => void) | undefined
 let activeRemoteRecognitionStop: (() => void) | undefined
+let remoteRecognitionStopRequested = false
+let nextRecognitionId = 1
+let activeRecognition: { id: number; kind: 'android-local' | 'remote' } | undefined
+let stopRequestedRecognitionId: number | undefined
 
 function normalizeEdgeVoice(voice: string) {
   const match = voice.match(/^([a-z]{2,})-([A-Z]{2,})-(.+Neural)$/)
@@ -148,13 +157,18 @@ async function captureRemoteSpeech(): Promise<Blob> {
     }
     activeRemoteRecognitionStop = () => recorder.state !== 'inactive' && recorder.stop()
     recorder.start(250)
+    if (remoteRecognitionStopRequested) queueMicrotask(() => activeRemoteRecognitionStop?.())
   })
 }
 
-async function recognizeRemoteSpeech(): Promise<string> {
+async function recognizeRemoteSpeech(callbacks: SpeechRecognitionCallbacks): Promise<string> {
   const settings = getSpeechSettings()
+  remoteRecognitionStopRequested = false
   const credentials = await getSpeechCredentials()
+  callbacks.onStateChange?.('starting')
+  callbacks.onStateChange?.('listening')
   const audio = await captureRemoteSpeech()
+  callbacks.onStateChange?.('processing')
   if (audio.size === 0) throw new Error('speech_recording_empty')
   const form = new FormData()
   form.append('file', new File([audio], 'speech.webm', { type: audio.type || 'audio/webm' }))
@@ -172,17 +186,92 @@ async function recognizeRemoteSpeech(): Promise<string> {
   return text.trim()
 }
 
-export async function recognizeAndroidSpeech(): Promise<string> {
+const SPEECH_ERROR_MESSAGES: Record<string, string> = {
+  microphone_permission_denied: '请授予麦克风权限后再使用语音输入。',
+  speech_service_unavailable: '系统未安装或未启用语音识别服务，请安装语音服务或在语音设置中配置 ASR API。',
+  speech_network_timeout: '语音识别网络连接超时。',
+  speech_network_error: '语音识别服务无法连接网络。',
+  speech_audio_error: '无法读取麦克风音频。',
+  speech_server_error: '语音识别服务暂时不可用。',
+  speech_client_error: '语音识别被系统中断，请重试。',
+  speech_timeout: '没有检测到语音，请重试。',
+  speech_no_match: '没有识别出清晰的语音。',
+  speech_recognizer_busy: '语音识别服务正忙，请稍后重试。',
+  speech_permission_denied: '请授予麦克风权限后再使用语音输入。',
+  speech_too_many_requests: '语音识别请求过于频繁，请稍后重试。',
+  speech_server_disconnected: '语音识别服务连接已断开。',
+  speech_language_not_supported: '当前语音识别服务不支持所选语言。',
+  speech_language_unavailable: '所选语言的离线识别模型尚未下载。',
+  speech_recording_failed: '录音失败，请检查麦克风权限。',
+  speech_recording_empty: '没有录到声音，请重试。',
+  speech_asr_empty_result: '没有识别出清晰的语音。',
+}
+
+export function getSpeechRecognitionErrorMessage(error: unknown): string {
+  const candidate = error as { code?: unknown; message?: unknown }
+  const code = typeof candidate?.code === 'string' ? candidate.code : ''
+  const message = typeof candidate?.message === 'string' ? candidate.message : ''
+  if (SPEECH_ERROR_MESSAGES[code]) return SPEECH_ERROR_MESSAGES[code]
+  if (SPEECH_ERROR_MESSAGES[message]) return SPEECH_ERROR_MESSAGES[message]
+  if (message.startsWith('speech_asr_http_')) return `语音识别 API 请求失败（HTTP ${message.slice(16)}）。`
+  if (message && !message.startsWith('speech_')) return message
+  return '语音识别失败，请稍后重试。'
+}
+
+export function getAndroidSpeechRecognitionStatus(): Promise<NativeSpeechRecognitionStatus> {
+  return yachiyoVoiceNative.getRecognitionStatus()
+}
+
+export async function recognizeAndroidSpeech(callbacks: SpeechRecognitionCallbacks = {}): Promise<string> {
   const settings = getSpeechSettings()
-  if (settings.asrProvider === 'android-local') {
-    return (await yachiyoVoiceNative.startListening({ language: settings.language })).text.trim()
+  const recognitionId = nextRecognitionId++
+  activeRecognition = {
+    id: recognitionId,
+    kind: settings.asrProvider === 'android-local' ? 'android-local' : 'remote',
   }
-  return recognizeRemoteSpeech()
+  if (settings.asrProvider === 'android-local') {
+    let partialListener: Awaited<ReturnType<typeof yachiyoVoiceNative.addListener>> | undefined
+    let stateListener: Awaited<ReturnType<typeof yachiyoVoiceNative.addListener>> | undefined
+    try {
+      const status = await getAndroidSpeechRecognitionStatus()
+      if (!status.recognitionAvailable) throw new Error('speech_service_unavailable')
+      partialListener = await yachiyoVoiceNative.addListener('speechPartialResult', ({ text }) => {
+        if (text.trim()) callbacks.onPartial?.(text.trim())
+      })
+      stateListener = await yachiyoVoiceNative.addListener('speechRecognitionStateChanged', ({ state }) => {
+        callbacks.onStateChange?.(state)
+      })
+      const resultPromise = yachiyoVoiceNative.startListening({
+        language: settings.language,
+        preferOnDevice: status.onDeviceAvailable,
+      })
+      if (stopRequestedRecognitionId === recognitionId) await yachiyoVoiceNative.stopListening()
+      return (await resultPromise).text.trim()
+    } catch (error) {
+      throw new Error(getSpeechRecognitionErrorMessage(error))
+    } finally {
+      await Promise.all([partialListener?.remove(), stateListener?.remove()])
+      if (activeRecognition?.id === recognitionId) activeRecognition = undefined
+      callbacks.onStateChange?.('finished')
+    }
+  }
+  try {
+    return await recognizeRemoteSpeech(callbacks)
+  } catch (error) {
+    throw new Error(getSpeechRecognitionErrorMessage(error))
+  } finally {
+    remoteRecognitionStopRequested = false
+    if (activeRecognition?.id === recognitionId) activeRecognition = undefined
+    callbacks.onStateChange?.('finished')
+  }
 }
 
 export async function stopAndroidSpeechRecognition() {
-  if (activeRemoteRecognitionStop) {
-    activeRemoteRecognitionStop()
+  if (!activeRecognition) return
+  stopRequestedRecognitionId = activeRecognition.id
+  if (activeRecognition.kind === 'remote') {
+    remoteRecognitionStopRequested = true
+    activeRemoteRecognitionStop?.()
     return
   }
   await yachiyoVoiceNative.stopListening()

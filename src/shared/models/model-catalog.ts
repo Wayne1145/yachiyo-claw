@@ -8,7 +8,7 @@ import { z } from 'zod'
 export const MODEL_CATALOG_SOURCES = ['modelscope', 'huggingface'] as const
 export type ModelCatalogSource = (typeof MODEL_CATALOG_SOURCES)[number]
 
-export const MODEL_RUNTIMES = ['litert-lm', 'llama.cpp'] as const
+export const MODEL_RUNTIMES = ['litert-lm', 'llama.cpp', 'mediapipe-text'] as const
 export type ModelRuntime = (typeof MODEL_RUNTIMES)[number]
 
 export const MODEL_FORMATS = ['litertlm', 'task', 'gguf', 'safetensors', 'onnx', 'tflite', 'bin', 'unknown'] as const
@@ -241,7 +241,7 @@ export class ModelCatalogError extends Error {
     public readonly code: 'network' | 'http' | 'schema' | 'invalid_request',
     public readonly status?: number,
     public readonly url?: string,
-    public readonly cause?: unknown
+    public readonly cause?: unknown,
   ) {
     super(message)
     this.name = 'ModelCatalogError'
@@ -404,6 +404,7 @@ function normalizeSha256(value: string | undefined): string | undefined {
 function runtimeForFormat(format: ModelFormat): ModelRuntime | undefined {
   if (format === 'litertlm' || format === 'task') return 'litert-lm'
   if (format === 'gguf') return 'llama.cpp'
+  if (format === 'tflite') return 'mediapipe-text'
   return undefined
 }
 
@@ -412,6 +413,8 @@ function normalizeRuntime(value: unknown): ModelRuntime | undefined {
   if (!text) return undefined
   if (text === 'litert-lm' || text === 'litertlm' || text === 'litert_lm' || text === 'litert') return 'litert-lm'
   if (text === 'llama.cpp' || text === 'llama-cpp' || text === 'llamacpp' || text === 'gguf') return 'llama.cpp'
+  if (text === 'mediapipe-text' || text === 'mediapipe' || text === 'text-embedder' || text === 'tflite')
+    return 'mediapipe-text'
   return undefined
 }
 
@@ -510,12 +513,12 @@ function inferModelMetadata(params: {
   const artifacts = params.artifacts ?? []
   const tags = unique((params.tags ?? []).map((tag) => tag.trim()).filter(Boolean))
   const formats = unique([...artifacts.map((artifact) => artifact.format), ...tags.map(inferFormat)]).filter(
-    (format) => format !== 'unknown'
+    (format) => format !== 'unknown',
   )
   const runtimeCandidates = unique(
     [...artifacts.map((artifact) => artifact.runtime), ...formats.map(runtimeForFormat)].filter(
-      (runtime): runtime is ModelRuntime => Boolean(runtime)
-    )
+      (runtime): runtime is ModelRuntime => Boolean(runtime),
+    ),
   )
   const inferredQuantization =
     params.quantization ??
@@ -565,7 +568,7 @@ function inferModelMetadata(params: {
 function parseFileLike(
   value: unknown,
   context: string,
-  url?: string
+  url?: string,
 ): { path: string; sha256?: string; sizeBytes?: number; metadata?: Record<string, unknown> } {
   if (typeof value === 'string') return { path: value }
   const object = asRecord(value, context, url)
@@ -574,11 +577,11 @@ function parseFileLike(
   const lfs = isRecord(object.lfs) ? object.lfs : undefined
   const sha256 = asOptionalString(
     firstValue(object, ['sha256', 'SHA256', 'sha', 'oid', 'hash']) ??
-      (lfs ? firstValue(lfs, ['oid', 'sha256', 'sha']) : undefined)
+      (lfs ? firstValue(lfs, ['oid', 'sha256', 'sha']) : undefined),
   )
   const sizeBytes = asOptionalNumber(
     firstValue(object, ['size', 'sizeBytes', 'Size', 'file_size']) ??
-      (lfs ? firstValue(lfs, ['size', 'sizeBytes']) : undefined)
+      (lfs ? firstValue(lfs, ['size', 'sizeBytes']) : undefined),
   )
   return { path, sha256, sizeBytes, metadata: object }
 }
@@ -586,7 +589,7 @@ function parseFileLike(
 function parseFileList(
   value: unknown,
   context: string,
-  url?: string
+  url?: string,
 ): Array<{ path: string; sha256?: string; sizeBytes?: number; metadata?: Record<string, unknown> }> {
   if (!Array.isArray(value)) {
     throw new ModelCatalogSchemaError(`${context} must be an array`, url)
@@ -633,7 +636,7 @@ function parseHuggingFaceSiblings(
   modelId: string,
   revision: string,
   baseUrl: string,
-  url?: string
+  url?: string,
 ): ModelArtifact[] {
   if (raw === undefined || raw === null) return []
   const files = parseFileList(raw, 'Hugging Face siblings', url)
@@ -647,7 +650,7 @@ function parseHuggingFaceSiblings(
       sha256: file.sha256,
       sizeBytes: file.sizeBytes,
       metadata: file.metadata,
-    })
+    }),
   )
 }
 
@@ -686,7 +689,7 @@ export class HuggingFaceModelCatalogAdapter implements ModelCatalogAdapter {
   async search(query: string, options?: Omit<ModelSearchOptions, 'query'>): Promise<RemoteModel[]>
   async search(
     queryOrOptions: string | ModelSearchOptions = {},
-    maybeOptions: Omit<ModelSearchOptions, 'query'> = {}
+    maybeOptions: Omit<ModelSearchOptions, 'query'> = {},
   ): Promise<RemoteModel[]> {
     const options: ModelSearchOptions =
       typeof queryOrOptions === 'string' ? { ...maybeOptions, query: queryOrOptions } : queryOrOptions
@@ -733,7 +736,7 @@ export class HuggingFaceModelCatalogAdapter implements ModelCatalogAdapter {
       artifacts,
       formats: unique(artifacts.map((artifact) => artifact.format).filter((format) => format !== 'unknown')),
       runtimeCandidates: unique(
-        artifacts.map((artifact) => artifact.runtime).filter((runtime): runtime is ModelRuntime => Boolean(runtime))
+        artifacts.map((artifact) => artifact.runtime).filter((runtime): runtime is ModelRuntime => Boolean(runtime)),
       ),
       storageSizeBytes: artifacts.reduce((total, artifact) => total + (artifact.sizeBytes ?? 0), 0) || undefined,
     }
@@ -743,7 +746,7 @@ export class HuggingFaceModelCatalogAdapter implements ModelCatalogAdapter {
     const modelId = normalizeRepository(repository)
     const selectedRevision = normalizeRevision(revision, this.defaultRevision)
     const url = new URL(
-      `${this.baseUrl}/api/models/${encodeRepository(modelId)}/tree/${encodeURIComponent(selectedRevision)}`
+      `${this.baseUrl}/api/models/${encodeRepository(modelId)}/tree/${encodeURIComponent(selectedRevision)}`,
     )
     url.searchParams.set('recursive', 'true')
     url.searchParams.set('expand', 'true')
@@ -798,7 +801,7 @@ export class HuggingFaceModelCatalogAdapter implements ModelCatalogAdapter {
     const parameterCount = parseParameterCount(
       firstValue(config, ['num_parameters', 'parameter_count', 'numParameters']) ??
         firstValue(raw, ['parameterCount', 'parameters']),
-      modelId
+      modelId,
     )
     const quantization = asOptionalString(firstValue(config, ['quantization', 'quantization_config']))
     const description =
@@ -876,28 +879,37 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
     this.token = resolved.token
     this.headers = resolved.headers
     this.defaultRevision = normalizeRevision(resolved.defaultRevision, 'master')
-    this.searchPath = resolved.searchPath ?? '/api/v1/models'
+    this.searchPath = resolved.searchPath ?? '/api/v1/dolphin/models'
   }
 
   async search(options?: ModelSearchOptions): Promise<RemoteModel[]>
   async search(query: string, options?: Omit<ModelSearchOptions, 'query'>): Promise<RemoteModel[]>
   async search(
     queryOrOptions: string | ModelSearchOptions = {},
-    maybeOptions: Omit<ModelSearchOptions, 'query'> = {}
+    maybeOptions: Omit<ModelSearchOptions, 'query'> = {},
   ): Promise<RemoteModel[]> {
     const options: ModelSearchOptions =
       typeof queryOrOptions === 'string' ? { ...maybeOptions, query: queryOrOptions } : queryOrOptions
     const page = Math.max(options.page ?? 1, 1)
     const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
     const url = new URL(`${this.baseUrl}${this.searchPath.startsWith('/') ? '' : '/'}${this.searchPath}`)
-    // ModelScope's public API uses PascalCase query parameters; accepting a
-    // configured route keeps this adapter usable with regional API gateways.
-    url.searchParams.set('PageNumber', String(page))
-    url.searchParams.set('PageSize', String(limit))
-    if (options.query?.trim()) url.searchParams.set('Name', options.query.trim())
+    // The public model index moved from GET /api/v1/models to this Dolphin
+    // endpoint in 2026. Detail and repository downloads remain under /api/v1/models.
+    const requestBody = {
+      PageNumber: page,
+      PageSize: limit,
+      SortBy: 'Default',
+      Target: '',
+      IsAigc: false,
+      Name: options.query?.trim() ?? '',
+      Criterion: [],
+      SingleCriterion: [],
+      IsStar: false,
+    }
     const payload = await fetchJson(this.fetchImpl, url.toString(), {
-      method: 'GET',
-      headers: makeHeaders(this.token, this.headers),
+      method: 'PUT',
+      headers: { ...makeHeaders(this.token, this.headers), 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
       signal: options.signal,
     })
     const parsed = ModelScopeResponseSchema.safeParse(payload)
@@ -950,7 +962,7 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
 
   private extractListEntries(
     payload: Record<string, unknown> | Array<Record<string, unknown>>,
-    url: string
+    url: string,
   ): Array<Record<string, unknown>> {
     if (Array.isArray(payload)) return payload
     const data = firstValue(payload, ['Data', 'data', 'Models', 'models', 'Items', 'items', 'Result', 'result'])
@@ -958,6 +970,11 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
     if (isRecord(data)) {
       const nested = firstValue(data, ['Models', 'models', 'Model', 'model', 'Items', 'items', 'Result', 'result'])
       if (Array.isArray(nested)) return nested.filter(isRecord)
+      if (isRecord(nested)) {
+        const nestedEntries = firstValue(nested, ['Models', 'models', 'Items', 'items', 'Result', 'result'])
+        if (Array.isArray(nestedEntries)) return nestedEntries.filter(isRecord)
+        if (asOptionalString(firstValue(nested, ['Id', 'id', 'Path', 'path', 'Name', 'name']))) return [nested]
+      }
       if (asOptionalString(firstValue(data, ['Id', 'id', 'Path', 'path', 'Name', 'name']))) return [data]
     }
     throw new ModelCatalogSchemaError('ModelScope model list has no model entries', url)
@@ -968,7 +985,7 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
     if (!id) throw new ModelCatalogSchemaError('ModelScope model entry is missing id')
     const revision = normalizeRevision(
       asOptionalString(firstValue(raw, ['Revision', 'revision'])),
-      options.revision ?? this.defaultRevision
+      options.revision ?? this.defaultRevision,
     )
     return this.normalizeDetail(raw, id, revision, options)
   }
@@ -978,14 +995,14 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
     modelId: string,
     requestedRevision: string,
     _options: ModelSearchOptions | GetModelOptions,
-    url?: string
+    url?: string,
   ): RemoteModel {
     const revision = normalizeRevision(
       asOptionalString(firstValue(raw, ['Revision', 'revision', 'RevisionId', 'revision_id'])),
-      requestedRevision
+      requestedRevision,
     )
     const commitSha = asOptionalString(
-      firstValue(raw, ['CommitSha', 'commitSha', 'CommitId', 'commit_id', 'Sha', 'sha'])
+      firstValue(raw, ['CommitSha', 'commitSha', 'CommitId', 'commit_id', 'Sha', 'sha']),
     )
     const modelInfosValue = firstValue(raw, ['ModelInfos', 'modelInfos', 'model_infos'])
     const modelInfos = isRecord(modelInfosValue) ? modelInfosValue : {}
@@ -1008,7 +1025,7 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
             sizeBytes: file.sizeBytes,
             runtime: normalizeRuntime(formatName) ?? runtimeForFormat(inferFormat(file.path)),
             metadata: { ...file.metadata, modelInfo: info },
-          })
+          }),
         )
       }
     }
@@ -1035,7 +1052,7 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
       architecture: architectures,
       parameterCount: parseParameterCount(
         firstValue(raw, ['ParameterCount', 'parameter_count', 'Parameters', 'parameters']),
-        modelId
+        modelId,
       ),
       quantization: asOptionalString(firstValue(raw, ['Quantization', 'quantization'])),
       tags,
@@ -1047,14 +1064,14 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
       storageSizeBytes:
         modelSize ?? (artifacts.reduce((total, artifact) => total + (artifact.sizeBytes ?? 0), 0) || undefined),
       minimumAndroidApi: asOptionalNumber(
-        firstValue(raw, ['MinimumAndroidApi', 'minimumAndroidApi', 'min_android_api'])
+        firstValue(raw, ['MinimumAndroidApi', 'minimumAndroidApi', 'min_android_api']),
       ),
       supportedAbis: asStringArray(firstValue(raw, ['SupportedAbis', 'supportedAbis', 'supported_abis'])),
       estimatedRamBytes: asOptionalNumber(
-        firstValue(raw, ['EstimatedRamBytes', 'estimatedRamBytes', 'estimated_ram_bytes'])
+        firstValue(raw, ['EstimatedRamBytes', 'estimatedRamBytes', 'estimated_ram_bytes']),
       ),
       requiredStorageBytes: asOptionalNumber(
-        firstValue(raw, ['RequiredStorageBytes', 'requiredStorageBytes', 'required_storage_bytes'])
+        firstValue(raw, ['RequiredStorageBytes', 'requiredStorageBytes', 'required_storage_bytes']),
       ),
       capabilities: asStringArray(firstValue(raw, ['Tasks', 'tasks', 'Capabilities', 'capabilities'])),
       metadata: { raw },
@@ -1122,7 +1139,7 @@ export class ModelCompatibilityEngine {
       lowRamHeadroomRatio?: number
       lowStorageHeadroomRatio?: number
       defaultMinimumAndroidApi?: number
-    } = {}
+    } = {},
   ) {}
 
   check(model: RemoteModel, profile: DeviceCompatibilityProfile): CompatibilityReport {
@@ -1131,11 +1148,11 @@ export class ModelCompatibilityEngine {
       : unique(
           model.artifacts
             .map((artifact) => artifact.runtime)
-            .filter((runtime): runtime is ModelRuntime => Boolean(runtime))
+            .filter((runtime): runtime is ModelRuntime => Boolean(runtime)),
         )
     const formats = model.formats.length ? model.formats : unique(model.artifacts.map((artifact) => artifact.format))
     const candidates = (runtimes.length ? runtimes : [undefined]).flatMap((runtime) =>
-      (formats.length ? formats : [undefined]).map((format) => this.evaluateCandidate(model, profile, runtime, format))
+      (formats.length ? formats : [undefined]).map((format) => this.evaluateCandidate(model, profile, runtime, format)),
     )
     const selected = candidates.sort((a, b) => statusRank(b.status) - statusRank(a.status))[0] ?? {
       status: 'unknown' as const,
@@ -1178,7 +1195,7 @@ export class ModelCompatibilityEngine {
     model: RemoteModel,
     profile: DeviceCompatibilityProfile,
     runtime: ModelRuntime | undefined,
-    format: ModelFormat | undefined
+    format: ModelFormat | undefined,
   ): CandidateEvaluation {
     const issues: CompatibilityIssue[] = []
     const checks: CompatibilityCheckSummary = {
@@ -1265,7 +1282,7 @@ export class ModelCompatibilityEngine {
       checks.runtime = 'fail'
       issues.push({
         code: 'no_supported_artifact',
-        message: 'No LiteRT-LM or llama.cpp artifact was found',
+        message: 'No supported LiteRT-LM, llama.cpp, or MediaPipe Text artifact was found',
         severity: 'error',
       })
     }
@@ -1276,7 +1293,9 @@ export class ModelCompatibilityEngine {
           ? selectedFormat === 'litertlm' || selectedFormat === 'task'
           : selectedRuntime === 'llama.cpp'
             ? selectedFormat === 'gguf'
-            : false
+            : selectedRuntime === 'mediapipe-text'
+              ? selectedFormat === 'tflite'
+              : false
       if (supportedFormats.length) {
         checks.format = supportedFormats.includes(selectedFormat) && runtimeFormatSupported ? 'pass' : 'fail'
       } else {
@@ -1372,7 +1391,7 @@ export class ModelCompatibilityEngine {
 export function checkModelCompatibility(
   model: RemoteModel,
   profile: DeviceCompatibilityProfile,
-  engine = new ModelCompatibilityEngine()
+  engine = new ModelCompatibilityEngine(),
 ): CompatibilityReport {
   return engine.check(model, profile)
 }
@@ -1413,13 +1432,17 @@ function selectDefaultArtifacts(artifacts: ModelArtifact[], runtime?: ModelRunti
   // Quantized GGUF/LiteRT files are alternative weights. Sharded safetensors
   // are not alternatives and therefore remain in the default set.
   const independentWeights = candidates.filter(
-    (artifact) => artifact.format === 'gguf' || artifact.format === 'litertlm' || artifact.format === 'task'
+    (artifact) =>
+      artifact.format === 'gguf' ||
+      artifact.format === 'litertlm' ||
+      artifact.format === 'task' ||
+      artifact.format === 'tflite',
   )
   if (independentWeights.length <= 1) return artifacts
   const preferred =
     independentWeights.find((artifact) => /q4[_-]?k[_-]?m/i.test(artifact.path)) ??
     [...independentWeights].sort(
-      (left, right) => (left.sizeBytes ?? Number.MAX_SAFE_INTEGER) - (right.sizeBytes ?? Number.MAX_SAFE_INTEGER)
+      (left, right) => (left.sizeBytes ?? Number.MAX_SAFE_INTEGER) - (right.sizeBytes ?? Number.MAX_SAFE_INTEGER),
     )[0]
   return artifacts.filter((artifact) => !artifact.required || artifact === preferred)
 }
@@ -1548,7 +1571,7 @@ export class ModelCatalogController {
   /** Native workers can report progress without mutating artifact identity. */
   async updateDownloadJob(
     id: string,
-    update: Partial<Pick<DownloadJob, 'status' | 'bytesDownloaded' | 'segments' | 'error'>>
+    update: Partial<Pick<DownloadJob, 'status' | 'bytesDownloaded' | 'segments' | 'error'>>,
   ): Promise<DownloadJob> {
     const current = await this.getDownloadJob(id)
     if (!current) throw new ModelCatalogError('download job not found', 'invalid_request')
@@ -1583,7 +1606,7 @@ export class ModelCatalogController {
   private async transition(
     id: string,
     status: DownloadJobStatus,
-    callback?: (job: DownloadJob) => Promise<void> | void
+    callback?: (job: DownloadJob) => Promise<void> | void,
   ): Promise<DownloadJob> {
     const current = await this.getDownloadJob(id)
     if (!current) throw new ModelCatalogError('download job not found', 'invalid_request')

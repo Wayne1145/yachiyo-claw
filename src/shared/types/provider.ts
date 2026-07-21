@@ -3,6 +3,7 @@
 
 export enum ModelProviderEnum {
   Yachiyo = 'yachiyo',
+  Local = 'yachiyo-local',
   ChatboxAI = 'chatbox-ai',
   OpenAI = 'openai',
   OpenAIResponses = 'openai-responses',

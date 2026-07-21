@@ -7,6 +7,7 @@ export * from './model-catalog'
 
 export const aiProviderNameHash: Record<ModelProviderEnum, string> = {
   [ModelProviderEnum.Yachiyo]: 'Yachiyo API',
+  [ModelProviderEnum.Local]: '本地模型',
   [ModelProviderEnum.OpenAI]: 'OpenAI API',
   [ModelProviderEnum.OpenAIResponses]: 'OpenAI Responses API',
   [ModelProviderEnum.Azure]: 'Azure OpenAI API',
@@ -39,6 +40,12 @@ export const AIModelProviderMenuOptionList = [
   {
     value: ModelProviderEnum.Yachiyo,
     label: aiProviderNameHash[ModelProviderEnum.Yachiyo],
+    featured: true,
+    disabled: false,
+  },
+  {
+    value: ModelProviderEnum.Local,
+    label: aiProviderNameHash[ModelProviderEnum.Local],
     featured: true,
     disabled: false,
   },
