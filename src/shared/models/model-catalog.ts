@@ -1317,21 +1317,28 @@ export class ModelCompatibilityEngine {
       })
     }
     const requiredRamBytes = estimateRam(model, artifact)
-    const availableRamBytes = profile.availableRamBytes ?? profile.ramBytes
-    if (requiredRamBytes !== undefined && availableRamBytes !== undefined) {
-      checks.ram = availableRamBytes >= requiredRamBytes ? 'pass' : 'fail'
+    // Android can reclaim cached/background memory before loading a model.
+    // Total device RAM is the hard boundary; current free RAM only indicates
+    // whether the user should close other apps before starting inference.
+    const totalRamBytes = profile.ramBytes ?? profile.availableRamBytes
+    const availableRamBytes = profile.availableRamBytes
+    if (requiredRamBytes !== undefined && totalRamBytes !== undefined) {
+      checks.ram = totalRamBytes >= requiredRamBytes ? 'pass' : 'fail'
       if (checks.ram === 'fail')
         issues.push({
           code: 'insufficient_ram',
-          message: `Estimated RAM requirement (${requiredRamBytes} bytes) exceeds available RAM (${availableRamBytes} bytes)`,
+          message: `Estimated RAM requirement (${requiredRamBytes} bytes) exceeds device RAM (${totalRamBytes} bytes)`,
           severity: 'error',
           runtime: selectedRuntime,
           format: selectedFormat,
         })
-      else if (availableRamBytes < requiredRamBytes * (1 + (this.options.lowRamHeadroomRatio ?? 0.15)))
+      else if (
+        availableRamBytes !== undefined &&
+        availableRamBytes < requiredRamBytes * (1 + (this.options.lowRamHeadroomRatio ?? 0.15))
+      )
         issues.push({
           code: 'unknown_device_capability',
-          message: 'RAM headroom is low for this model',
+          message: 'Current free RAM is low; Android may close background apps while loading this model',
           severity: 'warning',
           runtime: selectedRuntime,
           format: selectedFormat,

@@ -13,10 +13,11 @@ import {
   Tooltip,
 } from '@mantine/core'
 import { modals } from '@mantine/modals'
-import type { SkillInfo } from '@shared/types/skills'
+import type { MarketplaceSkill, SkillInfo } from '@shared/types/skills'
 import {
   IconBrandGithub,
   IconDots,
+  IconDownload,
   IconFolderOpen,
   IconPlus,
   IconPlayerPlay,
@@ -25,6 +26,7 @@ import {
   IconSearch,
   IconTrash,
   IconWand,
+  IconWorld,
 } from '@tabler/icons-react'
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -37,6 +39,18 @@ import { toastError } from '@/packages/toast'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import GitHubInstallModal, { type DetectedSkill } from './GitHubInstallModal'
 import SkillsSpotlight, { skillsSpotlight } from './SkillsSpotlight'
+import { SKILLS_POPULAR, type SkillRegistryEntry } from './registries'
+
+function registrySkill(entry: SkillRegistryEntry): MarketplaceSkill {
+  return {
+    id: `${entry.source}/${entry.skillId || entry.name}`,
+    skillId: entry.skillId || entry.name,
+    name: entry.title,
+    installs: entry.installs || 0,
+    source: entry.source,
+    description: entry.description,
+  }
+}
 
 const SkillCard: FC<{
   skill: SkillInfo
@@ -200,6 +214,10 @@ export const SkillsSection: FC = () => {
   const [installModalOpen, setInstallModalOpen] = useState(false)
   const [repoInfo, setRepoInfo] = useState({ owner: '', repo: '' })
   const [showGithubInput, setShowGithubInput] = useState(false)
+  const [marketplaceQuery, setMarketplaceQuery] = useState('')
+  const [marketplaceResults, setMarketplaceResults] = useState<MarketplaceSkill[] | null>(null)
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false)
+  const [installingMarketplaceSkill, setInstallingMarketplaceSkill] = useState<string | null>(null)
   const skillSettings = useSettingsStore((state) => state.skills)
   const { translatedSkills, getTranslatedName, isTranslating, translationEnabled, toggleTranslation } =
     useSkillTranslation(skills)
@@ -284,6 +302,54 @@ export const SkillsSection: FC = () => {
       setScanning(false)
     }
   }, [githubUrl, parseGitHubRepo, t])
+
+  const searchMarketplace = useCallback(async () => {
+    const query = marketplaceQuery.trim()
+    if (!query) {
+      setMarketplaceResults(null)
+      return
+    }
+    setMarketplaceLoading(true)
+    try {
+      const response = await fetch(`https://skills.sh/api/search?q=${encodeURIComponent(query)}&limit=24`)
+      if (!response.ok) throw new Error(`SkillHub HTTP ${response.status}`)
+      const data = (await response.json()) as { skills?: MarketplaceSkill[] }
+      setMarketplaceResults(data.skills || [])
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : 'SkillHub 搜索失败')
+    } finally {
+      setMarketplaceLoading(false)
+    }
+  }, [marketplaceQuery])
+
+  const marketplaceSkills = marketplaceResults ?? SKILLS_POPULAR.slice(0, 8).map(registrySkill)
+
+  const installMarketplaceSkill = useCallback(
+    async (skill: MarketplaceSkill) => {
+      const key = skill.id || skill.skillId
+      setInstallingMarketplaceSkill(key)
+      try {
+        const result = await skillsController.installMarketplaceSkill(skill)
+        if (!result.success) {
+          toastError(result.error || 'Skill 安装失败')
+          return
+        }
+        settingsStore.setState((state) => ({
+          skills: {
+            ...state.skills,
+            enabledSkillNames: state.skills.enabledSkillNames.includes(result.skillName)
+              ? state.skills.enabledSkillNames
+              : [...state.skills.enabledSkillNames, result.skillName],
+          },
+        }))
+        toast.success(`已安装 ${result.skillName}`)
+        await fetchSkills()
+      } finally {
+        setInstallingMarketplaceSkill(null)
+      }
+    },
+    [fetchSkills]
+  )
 
   const handleDeleteSkill = useCallback(
     async (name: string) => {
@@ -439,6 +505,87 @@ export const SkillsSection: FC = () => {
           </Flex>
         </Paper>
       )}
+
+      <section className="mb-8" aria-label="SkillHub">
+        <SectionHeader
+          title="SkillHub"
+          count={marketplaceSkills.length}
+          className="mb-3"
+          right={
+            <Button
+              variant="subtle"
+              size="xs"
+              leftSection={<ScalableIcon icon={IconWorld} size={14} />}
+              onClick={skillsSpotlight.open}
+            >
+              浏览更多
+            </Button>
+          }
+        />
+        <Flex gap="xs" mb="sm">
+          <TextInput
+            flex={1}
+            value={marketplaceQuery}
+            placeholder="搜索可安装的 Skills"
+            leftSection={<ScalableIcon icon={IconSearch} size={15} />}
+            onChange={(event) => setMarketplaceQuery(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void searchMarketplace()
+            }}
+          />
+          <Button loading={marketplaceLoading} onClick={() => void searchMarketplace()}>
+            搜索
+          </Button>
+        </Flex>
+        {marketplaceSkills.length === 0 ? (
+          <Text size="sm" c="dimmed" py="md">
+            没有找到匹配的 Skill
+          </Text>
+        ) : (
+          <SimpleGrid type="container" cols={{ base: 1, '520px': 2, '900px': 3 }}>
+            {marketplaceSkills.map((skill) => {
+              const expectedNames = [skill.skillId, skill.slug, skill.id.split('/').at(-1)]
+                .filter((name): name is string => Boolean(name))
+                .map((name) => name.toLowerCase())
+              const installed = userSkills.some((item) => expectedNames.includes(item.name.toLowerCase()))
+              return (
+                <Paper key={skill.id} withBorder radius="md" p="sm">
+                  <Flex justify="space-between" align="flex-start" gap="sm">
+                    <Box style={{ minWidth: 0 }}>
+                      <Text fw={650} size="sm" lineClamp={1}>
+                        {skill.name}
+                      </Text>
+                      <Text size="xs" c="dimmed" lineClamp={2} mt={4}>
+                        {skill.description || skill.source}
+                      </Text>
+                    </Box>
+                    <Button
+                      size="compact-xs"
+                      variant={installed ? 'light' : 'filled'}
+                      disabled={installed}
+                      loading={installingMarketplaceSkill === skill.id}
+                      leftSection={<ScalableIcon icon={IconDownload} size={13} />}
+                      onClick={() => void installMarketplaceSkill(skill)}
+                    >
+                      {installed ? '已安装' : '安装'}
+                    </Button>
+                  </Flex>
+                  <Flex gap={6} mt="xs" wrap="wrap">
+                    <Badge size="xs" variant="light" color="gray">
+                      {skill.source}
+                    </Badge>
+                    {skill.installs > 0 && (
+                      <Badge size="xs" variant="light" color="pink">
+                        {skill.installs.toLocaleString()} 次安装
+                      </Badge>
+                    )}
+                  </Flex>
+                </Paper>
+              )
+            })}
+          </SimpleGrid>
+        )}
+      </section>
 
       <SectionHeader
         title={t('User Skills')}

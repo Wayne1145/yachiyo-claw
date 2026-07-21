@@ -4,7 +4,7 @@ import { AgentBudgetExceededError, AgentBudgetTracker, mergeAgentBudget } from '
 describe('agent budget', () => {
   it('merges safe defaults and accepts bounded overrides', () => {
     expect(mergeAgentBudget({ maxTokens: 1000, maxCostUsd: undefined })).toMatchObject({
-      maxModelRequests: 3,
+      maxModelRequests: 12,
       maxTokens: 1000,
       maxCostUsd: undefined,
     })

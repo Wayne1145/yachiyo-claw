@@ -13,6 +13,8 @@ import {
   UNKNOWN_PRICE_AGENT_BUDGET,
 } from '@/mobile/agent-budget'
 import { buildDeviceGoalContext } from '@/mobile/agent-goal'
+import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-policy'
+import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import { tryRunLocalAndroidRecipe } from '@/mobile/android-task-recipe'
 import {
   AgentUsageBudgetExceededError,
@@ -55,7 +57,6 @@ async function clearTaskGeneratingState(taskId: string): Promise<void> {
   if (!currentSession) {
     return
   }
-
   let changed = false
   const messages = currentSession.messages.map((msg) => {
     if (!msg.generating) {
@@ -108,10 +109,11 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
     log.error('Task session not found:', taskId)
     return
   }
+  const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).enabled)
 
   // Device runs already reduce the prompt to one GoalSpec. A second
   // summarization request here would add an unbudgeted billable model call.
-  if (platform.type !== 'mobile') {
+  if (!deviceAgent) {
     try {
       const { runTaskCompaction } = await import('./taskCompaction')
       await runTaskCompaction(taskId)
@@ -146,7 +148,7 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
 
   // A confirmed local recipe is resolved before constructing a model or
   // opening a stream. This is the zero-request path for repeated Android work.
-  if (platform.type === 'mobile') {
+  if (deviceAgent) {
     try {
       const localOutcome = await tryRunLocalAndroidRecipe(taskId, content)
       if (localOutcome.handled) {
@@ -207,11 +209,11 @@ function getDefaultModelSettings(sessionSettings?: { provider?: string; modelId?
 async function generateTaskResponse(taskId: string, targetMsg: Message, contextMessages: Message[]): Promise<void> {
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   const abortController = new AbortController()
-  const deviceAgent = platform.type === 'mobile'
+  const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).enabled)
   // Scope persisted Broker checkpoints to one generated task message. A later
   // user request in the same session must be allowed to perform the same
   // legitimate action again, while retries of this message remain idempotent.
-  const agentRunId = `${taskId}:${targetMsg.id}`
+  const agentRunId = createAgentRunId(taskId, targetMsg.id)
   let budget: AgentBudgetTracker | null = null
   if (deviceAgent) resetSemanticObservationCache(agentRunId)
   currentAbortController = abortController
@@ -257,7 +259,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
             }),
         })
       : null
-    await usageLedger?.recoverPendingReservations(Date.now(), taskId)
+    await usageLedger?.recoverPendingReservations(Date.now(), agentRunId)
     usageReservations = new Map<number, string>()
     settlePendingUsage = async (usage?: unknown, result?: unknown) => {
       if (!usageLedger) return
@@ -312,8 +314,8 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const systemMessage: Message = createMessage(
       'system',
       buildTaskSystemPrompt(workingDir, {
-        agentIdentity: platform.type === 'mobile' ? buildAgentIdentityPrompt() : undefined,
-        deviceAgent: platform.type === 'mobile',
+        agentIdentity: deviceAgent ? buildAgentIdentityPrompt() : undefined,
+        deviceAgent,
       }),
     )
 
@@ -381,7 +383,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
                 const reservation = await usageLedger.reserve({
                   provider,
                   model: modelId,
-                  taskId,
+                  taskId: agentRunId,
                   requestId: `${agentRunId}:request:${stepNumber + 1}`,
                   attempt: stepNumber + 1,
                   messages,
@@ -472,7 +474,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       }
 
       updateTaskQueryCache(queryKey, targetMsg)
-      if (platform.type === 'mobile' && overlayVisible && Date.now() - lastOverlayUpdate >= 120) {
+      if (deviceAgent && overlayVisible && Date.now() - lastOverlayUpdate >= 120) {
         lastOverlayUpdate = Date.now()
         void yachiyoDeviceAccessNative
           .updateOperationOverlay(getMessageText(targetMsg, true, true))
@@ -551,7 +553,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     await overlayStopListener?.remove().catch((cleanupError) => {
       log.debug('overlay stop listener cleanup failed:', cleanupError)
     })
-    if (platform.type === 'mobile' && overlayVisible) {
+    if (deviceAgent && overlayVisible) {
       await yachiyoDeviceAccessNative.hideOperationOverlay().catch(() => undefined)
       if (completedSuccessfully && getAgentRuntimeSettings().returnToAppOnComplete) {
         await yachiyoDeviceAccessNative.bringAppToForeground().catch(() => undefined)

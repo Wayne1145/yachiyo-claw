@@ -205,6 +205,9 @@ const SPEECH_ERROR_MESSAGES: Record<string, string> = {
   speech_recording_failed: '录音失败，请检查麦克风权限。',
   speech_recording_empty: '没有录到声音，请重试。',
   speech_asr_empty_result: '没有识别出清晰的语音。',
+  offline_asr_model_missing: '应用内置语音模型不完整，请重新安装应用。',
+  offline_asr_runtime_unavailable: '当前设备无法加载内置语音识别运行库。',
+  offline_asr_failed: '应用内置语音识别启动失败，请重试。',
 }
 
 export function getSpeechRecognitionErrorMessage(error: unknown): string {
@@ -224,17 +227,20 @@ export function getAndroidSpeechRecognitionStatus(): Promise<NativeSpeechRecogni
 
 export async function recognizeAndroidSpeech(callbacks: SpeechRecognitionCallbacks = {}): Promise<string> {
   const settings = getSpeechSettings()
+  const nativeAsr = settings.asrProvider === 'yachiyo-offline' || settings.asrProvider === 'android-system'
   const recognitionId = nextRecognitionId++
   activeRecognition = {
     id: recognitionId,
-    kind: settings.asrProvider === 'android-local' ? 'android-local' : 'remote',
+    kind: nativeAsr ? 'android-local' : 'remote',
   }
-  if (settings.asrProvider === 'android-local') {
+  if (nativeAsr) {
     let partialListener: Awaited<ReturnType<typeof yachiyoVoiceNative.addListener>> | undefined
     let stateListener: Awaited<ReturnType<typeof yachiyoVoiceNative.addListener>> | undefined
     try {
       const status = await getAndroidSpeechRecognitionStatus()
-      if (!status.recognitionAvailable) throw new Error('speech_service_unavailable')
+      const useOffline = settings.asrProvider === 'yachiyo-offline'
+      if (useOffline && !status.offlineAvailable) throw new Error('offline_asr_model_missing')
+      if (!useOffline && !status.systemRecognitionAvailable) throw new Error('speech_service_unavailable')
       partialListener = await yachiyoVoiceNative.addListener('speechPartialResult', ({ text }) => {
         if (text.trim()) callbacks.onPartial?.(text.trim())
       })
@@ -243,6 +249,7 @@ export async function recognizeAndroidSpeech(callbacks: SpeechRecognitionCallbac
       })
       const resultPromise = yachiyoVoiceNative.startListening({
         language: settings.language,
+        engine: useOffline ? 'offline' : 'system',
         preferOnDevice: status.onDeviceAvailable,
       })
       if (stopRequestedRecognitionId === recognitionId) await yachiyoVoiceNative.stopListening()

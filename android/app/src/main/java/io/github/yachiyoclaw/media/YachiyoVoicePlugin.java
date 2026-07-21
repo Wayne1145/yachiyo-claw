@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 })
 public class YachiyoVoicePlugin extends Plugin {
     private ActiveRecognition activeRecognition;
+    private YachiyoOfflineAsrEngine offlineAsr;
     private TextToSpeech tts;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, PluginCall> pendingSpeakCalls = new ConcurrentHashMap<>();
@@ -39,28 +40,39 @@ public class YachiyoVoicePlugin extends Plugin {
         private final long id;
         private final PluginCall call;
         private final SpeechRecognizer recognizer;
+        private final boolean offline;
+        private YachiyoOfflineAsrEngine.Session offlineSession;
         private String latestText = "";
         private boolean stopRequested;
         private boolean settled;
 
-        private ActiveRecognition(long id, PluginCall call, SpeechRecognizer recognizer) {
+        private ActiveRecognition(long id, PluginCall call, SpeechRecognizer recognizer, boolean offline) {
             this.id = id;
             this.call = call;
             this.recognizer = recognizer;
+            this.offline = offline;
         }
     }
 
     private long nextRecognitionId = 1;
 
+    @Override
+    public void load() {
+        offlineAsr = new YachiyoOfflineAsrEngine(getContext());
+    }
+
     @PluginMethod
     public void getRecognitionStatus(PluginCall call) {
         getActivity().runOnUiThread(() -> {
-            boolean recognitionAvailable = SpeechRecognizer.isRecognitionAvailable(getContext());
+            boolean systemRecognitionAvailable = SpeechRecognizer.isRecognitionAvailable(getContext());
+            boolean offlineAvailable = offlineAsr != null && offlineAsr.isBundledModelPresent();
             boolean onDeviceAvailable = isOnDeviceRecognitionAvailable();
             Intent serviceIntent = new Intent(RecognitionService.SERVICE_INTERFACE);
             int serviceCount = getContext().getPackageManager().queryIntentServices(serviceIntent, 0).size();
             JSObject result = new JSObject();
-            result.put("recognitionAvailable", recognitionAvailable);
+            result.put("recognitionAvailable", offlineAvailable || systemRecognitionAvailable);
+            result.put("offlineAvailable", offlineAvailable);
+            result.put("systemRecognitionAvailable", systemRecognitionAvailable);
             result.put("onDeviceAvailable", onDeviceAvailable);
             result.put("serviceCount", serviceCount);
             result.put("listening", activeRecognition != null && !activeRecognition.settled);
@@ -85,6 +97,10 @@ public class YachiyoVoicePlugin extends Plugin {
 
     private void beginListening(PluginCall call) {
         getActivity().runOnUiThread(() -> {
+            if ("offline".equals(call.getString("engine", "offline"))) {
+                beginOfflineListening(call);
+                return;
+            }
             if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
                 call.reject("系统未安装或未启用语音识别服务，请安装语音服务或在语音设置中配置 ASR API。", "speech_service_unavailable");
                 return;
@@ -101,7 +117,7 @@ public class YachiyoVoicePlugin extends Plugin {
                 call.reject("无法启动系统语音识别服务。", "speech_recognizer_start_failed", error);
                 return;
             }
-            ActiveRecognition recognition = new ActiveRecognition(nextRecognitionId++, call, recognizer);
+            ActiveRecognition recognition = new ActiveRecognition(nextRecognitionId++, call, recognizer, false);
             activeRecognition = recognition;
             recognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) { notifyRecognitionState(recognition, "listening"); }
@@ -148,11 +164,49 @@ public class YachiyoVoicePlugin extends Plugin {
         });
     }
 
+    private void beginOfflineListening(PluginCall call) {
+        if (offlineAsr == null || !offlineAsr.isBundledModelPresent()) {
+            call.reject("应用内置语音模型不完整，请重新安装应用。", "offline_asr_model_missing");
+            return;
+        }
+        cancelActiveRecognition("已开始新的语音识别。", "speech_recognition_replaced");
+        ActiveRecognition recognition = new ActiveRecognition(nextRecognitionId++, call, null, true);
+        activeRecognition = recognition;
+        recognition.offlineSession = offlineAsr.start(new YachiyoOfflineAsrEngine.Listener() {
+            @Override public void onState(String state) {
+                notifyRecognitionState(recognition, state);
+            }
+
+            @Override public void onPartial(String text) {
+                if (!isCurrent(recognition) || text.isEmpty()) return;
+                recognition.latestText = text;
+                JSObject value = new JSObject();
+                value.put("sessionId", recognition.id);
+                value.put("text", text);
+                notifyListeners("speechPartialResult", value);
+            }
+
+            @Override public void onComplete(String text) {
+                resolveRecognition(recognition, text.isEmpty() ? recognition.latestText : text);
+            }
+
+            @Override public void onError(String message, String code) {
+                rejectRecognition(recognition, message, code);
+            }
+        });
+    }
+
     @PluginMethod public void stopListening(PluginCall call) {
         getActivity().runOnUiThread(() -> {
             ActiveRecognition recognition = activeRecognition;
             if (recognition != null && !recognition.settled) {
                 recognition.stopRequested = true;
+                if (recognition.offline) {
+                    if (recognition.offlineSession != null) recognition.offlineSession.stop();
+                    notifyRecognitionState(recognition, "processing");
+                    call.resolve();
+                    return;
+                }
                 try {
                     recognition.recognizer.stopListening();
                     notifyRecognitionState(recognition, "processing");
@@ -226,12 +280,22 @@ public class YachiyoVoicePlugin extends Plugin {
 
     private void disposeRecognition(ActiveRecognition recognition) {
         if (activeRecognition == recognition) activeRecognition = null;
+        if (recognition.offline) {
+            if (recognition.offlineSession != null) recognition.offlineSession.cancel();
+            recognition.offlineSession = null;
+            notifyFinished(recognition);
+            return;
+        }
         try {
             recognition.recognizer.cancel();
         } catch (RuntimeException ignored) {
             // Some vendor recognizers throw while already shutting down.
         }
         recognition.recognizer.destroy();
+        notifyFinished(recognition);
+    }
+
+    private void notifyFinished(ActiveRecognition recognition) {
         JSObject state = new JSObject();
         state.put("sessionId", recognition.id);
         state.put("active", false);
@@ -360,6 +424,7 @@ public class YachiyoVoicePlugin extends Plugin {
     }
     @Override protected void handleOnDestroy() {
         cancelActiveRecognition("语音识别已停止。", "speech_recognition_cancelled");
+        if (offlineAsr != null) { offlineAsr.close(); offlineAsr = null; }
         resolvePendingSpeech();
         if (tts != null) { tts.stop(); tts.shutdown(); tts = null; }
     }

@@ -22,6 +22,12 @@ https://github.com/google-ai-edge/gallery.
 
 Local text embeddings use Google MediaPipe Tasks Text under Apache-2.0.
 
+Offline Chinese and English speech recognition uses sherpa-onnx v1.13.4 under
+Apache-2.0 and the quantized
+`sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16` model
+published with the upstream pretrained ASR assets. The exact source archive
+and checksum are recorded in `android/app/src/main/assets/asr/NOTICE.md`.
+
 ## Document parsing
 
 PDF parsing uses Mozilla PDF.js under Apache-2.0. DOCX parsing uses JSZip under

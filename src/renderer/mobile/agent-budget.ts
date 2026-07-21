@@ -14,27 +14,27 @@ export interface AgentBudget {
 }
 
 export const DEFAULT_AGENT_BUDGET: AgentBudget = {
-  maxModelRequests: 3,
-  maxTokens: 8_000,
-  maxCostUsd: 0.5,
-  maxLocalActions: 20,
+  maxModelRequests: 12,
+  maxTokens: 128_000,
+  maxCostUsd: 2,
+  maxLocalActions: 200,
   maxCommits: 1,
-  deadlineMs: 90_000,
+  deadlineMs: 10 * 60_000,
 }
 
 /** Shared request ceilings used by both the in-memory guard and the ledger. */
 export const KNOWN_PRICE_AGENT_BUDGET = {
-  maxCostUsd: 0.5,
-  maxTokens: 8_000,
-  maxModelRequests: 3,
-  maxOutputTokens: 512,
+  maxCostUsd: 2,
+  maxTokens: 128_000,
+  maxModelRequests: 12,
+  maxOutputTokens: 4096,
 } as const
 
 export const UNKNOWN_PRICE_AGENT_BUDGET = {
   maxCostUsd: undefined,
-  maxTokens: 4_000,
-  maxModelRequests: 2,
-  maxOutputTokens: 256,
+  maxTokens: 64_000,
+  maxModelRequests: 8,
+  maxOutputTokens: 2048,
 } as const
 
 export interface AgentBudgetUsage {

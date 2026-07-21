@@ -1,4 +1,10 @@
-export type ASRProvider = 'android-local' | 'openai-compatible' | 'aliyun' | 'volcengine' | 'custom'
+export type ASRProvider =
+  | 'yachiyo-offline'
+  | 'android-system'
+  | 'openai-compatible'
+  | 'aliyun'
+  | 'volcengine'
+  | 'custom'
 export type TTSProvider =
   | 'bing'
   | 'android-system'
@@ -23,7 +29,7 @@ export interface SpeechSettings {
 
 const KEY = 'yachiyo.speech.settings.v2'
 export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
-  asrProvider: 'android-local',
+  asrProvider: 'yachiyo-offline',
   asrBaseUrl: '',
   asrModel: 'whisper-1',
   asrHeaders: '',
@@ -38,7 +44,13 @@ export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
 export function getSpeechSettings(): SpeechSettings {
   if (typeof localStorage === 'undefined') return DEFAULT_SPEECH_SETTINGS
   try {
-    return { ...DEFAULT_SPEECH_SETTINGS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }
+    const stored = JSON.parse(localStorage.getItem(KEY) || '{}') as Omit<Partial<SpeechSettings>, 'asrProvider'> & {
+      asrProvider?: ASRProvider | 'android-local'
+    }
+    // v0.0.6 called the system recognizer "android-local". Migrate it to the
+    // bundled engine so existing users get the promised offline behavior.
+    if (stored.asrProvider === 'android-local') stored.asrProvider = 'yachiyo-offline'
+    return { ...DEFAULT_SPEECH_SETTINGS, ...stored } as SpeechSettings
   } catch {
     return DEFAULT_SPEECH_SETTINGS
   }

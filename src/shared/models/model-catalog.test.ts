@@ -286,6 +286,29 @@ describe('ModelCompatibilityEngine', () => {
       ]),
     )
   })
+
+  it('uses total RAM for hard support and treats current free RAM as a warning', () => {
+    const base = createCompatibilityModel()
+    const model = createCompatibilityModel({
+      artifacts: [{ ...base.artifacts[0], sizeBytes: 4_000_000_000 }],
+      storageSizeBytes: 4_000_000_000,
+    })
+    const report = new ModelCompatibilityEngine().check(model, {
+      androidApi: 35,
+      abi: 'arm64-v8a',
+      ramBytes: 12_000_000_000,
+      availableRamBytes: 3_000_000_000,
+      availableStorageBytes: 10_000_000_000,
+      supportedRuntimes: ['llama.cpp'],
+      supportedFormats: ['gguf'],
+    })
+
+    expect(report.status).toBe('warning')
+    expect(report.checks.ram).toBe('pass')
+    expect(report.issues.map((issue) => issue.message)).toContain(
+      'Current free RAM is low; Android may close background apps while loading this model'
+    )
+  })
 })
 
 describe('ModelCatalogController', () => {

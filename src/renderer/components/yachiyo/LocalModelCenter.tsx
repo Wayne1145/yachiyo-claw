@@ -558,7 +558,8 @@ export function LocalModelCenter() {
               </Group>
               <div className="local-model-device-metrics">
                 <span>
-                  <IconCpu size={17} /> 可用 RAM {formatBytes(profile?.availableRamBytes)}
+                  <IconCpu size={17} /> RAM {formatBytes(profile?.availableRamBytes)} 可用 /{' '}
+                  {formatBytes(profile?.ramBytes)} 总计
                 </span>
                 <span>
                   <IconDatabase size={17} /> 可用存储 {formatBytes(profile?.availableStorageBytes)}

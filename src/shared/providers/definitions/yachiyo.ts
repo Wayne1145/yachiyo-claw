@@ -3,6 +3,7 @@ import { defineProvider } from '../registry'
 import Claude from './models/claude'
 import OpenAI from './models/openai'
 import OpenAIResponses from './models/openai-responses'
+import { YACHIYO_GPT_CHAT_CAPABILITIES } from './yachiyo-models'
 
 export const YACHIYO_API_HOST = 'https://api.yachiyo8000.cn/v1'
 export const YACHIYO_DEFAULT_MODEL = 'gpt-5.6'
@@ -23,7 +24,7 @@ export const yachiyoProvider = defineProvider({
       {
         modelId: YACHIYO_DEFAULT_MODEL,
         apiStyle: 'openai',
-        capabilities: ['vision', 'tool_use', 'reasoning'],
+        capabilities: YACHIYO_GPT_CHAT_CAPABILITIES,
       },
     ],
   },

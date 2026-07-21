@@ -40,6 +40,10 @@ describe('fetchYachiyoModels', () => {
     const models = await fetchYachiyoModels('  disposable-key  ', createDependencies(apiRequest))
 
     expect(models.map((model) => model.modelId)).toEqual(['gpt-5.6', 'gpt-5.6-mini'])
+    expect(models.map((model) => model.capabilities)).toEqual([
+      ['vision', 'tool_use', 'reasoning'],
+      ['vision', 'tool_use', 'reasoning'],
+    ])
     expect(apiRequest).toHaveBeenCalledWith({
       url: 'https://api.yachiyo8000.cn/v1/models',
       method: 'GET',

@@ -1,7 +1,7 @@
 {
   "name": "yachiyo-claw",
   "productName": "Yachiyo Claw",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "engines": {
     "node": ">=22.12.0 <25.0.0",
     "pnpm": ">=10.17.0"

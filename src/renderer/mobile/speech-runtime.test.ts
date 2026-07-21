@@ -21,7 +21,7 @@ const native = vi.hoisted(() => ({
 vi.mock('@capacitor/core', () => ({ registerPlugin: vi.fn(() => native) }))
 vi.mock('./speech-settings', () => ({
   getSpeechSettings: vi.fn(() => ({
-    asrProvider: 'android-local',
+    asrProvider: 'yachiyo-offline',
     language: 'zh-CN',
   })),
   parseSpeechHeaders: vi.fn(() => ({})),
@@ -42,21 +42,25 @@ describe('Android speech runtime', () => {
     native.stopListening.mockResolvedValue(undefined)
   })
 
-  it('reports a missing Android recognition service before recording', async () => {
+  it('reports a missing bundled model before recording', async () => {
     native.getRecognitionStatus.mockResolvedValue({
       recognitionAvailable: false,
+      offlineAvailable: false,
+      systemRecognitionAvailable: false,
       onDeviceAvailable: false,
       serviceCount: 0,
       listening: false,
     })
 
-    await expect(recognizeAndroidSpeech()).rejects.toThrow('系统未安装或未启用语音识别服务')
+    await expect(recognizeAndroidSpeech()).rejects.toThrow('应用内置语音模型不完整')
     expect(native.startListening).not.toHaveBeenCalled()
   })
 
   it('forwards partial hypotheses and prefers an available on-device recognizer', async () => {
     native.getRecognitionStatus.mockResolvedValue({
       recognitionAvailable: true,
+      offlineAvailable: true,
+      systemRecognitionAvailable: false,
       onDeviceAvailable: true,
       serviceCount: 1,
       listening: false,
@@ -70,7 +74,11 @@ describe('Android speech runtime', () => {
 
     await expect(recognizeAndroidSpeech({ onPartial: (text) => partials.push(text) })).resolves.toBe('八千代你好')
     expect(partials).toEqual(['八千', '八千代'])
-    expect(native.startListening).toHaveBeenCalledWith({ language: 'zh-CN', preferOnDevice: true })
+    expect(native.startListening).toHaveBeenCalledWith({
+      language: 'zh-CN',
+      engine: 'offline',
+      preferOnDevice: true,
+    })
     expect(listeners.size).toBe(0)
   })
 
@@ -85,7 +93,14 @@ describe('Android speech runtime', () => {
 
     const recognition = recognizeAndroidSpeech()
     await stopAndroidSpeechRecognition()
-    resolveStatus({ recognitionAvailable: true, onDeviceAvailable: false, serviceCount: 1, listening: false })
+    resolveStatus({
+      recognitionAvailable: true,
+      offlineAvailable: true,
+      systemRecognitionAvailable: false,
+      onDeviceAvailable: false,
+      serviceCount: 0,
+      listening: false,
+    })
 
     await expect(recognition).resolves.toBe('')
     expect(native.stopListening).toHaveBeenCalledTimes(2)

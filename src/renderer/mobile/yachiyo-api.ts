@@ -1,5 +1,6 @@
 import { fetchRemoteModels } from '@shared/models/openai-compatible'
 import { YACHIYO_API_HOST } from '@shared/providers/definitions/yachiyo'
+import { normalizeYachiyoModels } from '@shared/providers/definitions/yachiyo-models'
 import type { ProviderModelInfo } from '@shared/types'
 import type { ModelDependencies } from '@shared/types/adapters'
 import { createModelDependencies } from '@/adapters'
@@ -15,11 +16,12 @@ export async function fetchYachiyoModels(
     throw new Error('api_key_required')
   }
 
-  return fetchRemoteModels(
+  const models = await fetchRemoteModels(
     {
       apiHost: YACHIYO_MODELS_API_HOST,
       apiKey: normalizedApiKey,
     },
     dependencies || (await createModelDependencies())
   )
+  return normalizeYachiyoModels(models)
 }

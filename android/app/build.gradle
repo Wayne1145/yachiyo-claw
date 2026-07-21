@@ -14,8 +14,8 @@ android {
         applicationId "io.github.yachiyoclaw"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
-        versionName "0.0.6"
+        versionCode 7
+        versionName "0.0.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -96,6 +96,7 @@ dependencies {
     annotationProcessor "androidx.room:room-compiler:$androidxRoomVersion"
     implementation 'com.google.ai.edge.litertlm:litertlm-android:0.11.0'
     implementation 'com.google.mediapipe:tasks-text:0.10.26'
+    implementation 'com.github.k2-fsa:sherpa-onnx:v1.13.4'
     implementation 'org.apache.commons:commons-compress:1.27.1'
     implementation project(':capacitor-android')
     implementation 'dev.rikka.shizuku:api:13.1.5'

@@ -97,6 +97,77 @@ function isSkillHubSkill(skill: MarketplaceSkill): boolean {
   }
 }
 
+export interface MarketplaceGitHubLocation {
+  owner: string
+  repo: string
+  suggestedPath: string
+}
+
+export function parseMarketplaceGitHubLocation(source: string): MarketplaceGitHubLocation | null {
+  const value = source.trim()
+  if (!value) return null
+  let parts: string[]
+  try {
+    const url = new URL(value.includes('://') ? value : `https://${value}`)
+    const host = url.hostname.toLowerCase()
+    if (host === 'github.com' || host === 'www.github.com') {
+      parts = url.pathname.split('/').filter(Boolean)
+      const treeIndex = parts[2] === 'tree' || parts[2] === 'blob' ? 4 : 2
+      return parts.length >= 2
+        ? { owner: parts[0], repo: parts[1].replace(/\.git$/i, ''), suggestedPath: parts.slice(treeIndex).join('/') }
+        : null
+    }
+    if (host === 'skills.sh' || host === 'www.skills.sh') {
+      parts = url.pathname.split('/').filter(Boolean)
+      return parts.length >= 2
+        ? { owner: parts[0], repo: parts[1].replace(/\.git$/i, ''), suggestedPath: parts.slice(2).join('/') }
+        : null
+    }
+    // A bare owner/repo source is parsed with owner as the temporary host.
+    if (!value.includes('://') && /^[\w.-]+\/[\w.-]+(?:\/.*)?$/.test(value)) {
+      parts = value.split('/').filter(Boolean)
+      return { owner: parts[0], repo: parts[1].replace(/\.git$/i, ''), suggestedPath: parts.slice(2).join('/') }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function skillPathBasename(path: string): string {
+  return path.split('/').filter(Boolean).at(-1)?.toLowerCase() || ''
+}
+
+export function selectMarketplaceSkillPath(
+  skill: MarketplaceSkill,
+  location: MarketplaceGitHubLocation,
+  candidates: Array<{ path: string }>
+): string | null {
+  const suggested = location.suggestedPath.replace(/^\/+|\/+$/g, '').replace(/\/SKILL\.md$/i, '')
+  if (candidates.some((candidate) => candidate.path === suggested)) return suggested
+  const names = new Set(
+    [skill.slug, skill.skillId, skill.id.split('/').at(-1), suggested.split('/').at(-1)]
+      .filter((name): name is string => Boolean(name))
+      .map((name) => name.toLowerCase())
+  )
+  const matches = candidates.filter((candidate) => names.has(skillPathBasename(candidate.path)))
+  if (matches.length === 1) return matches[0].path
+  if (suggested) return suggested
+  return candidates.length === 1 ? candidates[0].path : null
+}
+
+async function scanMobileGitHubRepo(owner: string, repo: string) {
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`)
+  if (!response.ok) throw new Error(`GitHub repository scan failed (HTTP ${response.status})`)
+  const data = (await response.json()) as { tree?: Array<{ path: string; type: string }> }
+  return (data.tree || [])
+    .filter((entry) => entry.type === 'blob' && (entry.path === 'SKILL.md' || entry.path.endsWith('/SKILL.md')))
+    .map((entry) => {
+      const path = entry.path === 'SKILL.md' ? '' : entry.path.slice(0, -'/SKILL.md'.length)
+      return { name: path.split('/').pop() || repo, path }
+    })
+}
+
 function encodeBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
@@ -392,13 +463,23 @@ export const skillsController = {
     return window.electronAPI.invoke('skills:install', { owner, repo, skillPath })
   },
 
-  installMarketplaceSkill(skill: MarketplaceSkill): Promise<SkillInstallResult> {
+  async installMarketplaceSkill(skill: MarketplaceSkill): Promise<SkillInstallResult> {
     if (platform.type === 'mobile') {
       if (isSkillHubSkill(skill)) return installMobileSkillHubSkill(skill)
-      const match = skill.source.match(/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/[^/]+\/(.+))?/)
-      return match
-        ? installMobileGitHubSkill(match[1], match[2].replace(/\.git$/, ''), match[3] || '')
-        : Promise.resolve({ success: false, skillName: skill.name, error: 'Only GitHub skills are supported on Android' })
+      const location = parseMarketplaceGitHubLocation(skill.source)
+      if (!location) {
+        return { success: false, skillName: skill.name, error: '此 Skill 来源未提供可安装的 GitHub 仓库。' }
+      }
+      try {
+        const candidates = await scanMobileGitHubRepo(location.owner, location.repo)
+        const skillPath = selectMarketplaceSkillPath(skill, location, candidates)
+        if (skillPath === null) {
+          return { success: false, skillName: skill.name, error: '仓库中有多个 Skill，无法确定要安装的目录。' }
+        }
+        return installMobileGitHubSkill(location.owner, location.repo, skillPath)
+      } catch (error) {
+        return { success: false, skillName: skill.name, error: error instanceof Error ? error.message : String(error) }
+      }
     }
     return window.electronAPI.invoke('skills:install-marketplace', skill)
   },
@@ -413,19 +494,7 @@ export const skillsController = {
 
   scanRepo(owner: string, repo: string): Promise<Array<{ name: string; path: string; description?: string }>> {
     if (platform.type === 'mobile') {
-      return fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`)
-        .then((response) => {
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
-          return response.json() as Promise<{ tree?: Array<{ path: string; type: string }> }>
-        })
-        .then((data) =>
-          (data.tree || [])
-            .filter((entry) => entry.type === 'blob' && entry.path.endsWith('/SKILL.md'))
-            .map((entry) => {
-              const path = entry.path.slice(0, -'/SKILL.md'.length)
-              return { name: path.split('/').pop() || repo, path }
-            })
-        )
+      return scanMobileGitHubRepo(owner, repo)
     }
     return window.electronAPI.invoke('skills:scan-repo', owner, repo)
   },

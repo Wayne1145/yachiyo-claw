@@ -18,7 +18,12 @@ vi.mock('@/platform', () => ({
 }))
 vi.mock('@/mobile/mobile-skill-script', () => ({ executeMobileSkillScript: state.executeMobileSkillScript }))
 
-import { installMobileSkillHubSkill, skillsController } from './controller'
+import {
+  installMobileSkillHubSkill,
+  parseMarketplaceGitHubLocation,
+  selectMarketplaceSkillPath,
+  skillsController,
+} from './controller'
 
 const skill: MarketplaceSkill = {
   id: 'reader',
@@ -34,6 +39,67 @@ describe('mobile Skills controller', () => {
   beforeEach(() => {
     state.values.clear()
     vi.clearAllMocks()
+  })
+
+  it('resolves skills.sh and owner/repo marketplace sources to GitHub Skill directories', () => {
+    const marketplace = {
+      ...skill,
+      id: 'vercel-labs/skills/find-skills',
+      skillId: 'find-skills',
+      slug: undefined,
+      source: 'vercel-labs/skills',
+    }
+    const location = parseMarketplaceGitHubLocation(marketplace.source)
+    expect(location).toEqual({ owner: 'vercel-labs', repo: 'skills', suggestedPath: '' })
+    expect(
+      selectMarketplaceSkillPath(marketplace, location!, [
+        { path: 'skills/another-skill' },
+        { path: 'skills/find-skills' },
+      ])
+    ).toBe('skills/find-skills')
+    expect(parseMarketplaceGitHubLocation('https://skills.sh/owner/repo/path/to/skill')).toEqual({
+      owner: 'owner',
+      repo: 'repo',
+      suggestedPath: 'path/to/skill',
+    })
+  })
+
+  it('installs an owner/repo marketplace Skill on Android after discovering its real path', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            tree: [
+              { path: 'skills/another/SKILL.md', type: 'blob' },
+              { path: 'skills/find-skills/SKILL.md', type: 'blob' },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response('---\nname: find-skills\ndescription: Finds useful skills\n---\nSearch the ecosystem.', {
+          status: 200,
+        })
+      )
+    vi.stubGlobal('fetch', request)
+    const marketplace: MarketplaceSkill = {
+      id: 'vercel-labs/skills/find-skills',
+      skillId: 'find-skills',
+      name: 'Find Skills',
+      installs: 100,
+      source: 'vercel-labs/skills',
+    }
+
+    await expect(skillsController.installMarketplaceSkill(marketplace)).resolves.toEqual({
+      success: true,
+      skillName: 'find-skills',
+    })
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      'https://raw.githubusercontent.com/vercel-labs/skills/HEAD/skills/find-skills/SKILL.md'
+    )
   })
 
   it('stores SkillHub content as declarative-only metadata', async () => {

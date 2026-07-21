@@ -14,7 +14,8 @@ import {
 export const Route = createFileRoute('/settings/speech')({ component: SpeechSettingsPage })
 
 const ASR_PROVIDERS = [
-  { value: 'android-local', label: 'Android 设备语音识别' },
+  { value: 'yachiyo-offline', label: 'Yachiyo 内置离线识别（中英）' },
+  { value: 'android-system', label: 'Android 系统语音识别' },
   { value: 'openai-compatible', label: 'OpenAI 兼容' },
   { value: 'aliyun', label: '阿里云 / DashScope' },
   { value: 'volcengine', label: '火山引擎 / Ark' },
@@ -64,7 +65,7 @@ function SpeechSettingsPage() {
     }
   }
 
-  const remoteAsr = value.asrProvider !== 'android-local'
+  const remoteAsr = value.asrProvider !== 'yachiyo-offline' && value.asrProvider !== 'android-system'
   const remoteTts = value.ttsProvider !== 'bing' && value.ttsProvider !== 'android-system'
 
   return (
@@ -82,6 +83,11 @@ function SpeechSettingsPage() {
           data={ASR_PROVIDERS}
           onChange={(provider) => provider && changeAsrProvider(provider as ASRProvider)}
         />
+        {value.asrProvider === 'yachiyo-offline' && (
+          <Text size="sm" c="dimmed">
+            模型随应用安装，不依赖 Google 服务，也无需额外下载。
+          </Text>
+        )}
         {remoteAsr && (
           <>
             <TextInput

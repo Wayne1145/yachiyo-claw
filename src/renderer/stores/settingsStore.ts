@@ -3,7 +3,8 @@
 
 import * as defaults from '@shared/defaults'
 import { YACHIYO_SOUL } from '@shared/personas/yachiyo'
-import { type Settings, SettingsSchema } from '@shared/types'
+import { normalizeYachiyoModels } from '@shared/providers/definitions/yachiyo-models'
+import { ModelProviderEnum, type Settings, SettingsSchema } from '@shared/types'
 import type { DocumentParserConfig } from '@shared/types/settings'
 import deepmerge from 'deepmerge'
 import type { WritableDraft } from 'immer'
@@ -16,7 +17,7 @@ import storage, { StorageKey } from '@/storage'
 import { mergeProviderSettings, type ProviderSettingsUpdate } from './providerSettings'
 
 const log = getLogger('settings-store')
-const SETTINGS_STORAGE_VERSION = 7
+const SETTINGS_STORAGE_VERSION = 8
 
 /**
  * Returns platform-specific default document parser configuration.
@@ -113,6 +114,12 @@ export const settingsStore = createStore<Settings & Action>()(
               if (settings.extension?.documentParser?.type === 'chatbox-ai') {
                 settings.extension.documentParser = getPlatformDefaultDocumentParser()
               }
+            case 7: {
+              const yachiyoSettings = settings.providers?.[ModelProviderEnum.Yachiyo]
+              if (yachiyoSettings?.models) {
+                yachiyoSettings.models = normalizeYachiyoModels(yachiyoSettings.models)
+              }
+            }
             default:
               break
           }

@@ -155,15 +155,15 @@ describe('Yachiyo API onboarding configuration', () => {
     expect(second.providers?.[YACHIYO_API_PROVIDER_ID]?.useProxy).toBe(true)
   })
 
-  it('makes dynamically discovered Yachiyo models available to Agent mode', () => {
+  it('adds full chat capabilities to dynamically discovered Yachiyo GPT models', () => {
     const patch = createYachiyoApiSettingsPatch(emptySettings(), 'test-key', [
-      { modelId: 'yachiyo-dynamic-model', type: 'chat' },
+      { modelId: 'gpt-5.6-mini', type: 'chat', capabilities: ['web_search'] },
     ])
 
     expect(patch.providers?.[YACHIYO_API_PROVIDER_ID]?.models).toEqual([
       expect.objectContaining({
-        modelId: 'yachiyo-dynamic-model',
-        capabilities: ['tool_use'],
+        modelId: 'gpt-5.6-mini',
+        capabilities: ['web_search', 'vision', 'tool_use', 'reasoning'],
       }),
     ])
   })

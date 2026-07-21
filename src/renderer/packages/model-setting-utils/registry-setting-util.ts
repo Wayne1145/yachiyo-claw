@@ -1,6 +1,14 @@
 import { mergeSharedOAuthProviderSettings, resolveEffectiveApiKey } from '@shared/oauth'
 import { getProviderDefinition } from '@shared/providers'
-import type { ModelProvider, ProviderBaseInfo, ProviderModelInfo, ProviderSettings, SessionType } from '@shared/types'
+import { normalizeYachiyoModels } from '@shared/providers/definitions/yachiyo-models'
+import {
+  ModelProviderEnum,
+  type ModelProvider,
+  type ProviderBaseInfo,
+  type ProviderModelInfo,
+  type ProviderSettings,
+  type SessionType,
+} from '@shared/types'
 import { createModelDependencies } from '@/adapters'
 import { settingsStore } from '@/stores/settingsStore'
 import BaseConfig from './base-config'
@@ -73,7 +81,8 @@ export default class RegistrySettingUtil extends BaseConfig implements ModelSett
     })
 
     if ('listModels' in modelInstance && typeof modelInstance.listModels === 'function') {
-      return modelInstance.listModels()
+      const models = await modelInstance.listModels()
+      return this.provider === ModelProviderEnum.Yachiyo ? normalizeYachiyoModels(models) : models
     }
 
     return []

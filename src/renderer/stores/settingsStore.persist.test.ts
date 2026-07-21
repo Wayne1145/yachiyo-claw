@@ -109,7 +109,7 @@ describe('settingsStore persistence', () => {
           apiKey: 'sk-claude',
         },
       },
-      __version: 7,
+      __version: 8,
     }
 
     const { initSettingsStore, settingsStore, mergeProviderSettings, mockStorage } =
@@ -147,8 +147,39 @@ describe('settingsStore persistence', () => {
           apiHost: 'https://api.openai.com',
         },
       },
-        __version: 7,
+        __version: 8,
     })
+  })
+
+  it('upgrades stored Yachiyo GPT capabilities without changing non-chat models', async () => {
+    const persistedSettings = {
+      providers: {
+        yachiyo: {
+          apiKey: 'sk-yachiyo',
+          models: [
+            { modelId: 'gpt-5.6-mini', type: 'chat', capabilities: ['web_search'] },
+            { modelId: 'gpt-image-1', type: 'image' },
+            { modelId: 'text-embedding-3-large', type: 'embedding' },
+          ],
+        },
+      },
+      __version: 7,
+    }
+
+    const { initSettingsStore } = await loadSettingsStoreModule(persistedSettings)
+    const hydrated = await initSettingsStore()
+
+    expect(hydrated.providers?.yachiyo?.models).toEqual([
+      expect.objectContaining({
+        modelId: 'gpt-5.6-mini',
+        type: 'chat',
+        capabilities: ['web_search', 'vision', 'tool_use', 'reasoning'],
+      }),
+      expect.objectContaining({ modelId: 'gpt-image-1', type: 'image' }),
+      expect.objectContaining({ modelId: 'text-embedding-3-large', type: 'embedding' }),
+    ])
+    expect(hydrated.providers?.yachiyo?.models?.[1]?.capabilities).toBeUndefined()
+    expect(hydrated.providers?.yachiyo?.models?.[2]?.capabilities).toBeUndefined()
   })
 
   it('waits for a direct credential write before publishing settings in memory', async () => {
@@ -160,7 +191,7 @@ describe('settingsStore persistence', () => {
       'settings',
       expect.objectContaining({
         providers: { yachiyo: { apiKey: 'disposable-key' } },
-        __version: 7,
+        __version: 8,
       })
     )
     expect(settingsStore.getState().providers?.yachiyo?.apiKey).toBe('disposable-key')

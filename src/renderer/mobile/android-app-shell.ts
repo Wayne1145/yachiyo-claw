@@ -1,4 +1,5 @@
 import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL, yachiyoProvider } from '@shared/providers/definitions/yachiyo'
+import { normalizeYachiyoModels } from '@shared/providers/definitions/yachiyo-models'
 import { ModelProviderEnum, type ProviderModelInfo, type Settings } from '@shared/types'
 
 export const YACHIYO_API_PROVIDER_ID = ModelProviderEnum.Yachiyo
@@ -7,8 +8,6 @@ export { YACHIYO_API_HOST as YACHIYO_API_BASE_URL, YACHIYO_DEFAULT_MODEL as YACH
 export type AndroidShellTab = 'chat' | 'interactive' | 'tasks' | 'settings'
 export type AndroidShellWorkspaceView = 'tasks' | 'about' | 'settings' | 'route'
 export type AndroidShellBackAction = 'chat' | 'settings' | 'minimize'
-
-const DEFAULT_AGENT_CAPABILITIES: NonNullable<ProviderModelInfo['capabilities']> = ['tool_use']
 
 type AndroidShellSettings = Pick<Settings, 'customProviders' | 'defaultChatModel' | 'licenseKey' | 'providers'>
 
@@ -84,16 +83,13 @@ export function createYachiyoApiSettingsPatch(
   }
 
   const existingSettings = settings.providers?.[ModelProviderEnum.Yachiyo]
-  const providerModels = models?.map((model) => {
+  const providerModels = models && normalizeYachiyoModels(models).map((model) => {
     const defaultModel = yachiyoProvider.defaultSettings?.models?.find(
       (candidate) => candidate.modelId === model.modelId
     )
     return defaultModel
       ? { ...defaultModel, ...model }
-      : {
-          ...model,
-          capabilities: model.capabilities?.length ? model.capabilities : DEFAULT_AGENT_CAPABILITIES,
-        }
+      : model
   })
 
   return {

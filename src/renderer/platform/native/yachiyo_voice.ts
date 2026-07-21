@@ -2,6 +2,8 @@ import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
 
 export interface NativeSpeechRecognitionStatus {
   recognitionAvailable: boolean
+  offlineAvailable: boolean
+  systemRecognitionAvailable: boolean
   onDeviceAvailable: boolean
   serviceCount: number
   listening: boolean
@@ -20,7 +22,11 @@ export interface NativeSpeechRecognitionStateEvent {
 
 interface YachiyoVoicePlugin {
   getRecognitionStatus(): Promise<NativeSpeechRecognitionStatus>
-  startListening(options?: { language?: string; preferOnDevice?: boolean }): Promise<{ text: string }>
+  startListening(options?: {
+    language?: string
+    engine?: 'offline' | 'system'
+    preferOnDevice?: boolean
+  }): Promise<{ text: string }>
   stopListening(): Promise<void>
   speak(options: { text: string }): Promise<void>
   stopSpeaking(): Promise<void>
