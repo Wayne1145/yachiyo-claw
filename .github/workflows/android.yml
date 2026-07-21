@@ -210,6 +210,9 @@ jobs:
       - name: Audit Android native log privacy
         run: pnpm check:android-native-logs
 
+      - name: Generate typed route tree
+        run: pnpm generate:routes
+
       - name: Type-check
         run: pnpm check
 

@@ -10,6 +10,7 @@
   "description": "An Android-first AI chat and local device agent",
   "main": "out/main/main.js",
   "scripts": {
+    "generate:routes": "node scripts/generate-route-tree.mjs",
     "generate:model-snapshot": "pnpm exec tsx scripts/generate-model-snapshot.ts",
     "verify:android-update-release": "node scripts/verify-android-update-release.mjs",
     "build": "electron-vite build",
