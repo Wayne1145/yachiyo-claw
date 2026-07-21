@@ -182,7 +182,7 @@ jobs:
           platform_revision="$(node -p "require('./toolchain.lock.json').android.platformRevision")"
 
           assert_revision \
-            "${ANDROID_SDK_ROOT}/cmdline-tools/latest/source.properties" \
+            "${ANDROID_SDK_ROOT}/cmdline-tools/${ANDROID_COMMAND_LINE_TOOLS_BUILD}/source.properties" \
             "${command_line_tools_revision}" \
             "Android command-line tools"
           assert_revision \
