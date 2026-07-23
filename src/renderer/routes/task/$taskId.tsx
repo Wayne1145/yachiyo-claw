@@ -1,20 +1,6 @@
-import {
-  ActionIcon,
-  Box,
-  Button,
-  Center,
-  Code,
-  Collapse,
-  Flex,
-  Loader,
-  ScrollArea,
-  Stack,
-  Text,
-  Textarea,
-  UnstyledButton,
-} from '@mantine/core'
+import { ActionIcon, Box, Button, Center, Code, Collapse, Flex, Loader, ScrollArea, Stack, Text } from '@mantine/core'
 import { TASK_DEFAULT_DIRECTORY } from '@shared/constants/task'
-import { type Message, ModelProviderEnum } from '@shared/types'
+import type { Message } from '@shared/types'
 import { formatNumber } from '@shared/utils'
 import {
   IconArrowUp,
@@ -24,7 +10,6 @@ import {
   IconFolder,
   IconLayoutSidebarLeftExpand,
   IconMenu2,
-  IconPlayerStopFilled,
   IconRocket,
   IconX,
 } from '@tabler/icons-react'
@@ -36,12 +21,13 @@ import { trackJkClickEvent } from '@/analytics/jk'
 import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
 import Divider from '@/components/common/Divider'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
-import { ContextUsageBar } from '@/components/common/ContextUsageBar'
+import { MessageAttachmentGrid } from '@/components/chat/MessageAttachmentGrid'
+import { ImageInStorage } from '@/components/Image'
+import InputBox, { type InputBoxPayload } from '@/components/InputBox'
 import TokenCountMenu from '@/components/InputBox/TokenCountMenu'
-import ProviderImageIcon from '@/components/icons/ProviderImageIcon'
+import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import WindowControls from '@/components/layout/WindowControls'
 import Markdown, { BlockCodeCollapsedStateProvider } from '@/components/Markdown'
-import ModelSelector from '@/components/ModelSelector'
 import DirectoryMenu from '@/components/task/DirectoryMenu'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { getAgentBackend } from '@/mobile/agent-broker'
@@ -69,8 +55,6 @@ import {
 import { useUIStore } from '@/stores/uiStore'
 
 /** Exclude DeepSeek models ≤ v3.2 (chat, v3, v3.1, v3.2, r1, reasoner) */
-const DEEPSEEK_EXCLUDED_RE = /^deepseek-(chat|r1|reasoner|(v(0|1|2|3(\.([0-2])?)?)))(-|$)/i
-
 export const Route = createFileRoute('/task/$taskId')({
   component: TaskSessionRoute,
 })
@@ -288,9 +272,19 @@ function TaskMessageBubble({ message, sessionName }: { message: Message; session
                   </Text>
                 )
               }
+              if (part.type === 'image') {
+                return (
+                  <Box key={`${part.storageKey}-${i}`} className="h-36 max-w-56 overflow-hidden rounded-lg">
+                    <ImageInStorage storageKey={part.storageKey} className="h-full w-full object-cover" />
+                  </Box>
+                )
+              }
               return null
             })}
           </Stack>
+          {(message.files?.length || message.links?.length) && (
+            <MessageAttachmentGrid files={message.files} links={message.links} align="end" />
+          )}
           {message.generating && !hasContent && (
             <Flex align="center" gap="xs">
               <Loader size="xs" />
@@ -327,9 +321,19 @@ function TaskMessageBubble({ message, sessionName }: { message: Message; session
                   </Markdown>
                 )
               }
+              if (part.type === 'image') {
+                return (
+                  <Box key={`${part.storageKey}-${i}`} className="h-40 max-w-64 overflow-hidden rounded-lg">
+                    <ImageInStorage storageKey={part.storageKey} className="h-full w-full object-cover" />
+                  </Box>
+                )
+              }
               return null
             })}
           </Stack>
+          {(message.files?.length || message.links?.length) && (
+            <MessageAttachmentGrid files={message.files} links={message.links} align="start" />
+          )}
           {message.generating && !hasContent && (
             <Flex align="center" gap="xs">
               <Loader size="xs" />
@@ -356,8 +360,6 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
 
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [input, setInput] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const showSidebar = useUIStore((s) => s.showSidebar)
   const setShowSidebar = useUIStore((s) => s.setShowSidebar)
@@ -421,11 +423,6 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
     return Math.round((totalTokens / contextWindow) * 100)
   }, [totalTokens, contextWindow])
 
-  const modelDisplayText = useMemo(() => {
-    if (!model) return t('Select Model')
-    return providerModelInfo?.nickname || model.modelId
-  }, [providerModelInfo, model, t])
-
   const handleSelectModel = useCallback(
     async (provider: string, modelId: string) => {
       const updated = await updateTaskSession(session.id, {
@@ -435,6 +432,16 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
         queryClient.setQueryData([TASK_SESSION_QUERY_KEY, session.id], updated)
       }
       lastUsedModelStore.getState().setTaskModel(provider, modelId)
+    },
+    [session.id, session.settings, queryClient],
+  )
+
+  const handleReasoningStrength = useCallback(
+    async (reasoningStrength: NonNullable<NonNullable<typeof session.settings>['reasoningStrength']>) => {
+      const updated = await updateTaskSession(session.id, {
+        settings: { ...(session.settings || {}), reasoningStrength },
+      })
+      if (updated) queryClient.setQueryData([TASK_SESSION_QUERY_KEY, session.id], updated)
     },
     [session.id, session.settings, queryClient],
   )
@@ -454,15 +461,17 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
     [session.id, session.workingDirectory, queryClient],
   )
 
-  const handleSend = useCallback(async () => {
-    const trimmed = input.trim()
-    if (!trimmed || generating) return
-    setInput('')
-    await submitTaskMessage(session.id, trimmed)
-  }, [input, session.id, generating])
+  const handleSend = useCallback(
+    async ({ constructedMessage, needGenerating, onUserMessageReady }: InputBoxPayload) => {
+      if (generating) return
+      await submitTaskMessage(session.id, constructedMessage, { needGenerating, onUserMessageReady })
+    },
+    [generating, session.id],
+  )
 
   const handleStop = useCallback(() => {
     void cancelTaskGeneration(session.id)
+    return true
   }, [session.id])
 
   useEffect(() => {
@@ -580,66 +589,17 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
 
       <Box className="yachiyo-task-composer py-3 px-4 shrink-0">
         <Box maw={800} mx="auto">
-          <Stack
-            gap={6}
-            className="yachiyo-task-composer-panel rounded-md bg-[var(--chatbox-background-secondary)] px-3 py-2 min-h-[92px]"
-            style={{ border: '1px solid var(--chatbox-border-primary)' }}
-          >
-            <ContextUsageBar used={totalTokens} limit={contextWindow} />
-            <Flex align="flex-end" gap={4}>
-              <Textarea
-                ref={textareaRef}
-                placeholder={t('Describe what you want to do...') || ''}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                minRows={2}
-                maxRows={6}
-                autosize
-                unstyled={true}
-                classNames={{
-                  root: 'flex-1',
-                  wrapper: 'flex-1',
-                  input:
-                    'block w-full outline-none border-none px-2 py-1 resize-none bg-transparent text-chatbox-tint-primary text-sm',
-                }}
-                onKeyDown={(e) => {
-                  if (e.nativeEvent.isComposing || e.keyCode === 229) return
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    void handleSend()
-                  }
-                }}
-              />
-              {generating ? (
-                <ActionIcon
-                  size={32}
-                  variant="filled"
-                  color="dark"
-                  radius="xl"
-                  onClick={handleStop}
-                  className="shrink-0 mb-1"
-                  aria-label={t('Stop generating')}
-                  title={t('Stop generating')}
-                >
-                  <ScalableIcon icon={IconPlayerStopFilled} size={16} />
-                </ActionIcon>
-              ) : (
-                <ActionIcon
-                  size={32}
-                  variant="filled"
-                  color="chatbox-brand"
-                  radius="xl"
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  className={`shrink-0 mb-1 ${!input.trim() ? 'disabled:!opacity-100 !text-white' : ''}`}
-                  style={!input.trim() ? { backgroundColor: 'rgba(222, 226, 230, 1)' } : undefined}
-                  aria-label={t('Send message')}
-                  title={t('Send message')}
-                >
-                  <ScalableIcon icon={IconArrowUp} size={16} />
-                </ActionIcon>
-              )}
-            </Flex>
+          <Stack gap={4} className="yachiyo-task-composer-panel">
+            <InputBox
+              sessionType="chat"
+              sessionId={session.linkedSessionId || session.id}
+              generating={generating}
+              model={model}
+              fullWidth
+              onSelectModel={handleSelectModel}
+              onSubmit={handleSend}
+              onStopGenerating={handleStop}
+            />
             <Flex align="center" justify="space-between">
               {inAndroidAppShell ? (
                 <Text size="xs" c="dimmed">
@@ -653,6 +613,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                 <DirectoryMenu currentDirectory={session.workingDirectory} onSelect={handleSelectDirectory} />
               )}
               <Flex align="center" gap={4}>
+                <ReasoningStrengthControl settings={session.settings} onChange={handleReasoningStrength} compact />
                 <TokenCountMenu
                   currentInputTokens={currentInputTokens}
                   contextTokens={contextTokens}
@@ -682,26 +643,11 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                     </Text>
                   </Flex>
                 </TokenCountMenu>
-                <ModelSelector
-                  onSelect={handleSelectModel}
-                  selectedProviderId={model?.provider}
-                  selectedModelId={model?.modelId}
-                  modelFilter={(m, providerId) => {
-                    if (providerId !== ModelProviderEnum.Yachiyo && !m.capabilities?.includes('tool_use')) return false
-                    if (providerId === 'chatbox-ai' && DEEPSEEK_EXCLUDED_RE.test(m.modelId)) return false
-                    return true
-                  }}
-                  position="top-end"
-                  transitionProps={{ transition: 'fade-up', duration: 200 }}
-                >
-                  <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
-                    {!!model && <ProviderImageIcon size={18} provider={model.provider} />}
-                    <Text size="sm" className="text-[var(--chatbox-tint-secondary)] truncate max-w-[160px]">
-                      {modelDisplayText}
-                    </Text>
-                    <IconChevronDown size={14} className="text-[var(--chatbox-tint-tertiary)] shrink-0" />
-                  </UnstyledButton>
-                </ModelSelector>
+                {providerModelInfo && !providerModelInfo.capabilities?.includes('tool_use') && (
+                  <Text size="xs" c="dimmed">
+                    {t('Chat only')}: {t('This model does not support Agent tools')}
+                  </Text>
+                )}
               </Flex>
             </Flex>
           </Stack>

@@ -20,6 +20,7 @@ import type {
   ModelCatalogSource,
   RemoteModel,
 } from '@shared/models/model-catalog'
+import { providerCapabilitiesForLocalRuntime } from '@shared/models/local-capabilities'
 import { ModelProviderEnum, type ProviderModelInfo } from '@shared/types'
 import {
   IconArrowLeft,
@@ -52,6 +53,8 @@ import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
 import './local-model-center.css'
 
 type SourceFilter = 'all' | ModelCatalogSource
+type ModelCenterView = 'community' | 'installed'
+type ModelHealth = { status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }
 const controller = createMobileModelCatalogController()
 const MAX_MODEL_BYTES = 15 * 1024 ** 3
 
@@ -99,6 +102,7 @@ function reportLabel(report?: CompatibilityReport) {
 }
 
 export function LocalModelCenter() {
+  const [view, setView] = useState<ModelCenterView>('community')
   const [query, setQuery] = useState('gguf')
   const [source, setSource] = useState<SourceFilter>('all')
   const [models, setModels] = useState<RemoteModel[]>([])
@@ -115,11 +119,13 @@ export function LocalModelCenter() {
   const [error, setError] = useState('')
   const [queueError, setQueueError] = useState('')
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set())
+  const [healthByModelId, setHealthByModelId] = useState<Record<string, ModelHealth>>({})
   const [selectedArtifactId, setSelectedArtifactId] = useState<string>()
   const searchAbortRef = useRef<AbortController>()
   const downloadSamplesRef = useRef<Record<string, DownloadSample>>({})
   const refreshRunIdRef = useRef(0)
   const providers = useSettingsStore((state) => state.providers)
+  const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
   const localModels = providers?.[ModelProviderEnum.Local]?.models || []
 
   const refreshJobs = useCallback(async () => {
@@ -188,7 +194,7 @@ export function LocalModelCenter() {
         modelId: job.modelId,
         nickname: job.repository.split('/').at(-1) || job.repository,
         type: job.artifacts.some((artifact) => artifact.format === 'tflite') ? 'embedding' : 'chat',
-        capabilities: [],
+        capabilities: providerCapabilitiesForLocalRuntime(job.runtimeCapabilities),
       }))
     if (!additions.length) return
     void persistSettingsPatch({
@@ -304,6 +310,37 @@ export function LocalModelCenter() {
     )
   }, [jobs])
   const activeDownloadCount = jobs.filter((job) => job.status === 'queued' || job.status === 'downloading').length
+  const installedJobs = useMemo(() => {
+    const latestByModel = new Map<string, DownloadJob>()
+    for (const job of jobs) {
+      if (job.status !== 'completed') continue
+      const existing = latestByModel.get(job.modelId)
+      if (!existing || existing.updatedAt < job.updatedAt) latestByModel.set(job.modelId, job)
+    }
+    return [...latestByModel.values()].sort((left, right) => right.updatedAt - left.updatedAt)
+  }, [jobs])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || view !== 'installed' || installedJobs.length === 0) return
+    let active = true
+    void Promise.all(
+      installedJobs.map(async (job) => {
+        try {
+          return [job.modelId, await yachiyoModelManagerNative.healthCheck({ modelId: job.modelId })] as const
+        } catch (cause) {
+          return [
+            job.modelId,
+            { status: 'unknown', reason: cause instanceof Error ? cause.message : '运行时检查失败' } satisfies ModelHealth,
+          ] as const
+        }
+      }),
+    ).then((entries) => {
+      if (active) setHealthByModelId(Object.fromEntries(entries))
+    })
+    return () => {
+      active = false
+    }
+  }, [installedJobs, view])
 
   const startDownload = async () => {
     if (!selectedLocalModel || !profile || !artifact || artifactGroup.length === 0) return
@@ -344,6 +381,152 @@ export function LocalModelCenter() {
 
   const removeModel = async () => {
     if (activeModel) await removeDownloadedModel(activeModel.id)
+  }
+
+  const setInstalledAsDefault = async (modelId: string) => {
+    await persistSettingsPatch({ defaultChatModel: { provider: ModelProviderEnum.Local, model: modelId } })
+  }
+
+  if (view === 'installed' && !downloadQueueOpened) {
+    return (
+      <main className="local-model-center local-model-installed">
+        <header className="local-model-heading">
+          <div>
+            <Text className="local-model-eyebrow">ON-DEVICE MODELS</Text>
+            <Title order={1}>已安装模型</Title>
+            <Text c="dimmed">管理已下载到应用私有目录的模型和运行时。</Text>
+          </div>
+          <ActionIcon
+            className="local-model-queue-trigger"
+            size={42}
+            radius="xl"
+            variant="default"
+            aria-label="打开下载队列"
+            onClick={() => setDownloadQueueOpened(true)}
+          >
+            <IconDownload size={21} />
+            {activeDownloadCount > 0 && (
+              <span className="local-model-queue-count">{activeDownloadCount > 9 ? '9+' : activeDownloadCount}</span>
+            )}
+          </ActionIcon>
+        </header>
+        <SegmentedControl
+          fullWidth
+          radius="xl"
+          value={view}
+          onChange={(value) => setView(value as ModelCenterView)}
+          data={[
+            { label: '模型社区', value: 'community' },
+            { label: `已安装 (${installedJobs.length})`, value: 'installed' },
+          ]}
+        />
+        {queueError && (
+          <Text c="red" size="sm" role="alert">
+            {queueError}
+          </Text>
+        )}
+        {installedJobs.length === 0 ? (
+          <section className="local-model-queue-empty">
+            <IconDatabase size={34} />
+            <Text fw={700}>还没有已安装模型</Text>
+            <Text size="sm" c="dimmed">
+              从模型社区选择 GGUF、LiteRT-LM 或嵌入模型并完成下载。
+            </Text>
+            <Button radius="xl" color="pink" onClick={() => setView('community')}>
+              浏览模型社区
+            </Button>
+          </section>
+        ) : (
+          <div className="local-model-installed-list">
+            {installedJobs.map((job) => {
+              const health = healthByModelId[job.modelId]
+              const format = job.artifacts.map((item) => item.format).filter((item, index, all) => all.indexOf(item) === index)
+              const runtime = job.artifacts.find((item) => item.runtime)?.runtime ||
+                (job.artifacts.some((item) => item.format === 'gguf') ? 'llama.cpp' : '未识别')
+              const quantization = job.artifacts
+                .map((item) => item.filename.match(/(?:^|[-_.])(Q\d(?:_[A-Z0-9]+)?)(?:[-_.]|$)/i)?.[1])
+                .find(Boolean)
+              const isDefault =
+                defaultChatModel?.provider === ModelProviderEnum.Local && defaultChatModel.model === job.modelId
+              const pending = pendingJobIds.has(job.id)
+              return (
+                <section key={job.modelId} className="local-model-installed-row">
+                  <div className="local-model-installed-heading">
+                    <div>
+                      <Text fw={750} className="local-model-installed-name">
+                        {job.repository.split('/').at(-1) || job.repository}
+                      </Text>
+                      <Text size="xs" c="dimmed" className="local-model-installed-repository">
+                        {job.repository}
+                      </Text>
+                    </div>
+                    <Group gap={6}>
+                      {isDefault && <Badge color="pink" variant="light">默认</Badge>}
+                      <Badge
+                        color={health?.status === 'supported' ? 'green' : health?.status === 'warning' ? 'yellow' : health?.status === 'unsupported' ? 'red' : 'gray'}
+                        variant="light"
+                      >
+                        {health?.status === 'supported'
+                          ? '可运行'
+                          : health?.status === 'warning'
+                            ? '可运行，有警告'
+                            : health?.status === 'unsupported'
+                              ? '不可运行'
+                              : '正在检查'}
+                      </Badge>
+                    </Group>
+                  </div>
+                  <div className="local-model-installed-meta">
+                    <span>{format.join(' + ') || '未知格式'}</span>
+                    <span>{runtime}</span>
+                    <span>{quantization || '量化信息未声明'}</span>
+                    <span>{formatBytes(job.bytesTotal)}</span>
+                  </div>
+                  {health?.reason && (
+                    <Text size="xs" c={health.status === 'unsupported' ? 'red' : 'dimmed'}>
+                      {health.reason}
+                    </Text>
+                  )}
+                  <Group gap="xs" justify="flex-end">
+                    {!job.artifacts.some((item) => item.format === 'tflite') && (
+                      <Button
+                        size="compact-sm"
+                        radius="xl"
+                        color="pink"
+                        variant={isDefault ? 'light' : 'filled'}
+                        disabled={isDefault || health?.status === 'unsupported'}
+                        onClick={() => void setInstalledAsDefault(job.modelId)}
+                      >
+                        {isDefault ? '当前默认' : '设为默认'}
+                      </Button>
+                    )}
+                    <Button
+                      size="compact-sm"
+                      radius="xl"
+                      variant="default"
+                      disabled={pending}
+                      onClick={() => void runJobAction(job.id, () => yachiyoModelManagerNative.unload({ modelId: job.modelId }))}
+                    >
+                      卸载内存
+                    </Button>
+                    <ActionIcon
+                      size={30}
+                      variant="subtle"
+                      color="red"
+                      aria-label={`删除 ${job.repository}`}
+                      disabled={pending}
+                      onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
+                    >
+                      <IconTrash size={17} />
+                    </ActionIcon>
+                  </Group>
+                </section>
+              )
+            })}
+          </div>
+        )}
+      </main>
+    )
   }
 
   if (downloadQueueOpened) {
@@ -726,6 +909,16 @@ export function LocalModelCenter() {
           )}
         </ActionIcon>
       </header>
+      <SegmentedControl
+        fullWidth
+        radius="xl"
+        value={view}
+        onChange={(value) => setView(value as ModelCenterView)}
+        data={[
+          { label: '模型社区', value: 'community' },
+          { label: `已安装 (${installedJobs.length})`, value: 'installed' },
+        ]}
+      />
       <div className="local-model-searchbar">
         <TextInput
           value={query}

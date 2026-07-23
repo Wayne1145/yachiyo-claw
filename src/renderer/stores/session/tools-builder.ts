@@ -9,6 +9,7 @@ import { mcpController } from '@/packages/mcp/controller'
 import { createAndroidDeviceToolSet } from '@/packages/model-calls/toolsets/android-device'
 import fileToolSet from '@/packages/model-calls/toolsets/file'
 import { getToolSet as getKBToolSet } from '@/packages/model-calls/toolsets/knowledge-base'
+import { createLongTermMemoryToolSet } from '@/packages/model-calls/toolsets/long-term-memory'
 import sandboxToolSet from '@/packages/model-calls/toolsets/sandbox'
 import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-calls/toolsets/session-attachment-rag'
 import { getToolSetDescription, parseLinkTool, webSearchTool } from '@/packages/model-calls/toolsets/web-search'
@@ -102,6 +103,7 @@ export async function buildToolsForSession(
 ): Promise<BuildToolsResult> {
   const { webBrowsing, knowledgeBase, messages, sandboxEnabled, enabledSkillNames, deviceControlEnabled } = options
   const androidDeviceToolSet = createAndroidDeviceToolSet(options.agentSessionId, options.agentApprovalSessionId)
+  const memoryToolSet = model.isSupportToolUse() ? createLongTermMemoryToolSet(options.agentApprovalSessionId || options.agentSessionId) : null
   const useSandboxTools = Boolean(sandboxEnabled)
 
   const hasInlineFileOrLink = messages.some(
@@ -152,6 +154,9 @@ export async function buildToolsForSession(
   if (deviceControlEnabled && platform.type === 'mobile') {
     instructions += androidDeviceToolSet.description
   }
+  if (memoryToolSet) {
+    instructions += memoryToolSet.description
+  }
 
   let tools: ToolSet = { ...mcpController.getAvailableTools(options.agentSessionId) }
 
@@ -189,6 +194,9 @@ export async function buildToolsForSession(
   }
   if (deviceControlEnabled && platform.type === 'mobile') {
     tools = { ...tools, ...androidDeviceToolSet.tools }
+  }
+  if (memoryToolSet) {
+    tools = { ...tools, ...memoryToolSet.tools }
   }
   if (sandboxEnabled && platform.type === 'mobile') {
     tools.write_skill = tool({

@@ -4,8 +4,9 @@ import { useCallback } from 'react'
 import * as atoms from '@/stores/atoms'
 import { useUIStore } from '@/stores/uiStore'
 
-export function useKnowledgeBase({ isNewSession }: { isNewSession: boolean }) {
-  const currentSessionId = useAtomValue(atoms.currentSessionIdAtom)
+export function useKnowledgeBase({ isNewSession, sessionId }: { isNewSession: boolean; sessionId?: string }) {
+  const selectedSessionId = useAtomValue(atoms.currentSessionIdAtom)
+  const currentSessionId = sessionId || selectedSessionId
 
   const newSessionState = useUIStore((s) => s.newSessionState)
   const setNewSessionState = useUIStore((s) => s.setNewSessionState)
@@ -30,7 +31,7 @@ export function useKnowledgeBase({ isNewSession }: { isNewSession: boolean }) {
         }
       }
     },
-    [currentSessionId, isNewSession, setNewSessionState, addSessionKnowledgeBase, removeSessionKnowledgeBase]
+    [currentSessionId, isNewSession, setNewSessionState, addSessionKnowledgeBase, removeSessionKnowledgeBase],
   )
   return { knowledgeBase, setKnowledgeBase }
 }

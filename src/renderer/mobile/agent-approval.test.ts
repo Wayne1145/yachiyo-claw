@@ -6,9 +6,10 @@ import {
   cancelPendingAgentApprovals,
   onAgentApprovalRequest,
   requestAgentApproval,
+  requestAgentDecision,
   resolveAgentApproval,
 } from './agent-approval'
-import { saveAgentSessionConfig } from './agent-session-config'
+import { getAgentSessionConfig, saveAgentSessionConfig } from './agent-session-config'
 
 describe('Agent approval queue', () => {
   beforeEach(() => {
@@ -75,6 +76,28 @@ describe('Agent approval queue', () => {
 
     controller.abort()
     await expect(approval).resolves.toBe(false)
+    unsubscribe()
+  })
+
+  it('returns loop decisions without granting dangerous actions for the conversation', async () => {
+    saveAgentSessionConfig('chat', { approvalMode: 'full', allowDangerousForConversation: false })
+    const requests: AgentApprovalRequest[] = []
+    const unsubscribe = onAgentApprovalRequest((request) => requests.push(request))
+    const decision = requestAgentDecision({
+      sessionId: 'chat',
+      runId: 'run-loop',
+      title: 'loop',
+      detail: 'same action repeated',
+      risk: 'safe',
+      kind: 'loop',
+      alwaysAsk: true,
+      rememberConversationApproval: false,
+    })
+
+    expect(requests[0]?.kind).toBe('loop')
+    resolveAgentApproval(requests[0].id, 'conversation')
+    await expect(decision).resolves.toBe('conversation')
+    expect(getAgentSessionConfig('chat').allowDangerousForConversation).toBe(false)
     unsubscribe()
   })
 

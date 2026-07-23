@@ -41,7 +41,9 @@ export default class OpenAIResponses extends AbstractAISDKModel {
   }
 
   protected getCallSettings(options: CallChatCompletionOptions) {
-    const openaiProviderOptions = options.providerOptions?.openai
+    // Responses models that do not advertise reasoning must not receive an
+    // effort field; some compatible gateways reject unknown reasoning params.
+    const openaiProviderOptions = this.isSupportReasoning() ? options.providerOptions?.openai : undefined
 
     return {
       temperature: this.options.temperature,

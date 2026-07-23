@@ -1,5 +1,6 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
 import type { DeviceCompatibilityProfile, DownloadJob, ModelRuntime } from '@shared/models/model-catalog'
+import type { LocalRuntimeCapabilities } from '@shared/models/local-capabilities'
 import type { LocalInferenceAdapter } from '@shared/types/adapters'
 
 export interface NativeModelManagerCapabilities {
@@ -33,6 +34,7 @@ interface NativeModelManagerPlugin {
   healthCheck(options: {
     modelId: string
   }): Promise<{ status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }>
+  modelCapabilities(options: { modelId: string }): Promise<LocalRuntimeCapabilities>
   infer(options: {
     modelId: string
     requestId: string
@@ -86,7 +88,7 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
       const result = await yachiyoModelManagerNative.infer({
         modelId,
         requestId,
-        messages: input.messages,
+        messages: serializeLocalModelMessages(input.messages),
         tools: input.tools,
       })
       if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
@@ -104,6 +106,46 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
   async unload(modelId?: string): Promise<void> {
     await yachiyoModelManagerNative.unload({ modelId })
   }
+}
+
+function mediaPayload(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const trimmed = value.trim()
+  const dataUrl = trimmed.match(/^data:[^;,]+;base64,(.+)$/s)
+  if (dataUrl) return dataUrl[1]
+  if (/^(?:https?|file):/i.test(trimmed)) return undefined
+  return trimmed
+}
+
+/** Converts AI SDK messages into a bounded JSON shape understood by the native runtimes. */
+export function serializeLocalModelMessages(messages: unknown[]): unknown[] {
+  return messages.map((message) => {
+    if (!message || typeof message !== 'object') return message
+    const record = message as Record<string, unknown>
+    if (!Array.isArray(record.content)) return { role: record.role, content: record.content }
+    const content = record.content.flatMap((part): unknown[] => {
+      if (!part || typeof part !== 'object') return []
+      const item = part as Record<string, unknown>
+      if (item.type === 'text' && typeof item.text === 'string') return [{ type: 'text', text: item.text }]
+      if (item.type === 'reasoning' && typeof item.text === 'string') return [{ type: 'text', text: item.text }]
+      if (item.type === 'image') {
+        const data = mediaPayload(item.image)
+        return data ? [{ type: 'image', data, mediaType: item.mediaType || 'image/jpeg' }] : []
+      }
+      if (item.type === 'file') {
+        const data = mediaPayload(item.data)
+        const mediaType = typeof item.mediaType === 'string' ? item.mediaType : 'application/octet-stream'
+        if (!data) return []
+        if (mediaType.startsWith('image/')) return [{ type: 'image', data, mediaType }]
+        if (mediaType.startsWith('audio/')) return [{ type: 'audio', data, mediaType }]
+      }
+      if (item.type === 'tool-result') {
+        return [{ type: 'text', text: JSON.stringify(item.output ?? null) }]
+      }
+      return []
+    })
+    return { role: record.role, content }
+  })
 }
 
 function parseLocalEmbeddingModelId(model?: string): string | undefined {

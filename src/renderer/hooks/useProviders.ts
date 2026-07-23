@@ -22,9 +22,9 @@ export const useProviders = () => {
   const allProviderBaseInfos = useMemo(
     () =>
       [...SystemProviders(), ...(settings.customProviders || [])].filter(
-        (provider) => !useAndroidAppShell || provider.id !== ModelProviderEnum.ChatboxAI
+        (provider) => !useAndroidAppShell || provider.id !== ModelProviderEnum.ChatboxAI,
       ),
-    [settings.customProviders, useAndroidAppShell]
+    [settings.customProviders, useAndroidAppShell],
   )
   const providers = useMemo(
     () =>
@@ -43,7 +43,8 @@ export const useProviders = () => {
                 isUsingOAuth(providerSettings || {}, platform.type) ||
                 (p.id === ModelProviderEnum.Bedrock && providerSettings?.accessKey && providerSettings?.secretKey))) ||
             ((p.isCustom || p.id === ModelProviderEnum.Ollama || p.id === ModelProviderEnum.LMStudio) &&
-              providerSettings?.models?.length)
+              providerSettings?.models?.length) ||
+            (p.id === ModelProviderEnum.Local && providerSettings?.models?.length)
           ) {
             const baseModels = providerSettings?.models || p.defaultSettings?.models || []
             return {
@@ -57,7 +58,7 @@ export const useProviders = () => {
           }
         })
         .filter((p) => !!p),
-    [providerSettingsMap, allProviderBaseInfos, chatboxAIModels, settings.licenseKey]
+    [providerSettingsMap, allProviderBaseInfos, chatboxAIModels, settings.licenseKey],
   )
 
   const favoritedModels = useMemo(
@@ -75,7 +76,7 @@ export const useProviders = () => {
           }
         })
         .filter((fm) => !!fm),
-    [settings.favoritedModels, providers]
+    [settings.favoritedModels, providers],
   )
 
   const favoriteModel = useCallback(
@@ -90,7 +91,7 @@ export const useProviders = () => {
         ],
       })
     },
-    [settings, setSettings]
+    [settings, setSettings],
   )
 
   const unfavoriteModel = useCallback(
@@ -99,13 +100,13 @@ export const useProviders = () => {
         favoritedModels: (settings.favoritedModels || []).filter((m) => m.provider !== provider || m.model !== model),
       })
     },
-    [settings, setSettings]
+    [settings, setSettings],
   )
 
   const isFavoritedModel = useCallback(
     (provider: string, model: string) =>
       !!favoritedModels?.find((m) => m.provider?.id === provider && m.model?.modelId === model),
-    [favoritedModels]
+    [favoritedModels],
   )
 
   return {

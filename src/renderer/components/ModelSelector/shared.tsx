@@ -1,5 +1,5 @@
 import { Badge, Combobox, Flex, Text, Tooltip } from '@mantine/core'
-import type { ProviderModelInfo } from '@shared/types'
+import { ModelProviderEnum, type ProviderModelInfo } from '@shared/types'
 import { IconBulb, IconEye, IconStar, IconStarFilled, IconTool } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
@@ -27,7 +27,7 @@ export const groupFavoriteModels = (favoritedModels: FavoriteModel[] | undefined
       acc[providerId].models.push(fm)
       return acc
     },
-    {} as Record<string, { provider: FavoriteModel['provider']; models: FavoriteModel[] }>
+    {} as Record<string, { provider: FavoriteModel['provider']; models: FavoriteModel[] }>,
   )
 }
 
@@ -55,7 +55,7 @@ export const ModelItem = ({
       className={clsx(
         'flex flex-row items-center group -mx-xs px-xs',
         !isSelected && 'hover:bg-chatbox-background-brand-secondary-hover',
-        isSelected && SELECTED_BG_CLASS
+        isSelected && SELECTED_BG_CLASS,
       )}
     >
       <ModelIcon modelId={model.modelId} providerId={providerId} size={16} className="mr-xs flex-shrink-0" />
@@ -103,6 +103,11 @@ export const ModelItem = ({
           </Text>
         </Tooltip>
       )}
+      {providerId === ModelProviderEnum.Local && !model.capabilities?.includes('tool_use') && (
+        <Badge color="gray" size="xs" variant="light" ml="xxs" className="flex-shrink-0 flex-grow-0">
+          {t('Chat only')}
+        </Badge>
+      )}
 
       {!hideFavoriteIcon && (
         <Flex
@@ -111,7 +116,7 @@ export const ModelItem = ({
             'ml-auto -m-xs p-xs',
             isFavorited
               ? 'text-chatbox-tint-brand'
-              : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-chatbox-border-secondary hover:text-chatbox-tint-brand'
+              : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-chatbox-border-secondary hover:text-chatbox-tint-brand',
           )}
           onClick={(e) => {
             e.stopPropagation()
@@ -161,7 +166,7 @@ export const ModelItemInDrawer = ({
       c={isRecommended ? 'chatbox-brand' : 'chatbox-secondary'}
       className={clsx(
         'outline-none rounded-md border-0',
-        isSelected ? SELECTED_BG_CLASS : 'bg-transparent active:bg-chatbox-background-brand-secondary-hover'
+        isSelected ? SELECTED_BG_CLASS : 'bg-transparent active:bg-chatbox-background-brand-secondary-hover',
       )}
       onClick={() => {
         onSelect?.()
@@ -209,13 +214,18 @@ export const ModelItemInDrawer = ({
           </Text>
         </Tooltip>
       )}
+      {providerId === ModelProviderEnum.Local && !model.capabilities?.includes('tool_use') && (
+        <Badge color="gray" size="xs" variant="light" className="flex-grow-0 flex-shrink-0">
+          {t('Chat only')}
+        </Badge>
+      )}
 
       {!hideFavoriteIcon && (
         <Flex
           component="span"
           className={clsx(
             'ml-auto -m-xs p-xs',
-            isFavorited ? 'text-chatbox-tint-brand' : 'text-chatbox-border-secondary'
+            isFavorited ? 'text-chatbox-tint-brand' : 'text-chatbox-border-secondary',
           )}
           onClick={(e) => {
             e.stopPropagation()

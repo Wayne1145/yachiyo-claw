@@ -62,6 +62,7 @@ export interface UnknownPriceConfirmationInput extends AgentUsageModel {
 
 export type UnknownPriceConfirmationHook = (input: UnknownPriceConfirmationInput) => boolean | Promise<boolean>
 
+/** Legacy budget shape retained for settings migrations; ledger reservations never reject on it. */
 export interface AgentUsageBudget {
   maxTokens?: number
   maxCostUsd?: number
@@ -563,10 +564,7 @@ export class AgentUsageLedger {
   private readonly now: () => number
   private readonly maxRecords: number
   private readonly retentionMs: number
-  private readonly budget?: AgentUsageBudget
   private readonly priceResolver?: AgentUsagePriceResolver
-  private readonly confirmUnknownPrice?: UnknownPriceConfirmationHook
-  private readonly requirePriceConfirmation: boolean
   private readonly tokenCounter?: AgentUsageLedgerOptions['tokenCounter']
   private mutationQueue: Promise<void> = Promise.resolve()
 
@@ -576,10 +574,7 @@ export class AgentUsageLedger {
     this.now = options.now || (() => Date.now())
     this.maxRecords = positiveInteger(options.maxRecords, AGENT_USAGE_LEDGER_MAX_RECORDS)
     this.retentionMs = positiveInteger(options.retentionMs, AGENT_USAGE_LEDGER_RETENTION_MS)
-    this.budget = options.budget
     this.priceResolver = options.priceResolver
-    this.confirmUnknownPrice = options.confirmUnknownPrice
-    this.requirePriceConfirmation = options.requirePriceConfirmation === true
     this.tokenCounter = options.tokenCounter
   }
 
@@ -631,7 +626,6 @@ export class AgentUsageLedger {
     const attempt = positiveInteger(input.attempt, 1)
     const requestId = input.requestId?.trim() || createId('request')
     const estimate = estimateForInput({ ...input, provider, model }, this.tokenCounter)
-    const budget = input.budget || this.budget
     const price = await this.resolvePrice(provider, model, input.price)
     const estimatedCostUsd = calculateCost(
       estimate.inputTokens,
@@ -643,42 +637,6 @@ export class AgentUsageLedger {
 
     return this.enqueue(async () => {
       const records = pruneRecords(await this.readRecords(), this.now(), this.maxRecords, this.retentionMs)
-      const taskRecords = this.recordsForTask(records, input.taskId)
-      const usedRequests = taskRecords.length
-      const usedTokens = taskRecords.reduce(
-        (total, record) => total + record.inputTokens + record.outputTokens + record.reasoningTokens,
-        0
-      )
-      const usedCost = taskRecords.reduce(
-        (total, record) => total + (record.costUsd ?? record.estimatedCostUsd ?? 0),
-        0
-      )
-
-      if (budget?.maxModelRequests !== undefined && usedRequests + 1 > budget.maxModelRequests) {
-        throw new AgentUsageBudgetExceededError('modelRequests')
-      }
-      if (budget?.maxTokens !== undefined && usedTokens + estimate.reservedTokens > budget.maxTokens) {
-        throw new AgentUsageBudgetExceededError('tokens')
-      }
-      if (
-        budget?.maxCostUsd !== undefined &&
-        estimatedCostUsd !== undefined &&
-        usedCost + estimatedCostUsd > budget.maxCostUsd
-      ) {
-        throw new AgentUsageBudgetExceededError('costUsd')
-      }
-
-      if (estimatedCostUsd === undefined && (this.requirePriceConfirmation || this.confirmUnknownPrice)) {
-        const confirmed = await this.confirmUnknownPrice?.({
-          provider,
-          model,
-          requestId,
-          attempt,
-          reservedTokens: estimate.reservedTokens,
-        })
-        if (!confirmed) throw new AgentUnknownPriceError(provider, model)
-      }
-
       const record: AgentUsageRecord = {
         schemaVersion: AGENT_USAGE_LEDGER_SCHEMA_VERSION,
         reservationId: createId('usage'),
@@ -723,9 +681,8 @@ export class AgentUsageLedger {
       if (existing.status === 'released') throw new Error('agent_usage_reservation_released')
 
       const normalized = normalizeProviderUsage(input.usage)
-      // Provider usage is the authoritative billing measurement even when the
-      // local tokenizer estimate was low; subsequent reservations use these
-      // settled values so an estimate miss cannot reopen the budget.
+      // Provider usage is the authoritative diagnostic measurement even when
+      // the local tokenizer estimate was low.
       const usageTrusted = normalized.complete
       const resultText = input.result === undefined ? '' : serializeForEstimate(input.result)
       const resultBytes = isFiniteNonNegative(input.resultBytes)

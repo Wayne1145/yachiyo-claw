@@ -36,6 +36,7 @@ import { AssistantAvatar } from '@/components/common/Avatar'
 import LazyNumberInput from '@/components/common/LazyNumberInput'
 import MaxContextMessageCountSlider from '@/components/common/MaxContextMessageCountSlider'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
+import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import SegmentedControl from '@/components/common/SegmentedControl'
 import SliderWithInput from '@/components/common/SliderWithInput'
 import { handleImageInputAndSave, ImageInStorage } from '@/components/Image'
@@ -713,6 +714,16 @@ export function ChatConfig({
 
   return (
     <Stack gap="md">
+      <Flex align="center" justify="space-between">
+        <Stack gap={2}>
+          <Text size="sm" fw="600">Reasoning strength</Text>
+          <Text size="xs" c="dimmed">Off, Minimal, Low, Medium, High, or MAX</Text>
+        </Stack>
+        <ReasoningStrengthControl
+          settings={settings}
+          onChange={(reasoningStrength) => onSettingsChange({ reasoningStrength })}
+        />
+      </Flex>
       <MaxContextMessageCountSlider
         value={settings?.maxContextMessageCount ?? chatSessionSettings().maxContextMessageCount!}
         onChange={(v) => onSettingsChange({ maxContextMessageCount: v })}
@@ -806,15 +817,6 @@ export function ChatConfig({
         </Stack>
       )}
 
-      {settings?.provider === ModelProviderEnum.Claude && (
-        <ClaudeProviderConfig settings={settings} onSettingsChange={onSettingsChange} />
-      )}
-      {settings?.provider === ModelProviderEnum.OpenAI && (
-        <OpenAIProviderConfig settings={settings} onSettingsChange={onSettingsChange} />
-      )}
-      {settings?.provider === ModelProviderEnum.Gemini && (
-        <GoogleProviderConfig settings={settings} onSettingsChange={onSettingsChange} />
-      )}
     </Stack>
   )
 }

@@ -81,7 +81,7 @@ export interface CallChatCompletionOptions<Tools extends ToolSet = ToolSet> {
   maxSteps?: number
   maxModelRequests?: number
   maxOutputTokens?: number
-  /** Applies bounded steps, output, and billing-safe retry behavior for device tasks. */
+  /** Enables tool-loop lifecycle callbacks and billing-safe retry behavior for Agent tasks. */
   agentMode?: boolean
   /** Called immediately before each billable Agent model request. */
   onAgentRequest?: (stepNumber: number) => void | Promise<void>
@@ -112,7 +112,7 @@ export interface ChatStreamOptions {
   maxSteps?: number
   maxModelRequests?: number
   maxOutputTokens?: number
-  /** Applies bounded steps, output, and billing-safe retry behavior for device tasks. */
+  /** Enables tool-loop lifecycle callbacks and billing-safe retry behavior for Agent tasks. */
   agentMode?: boolean
   /** Called immediately before each billable Agent model request. */
   onAgentRequest?: (stepNumber: number) => void | Promise<void>

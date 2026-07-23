@@ -2,26 +2,18 @@ import * as defaults from '@shared/defaults'
 import type { ChatStreamOptions, ModelStreamPart } from '@shared/models/types'
 import { createMessage, type Message, ModelProviderEnum, type TaskSession } from '@shared/types'
 import { getMessageText, sequenceMessages } from '@shared/utils/message'
+import { resolveReasoningProviderOptions } from '@shared/utils/reasoning-strength'
 import type { ToolSet } from 'ai'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
-import { cancelPendingAgentApprovals, requestAgentApproval, setActiveAgentSession } from '@/mobile/agent-approval'
-import {
-  AgentBudgetExceededError,
-  AgentBudgetTracker,
-  KNOWN_PRICE_AGENT_BUDGET,
-  UNKNOWN_PRICE_AGENT_BUDGET,
-} from '@/mobile/agent-budget'
+import { cancelPendingAgentApprovals, requestAgentDecision, setActiveAgentSession } from '@/mobile/agent-approval'
+import { AgentLoopGuard, AgentLoopStoppedError } from '@/mobile/agent-loop-guard'
 import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-policy'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import { tryRunLocalAndroidRecipe } from '@/mobile/android-task-recipe'
-import {
-  AgentUsageBudgetExceededError,
-  AgentUnknownPriceError,
-  createAgentUsageLedger,
-  resolveDefaultAgentPrice,
-} from '@/mobile/agent-usage-ledger'
+import { createAgentUsageLedger, resolveDefaultAgentPrice } from '@/mobile/agent-usage-ledger'
 import { buildAgentIdentityPrompt } from '@/mobile/agent-profile'
+import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from '@/mobile/automatic-memory'
 import { getAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
 import { nextAgentStreamPart } from '@/mobile/agent-stream-watchdog'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
@@ -36,6 +28,7 @@ import { buildToolsForSession } from './session/tools-builder'
 import { settingsStore } from './settingsStore'
 import { TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
 import { buildTaskSystemPrompt } from './taskSystemPrompt'
+import { uiStore } from './uiStore'
 
 const log = getLogger('task-session-actions')
 const AGENT_STREAM_IDLE_TIMEOUT_MS = 180_000
@@ -100,7 +93,16 @@ export async function cancelTaskGeneration(taskId?: string): Promise<void> {
   }
 }
 
-export async function submitTaskMessage(taskId: string, content: string): Promise<void> {
+export interface SubmitTaskMessageOptions {
+  needGenerating?: boolean
+  onUserMessageReady?: () => void
+}
+
+export async function submitTaskMessage(
+  taskId: string,
+  content: string | Message,
+  options: SubmitTaskMessageOptions = {},
+): Promise<void> {
   setActiveAgentSession(taskId)
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   let currentSession = queryClient.getQueryData<TaskSession>(queryKey)
@@ -118,7 +120,8 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
     log.error('Task compaction failed:', err)
   }
 
-  const userMessage: Message = createMessage('user', content)
+  const userMessage: Message = typeof content === 'string' ? createMessage('user', content) : content
+  const userMessageText = getMessageText(userMessage)
 
   const messagesWithUser = [...currentSession.messages, userMessage]
   const updated = await updateTaskSession(taskId, { messages: messagesWithUser })
@@ -127,6 +130,11 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
   } else {
     // Persist failed but update cache optimistically so UI stays consistent
     queryClient.setQueryData(queryKey, { ...currentSession, messages: messagesWithUser })
+  }
+  options.onUserMessageReady?.()
+
+  if (options.needGenerating === false) {
+    return
   }
 
   const assistantMessage: Message = createMessage('assistant', '')
@@ -145,7 +153,7 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
   // opening a stream. This is the zero-request path for repeated Android work.
   if (deviceAgent) {
     try {
-      const localOutcome = await tryRunLocalAndroidRecipe(taskId, content)
+      const localOutcome = await tryRunLocalAndroidRecipe(taskId, userMessageText)
       if (localOutcome.handled) {
         const localMessage: Message = {
           ...assistantMessage,
@@ -209,17 +217,18 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
   // user request in the same session must be allowed to perform the same
   // legitimate action again, while retries of this message remain idempotent.
   const agentRunId = createAgentRunId(taskId, targetMsg.id)
-  let budget: AgentBudgetTracker | null = null
+  const loopGuard = new AgentLoopGuard()
   if (deviceAgent) resetSemanticObservationCache(agentRunId)
   currentAbortController = abortController
   currentAgentRunId = agentRunId
   let overlayStopListener: Awaited<ReturnType<typeof yachiyoDeviceAccessNative.onOverlayStopRequested>> | undefined
   let overlayVisible = false
   let overlayStartPromise: Promise<void> | undefined
-    let removeDeviceOperationListener: (() => void) | undefined
-    let completedSuccessfully = false
-    let sandboxEnabled = true
-    let sandboxUnavailableReason = ''
+  let removeDeviceOperationListener: (() => void) | undefined
+  let completedSuccessfully = false
+  let sandboxEnabled = true
+  let sandboxUnavailableReason = ''
+  let detectedLoopStop: AgentLoopStoppedError | null = null
   let usageReservations = new Map<number, string>()
   let settlePendingUsage: (usage?: unknown, result?: unknown) => Promise<void> = async () => undefined
 
@@ -228,54 +237,29 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const { provider, modelId } = getDefaultModelSettings(session?.settings)
     const sessionSettings = {
       ...defaults.chatSessionSettings(),
+      ...session?.settings,
       provider,
       modelId,
     }
     const dependencies = await createModelDependencies()
     const model = await createModel(sessionSettings, dependencies)
-    const knownPrice = deviceAgent ? resolveDefaultAgentPrice(provider, modelId) : undefined
-    const agentLimits = knownPrice ? KNOWN_PRICE_AGENT_BUDGET : UNKNOWN_PRICE_AGENT_BUDGET
-    if (deviceAgent) budget = new AgentBudgetTracker(agentLimits)
-    const usageLedger = deviceAgent
-      ? createAgentUsageLedger({
-          budget: {
-            maxTokens: agentLimits.maxTokens,
-            maxModelRequests: agentLimits.maxModelRequests,
-            ...(agentLimits.maxCostUsd !== undefined ? { maxCostUsd: agentLimits.maxCostUsd } : {}),
-          },
-          priceResolver: () => knownPrice,
-          requirePriceConfirmation: !knownPrice,
-          confirmUnknownPrice: ({ provider: unknownProvider, model: unknownModel, reservedTokens }) =>
-            requestAgentApproval({
-              sessionId: taskId,
-              runId: agentRunId,
-              signal: abortController.signal,
-              title: '模型价格未知，是否继续？',
-              detail: `${unknownProvider}/${unknownModel}，最多预留 ${reservedTokens} tokens`,
-              risk: 'dangerous',
-            }),
-        })
-      : null
-    await usageLedger?.recoverPendingReservations(Date.now(), agentRunId)
+    const knownPrice = resolveDefaultAgentPrice(provider, modelId)
+    // Usage is recorded for diagnostics and context UI only. It never blocks a run.
+    const usageLedger = createAgentUsageLedger({ priceResolver: () => knownPrice })
+    await usageLedger.recoverPendingReservations(Date.now(), agentRunId).catch((error) => {
+      log.debug('usage ledger recovery skipped:', error)
+    })
     usageReservations = new Map<number, string>()
     settlePendingUsage = async (usage?: unknown, result?: unknown) => {
-      if (!usageLedger) return
       for (const [stepNumber, reservationId] of usageReservations) {
-        const settled = await usageLedger
+        await usageLedger
           .settle(reservationId, { usage: usage as Record<string, unknown> | undefined, result })
           .catch(() => undefined)
-        if (settled?.costUsd !== undefined) budget?.recordCost(settled.costUsd)
         usageReservations.delete(stepNumber)
       }
     }
     if (deviceAgent) {
       removeDeviceOperationListener = onAndroidDeviceOperation(async () => {
-        try {
-          budget?.reserveLocalAction()
-        } catch (error) {
-          abortController.abort()
-          throw error
-        }
         if (overlayVisible) return overlayStartPromise
         overlayVisible = true
         overlayStartPromise = (async () => {
@@ -320,10 +304,24 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     }
 
     const workingDir = session?.workingDirectory || '.'
+    const latestUserMessage = [...filteredContext].reverse().find((message) => message.role === 'user')
+    const latestUserText = latestUserMessage ? getMessageText(latestUserMessage, true, true) : ''
+    let relevantMemoryPrompt = ''
+    if (latestUserText) {
+      try {
+        await rememberDurableUserStatements(latestUserText, {
+          sessionId: taskId,
+          messageId: latestUserMessage?.id,
+        })
+        relevantMemoryPrompt = await buildRelevantLongTermMemoryPrompt(latestUserText)
+      } catch (error) {
+        log.warn('Automatic memory update failed:', error)
+      }
+    }
     const systemMessage: Message = createMessage(
       'system',
       buildTaskSystemPrompt(workingDir, {
-        agentIdentity: buildAgentIdentityPrompt(),
+        agentIdentity: [buildAgentIdentityPrompt(), relevantMemoryPrompt].filter(Boolean).join('\n\n'),
         deviceAgent,
       }),
     )
@@ -332,9 +330,14 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
 
     const skillSettings = settingsStore.getState().getSettings().skills
     const enabledSkillNames = featureFlags.skills ? skillSettings.enabledSkillNames : []
+    const inputSessionId = session?.linkedSessionId || taskId
+    const uiState = uiStore.getState()
+    const webBrowsing = uiState.sessionWebBrowsingMap[inputSessionId] ?? true
+    const knowledgeBase = uiState.sessionKnowledgeBaseMap[inputSessionId]
 
     const { tools, instructions, activeTools } = await buildToolsForSession(model, {
-      webBrowsing: true,
+      webBrowsing,
+      knowledgeBase,
       messages: promptMessages,
       sandboxEnabled,
       enabledSkillNames,
@@ -375,61 +378,78 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const chatOptions: ChatStreamOptions = {
       sessionId: taskId,
       signal: abortController.signal,
+      providerOptions: resolveReasoningProviderOptions(sessionSettings),
       // A task session is always an Agent loop; phone control only changes which tools are exposed.
       agentMode: true,
       ...(activeTools ? { activeTools } : {}),
-      ...(deviceAgent
-        ? {
-            maxSteps: agentLimits.maxModelRequests,
-            maxModelRequests: agentLimits.maxModelRequests,
-            maxOutputTokens: agentLimits.maxOutputTokens,
-            onAgentRequest: () => budget?.reserveModelRequest(),
-            agentLifecycle: {
-              beforeRequest: async ({ stepNumber, messages, tools: toolDefinitions, activeTools: visibleTools }) => {
-                if (!usageLedger) return
-                const filteredTools = visibleTools?.length
-                  ? Object.fromEntries(
-                      visibleTools
-                        .map((name) => [name, toolDefinitions?.[name]] as const)
-                        .filter(([, value]) => Boolean(value)),
-                    )
-                  : toolDefinitions
-                const reservation = await usageLedger.reserve({
-                  provider,
-                  model: modelId,
-                  taskId: agentRunId,
-                  requestId: `${agentRunId}:request:${stepNumber + 1}`,
-                  attempt: stepNumber + 1,
-                  messages,
-                  tools: filteredTools,
-                  results: messages.filter((message) => message.role === 'tool'),
-                  maxOutputTokens: agentLimits.maxOutputTokens,
-                  maxReasoningTokens: Math.floor(agentLimits.maxOutputTokens / 2),
-                  budget: {
-                    maxTokens: agentLimits.maxTokens,
-                    maxModelRequests: agentLimits.maxModelRequests,
-                    ...(agentLimits.maxCostUsd !== undefined ? { maxCostUsd: agentLimits.maxCostUsd } : {}),
-                  },
-                  price: knownPrice,
-                })
-                usageReservations.set(stepNumber, reservation.reservationId)
-              },
-              onStepFinish: async ({ stepNumber, usage, result }) => {
-                const reservationId = usageReservations.get(stepNumber)
-                if (!reservationId || !usageLedger) return
-                const settled = await usageLedger.settle(reservationId, {
-                  usage: usage as Record<string, unknown> | undefined,
-                  result,
-                })
-                if (settled.costUsd !== undefined) budget?.recordCost(settled.costUsd)
-                usageReservations.delete(stepNumber)
-              },
-              onFinish: async ({ usage, result }) => settlePendingUsage(usage, result),
-              onAbort: async () => settlePendingUsage(),
-              onError: async () => settlePendingUsage(),
-            },
+      agentLifecycle: {
+        beforeRequest: async ({ stepNumber, messages, tools: toolDefinitions, activeTools: visibleTools }) => {
+          const strategyInstruction = loopGuard.takeStrategyInstruction()
+          if (strategyInstruction) {
+            messages.push({ role: 'user', content: `<loop_guard>${strategyInstruction}</loop_guard>` })
           }
-        : {}),
+          const filteredTools = visibleTools?.length
+            ? Object.fromEntries(
+                visibleTools
+                  .map((name) => [name, toolDefinitions?.[name]] as const)
+                  .filter(([, value]) => Boolean(value)),
+              )
+            : toolDefinitions
+          const reservation = await usageLedger
+            .reserve({
+              provider,
+              model: modelId,
+              taskId: agentRunId,
+              requestId: `${agentRunId}:request:${stepNumber + 1}`,
+              attempt: stepNumber + 1,
+              messages,
+              tools: filteredTools,
+              results: messages.filter((message) => message.role === 'tool'),
+              price: knownPrice,
+            })
+            .catch((error) => {
+              log.debug('usage ledger reservation skipped:', error)
+              return undefined
+            })
+          if (reservation) usageReservations.set(stepNumber, reservation.reservationId)
+        },
+        onStepFinish: async ({ stepNumber, usage, result }) => {
+          const reservationId = usageReservations.get(stepNumber)
+          if (reservationId) {
+            await usageLedger
+              .settle(reservationId, {
+                usage: usage as Record<string, unknown> | undefined,
+                result,
+              })
+              .catch((error) => log.debug('usage ledger settlement skipped:', error))
+            usageReservations.delete(stepNumber)
+          }
+
+          const warning = loopGuard.observeCompletedStep(result)
+          if (!warning) return
+          const decision = await requestAgentDecision({
+            sessionId: taskId,
+            runId: agentRunId,
+            signal: abortController.signal,
+            title: '检测到 Agent 可能陷入循环',
+            detail: warning.detail,
+            risk: 'safe',
+            kind: 'loop',
+            alwaysAsk: true,
+            rememberConversationApproval: false,
+          })
+          if (decision === 'deny') {
+            detectedLoopStop = new AgentLoopStoppedError(warning)
+            abortController.abort()
+            throw detectedLoopStop
+          }
+          if (decision === 'conversation') loopGuard.changeStrategy()
+          else loopGuard.continueOnce()
+        },
+        onFinish: async ({ usage, result }) => settlePendingUsage(usage, result),
+        onAbort: async () => settlePendingUsage(),
+        onError: async () => settlePendingUsage(),
+      },
     }
 
     if (Object.keys(tools).length > 0) {
@@ -440,7 +460,6 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
 
     let processorState = createInitialState()
     let lastOverlayUpdate = 0
-    let accountedTokens = 0
 
     const streamCallbacks = {
       onFileReceived: (_mediaType: string, _base64: string) => Promise.resolve(''),
@@ -448,22 +467,15 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
 
     const iterator = stream[Symbol.asyncIterator]()
     while (true) {
-      budget?.assertWithinDeadline()
       const next = await nextAgentStreamPart(
         iterator,
-        budget ? Math.min(AGENT_STREAM_IDLE_TIMEOUT_MS, Math.max(1, budget.remainingMs)) : AGENT_STREAM_IDLE_TIMEOUT_MS,
+        AGENT_STREAM_IDLE_TIMEOUT_MS,
         () => abortController.abort(),
       )
       if (next.done) break
       const chunk = next.value
       const result = await processStreamChunk(chunk, processorState, streamCallbacks)
       processorState = result.state
-
-      const totalTokens = processorState.usage?.totalTokens
-      if (budget && typeof totalTokens === 'number' && totalTokens > accountedTokens) {
-        budget.recordTokens(totalTokens - accountedTokens)
-        accountedTokens = totalTokens
-      }
 
       if (result.skipUpdate) {
         if (result.statusChunk && result.statusChunk.type === 'status') {
@@ -527,16 +539,15 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     if (!abortController.signal.aborted) {
       log.error('Task generation failed:', err)
     }
+    const loopError = err instanceof AgentLoopStoppedError ? err : detectedLoopStop
     const error =
-      err instanceof AgentBudgetExceededError || err instanceof AgentUsageBudgetExceededError
-        ? `任务已停止：${err.limit === 'deadline' ? '超过时间预算' : `超过${err.limit}预算`}`
-        : err instanceof AgentUnknownPriceError
-          ? '任务已停止：模型价格未知，未获得继续确认。'
-          : abortController.signal.aborted
-            ? undefined
-            : err instanceof Error
-              ? err.message
-              : String(err)
+      loopError
+        ? `Agent 已停止：${loopError.warning.detail}`
+        : abortController.signal.aborted
+          ? undefined
+          : err instanceof Error
+            ? err.message
+            : String(err)
     targetMsg = {
       ...targetMsg,
       generating: false,

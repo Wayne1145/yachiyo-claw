@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  AgentUnknownPriceError,
-  AgentUsageBudgetExceededError,
-  AgentUsageLedger,
-  type AgentUsageStorage,
-  estimateAgentUsage,
-} from './agent-usage-ledger'
+import { AgentUsageLedger, type AgentUsageStorage, estimateAgentUsage } from './agent-usage-ledger'
 
 class MemoryStorage implements AgentUsageStorage {
   private readonly values = new Map<string, unknown>()
@@ -71,7 +65,7 @@ describe('AgentUsageLedger', () => {
     storage = new MemoryStorage()
   })
 
-  it('reserves before the request and rejects a reservation that would exceed token budget', async () => {
+  it('reserves requests and records usage without rejecting legacy token budgets', async () => {
     const ledger = new AgentUsageLedger({
       storage,
       tokenCounter: () => 10,
@@ -86,19 +80,17 @@ describe('AgentUsageLedger', () => {
       maxOutputTokens: 5,
     })
     expect(first.status).toBe('reserved')
-    await expect(
-      ledger.reserve({
-        taskId: 'task-1',
-        provider: 'openai',
-        model: 'gpt-4o-mini',
-        messages: 'second request',
-        maxOutputTokens: 5,
-      })
-    ).rejects.toBeInstanceOf(AgentUsageBudgetExceededError)
-    await expect(ledger.list('task-1')).resolves.toHaveLength(1)
+    await ledger.reserve({
+      taskId: 'task-1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: 'second request',
+      maxOutputTokens: 5,
+    })
+    await expect(ledger.list('task-1')).resolves.toHaveLength(2)
   })
 
-  it('serializes concurrent reservations against the request-count budget', async () => {
+  it('serializes concurrent reservations while retaining both nonblocking records', async () => {
     const ledger = new AgentUsageLedger({
       storage,
       tokenCounter: () => 1,
@@ -109,11 +101,11 @@ describe('AgentUsageLedger', () => {
       ledger.reserve({ taskId: 'task-race', provider: 'p', model: 'm', messages: 'a', maxOutputTokens: 1 }),
       ledger.reserve({ taskId: 'task-race', provider: 'p', model: 'm', messages: 'b', maxOutputTokens: 1 }),
     ])
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(0)
   })
 
-  it('requires confirmation when pricing is unknown if configured', async () => {
+  it('does not block unknown pricing when legacy confirmation is configured', async () => {
     const confirm = vi.fn().mockResolvedValue(false)
     const ledger = new AgentUsageLedger({
       storage,
@@ -121,21 +113,14 @@ describe('AgentUsageLedger', () => {
       confirmUnknownPrice: confirm,
     })
 
-    await expect(
-      ledger.reserve({
-        taskId: 'task-price',
-        provider: 'unknown-provider',
-        model: 'unknown-model',
-        messages: 'charge me only after confirmation',
-      })
-    ).rejects.toBeInstanceOf(AgentUnknownPriceError)
-    expect(confirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: 'unknown-provider',
-        model: 'unknown-model',
-        reservedTokens: expect.any(Number),
-      })
-    )
+    const reservation = await ledger.reserve({
+      taskId: 'task-price',
+      provider: 'unknown-provider',
+      model: 'unknown-model',
+      messages: 'charge me only after confirmation',
+    })
+    expect(reservation.status).toBe('reserved')
+    expect(confirm).not.toHaveBeenCalled()
   })
 
   it('settles trusted provider usage and computes cost', async () => {

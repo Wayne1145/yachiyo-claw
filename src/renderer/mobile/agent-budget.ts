@@ -1,15 +1,15 @@
 export interface AgentBudget {
-  /** Maximum number of model HTTP requests attributable to one task. */
+  /** Legacy diagnostic threshold; it does not stop requests. */
   maxModelRequests: number
-  /** Hard token ceiling when provider pricing or usage is available. */
+  /** Legacy diagnostic threshold; it does not stop generation. */
   maxTokens: number
-  /** Optional hard USD ceiling; omitted when provider pricing is unknown. */
+  /** Legacy diagnostic threshold; omitted when provider pricing is unknown. */
   maxCostUsd?: number
-  /** Maximum local UI operations, including read-only observations. */
+  /** Legacy diagnostic threshold for local UI operations. */
   maxLocalActions: number
-  /** External side effects are committed at most once per task by default. */
+  /** Legacy diagnostic threshold for commits. */
   maxCommits: number
-  /** Wall-clock deadline from task start. */
+  /** Default per-operation timeout value for legacy callers. */
   deadlineMs: number
 }
 
@@ -96,54 +96,32 @@ export class AgentBudgetTracker {
   }
 
   get remainingMs(): number {
-    return Math.max(0, this.budget.deadlineMs - (Date.now() - this.startedAt))
+    return this.budget.deadlineMs
   }
 
-  assertWithinDeadline(now = Date.now()): void {
-    if (now - this.startedAt >= this.budget.deadlineMs) {
-      throw new AgentBudgetExceededError('deadline')
-    }
+  assertWithinDeadline(_now = Date.now()): void {
+    // Kept for API compatibility. Technical request/tool timeouts are enforced by their callers.
   }
 
-  reserveModelRequest(now = Date.now()): void {
-    this.assertWithinDeadline(now)
-    if (this.usageState.modelRequests >= this.budget.maxModelRequests) {
-      throw new AgentBudgetExceededError('modelRequests')
-    }
+  reserveModelRequest(_now = Date.now()): void {
     this.usageState.modelRequests += 1
   }
 
   recordTokens(tokens: number): void {
     if (!Number.isFinite(tokens) || tokens < 0) return
-    const nextTokens = this.usageState.tokens + tokens
-    if (nextTokens > this.budget.maxTokens) {
-      throw new AgentBudgetExceededError('tokens')
-    }
-    this.usageState.tokens = nextTokens
+    this.usageState.tokens += tokens
   }
 
   recordCost(costUsd: number): void {
     if (!Number.isFinite(costUsd) || costUsd < 0) return
-    const nextCost = this.usageState.costUsd + costUsd
-    if (this.budget.maxCostUsd !== undefined && nextCost > this.budget.maxCostUsd) {
-      throw new AgentBudgetExceededError('costUsd')
-    }
-    this.usageState.costUsd = nextCost
+    this.usageState.costUsd += costUsd
   }
 
-  reserveLocalAction(now = Date.now()): void {
-    this.assertWithinDeadline(now)
-    if (this.usageState.localActions >= this.budget.maxLocalActions) {
-      throw new AgentBudgetExceededError('localActions')
-    }
+  reserveLocalAction(_now = Date.now()): void {
     this.usageState.localActions += 1
   }
 
-  reserveCommit(now = Date.now()): void {
-    this.assertWithinDeadline(now)
-    if (this.usageState.commits >= this.budget.maxCommits) {
-      throw new AgentBudgetExceededError('commits')
-    }
+  reserveCommit(_now = Date.now()): void {
     this.usageState.commits += 1
   }
 }

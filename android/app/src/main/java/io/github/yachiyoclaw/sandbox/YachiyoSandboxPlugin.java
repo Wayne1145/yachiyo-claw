@@ -520,6 +520,13 @@ public final class YachiyoSandboxPlugin extends Plugin {
         }
     }
 
+    @Override
+    protected void handleOnDestroy() {
+        killProcess();
+        executor.shutdownNow();
+        super.handleOnDestroy();
+    }
+
     private interface FileConsumer {
         void accept(File file, String relative) throws Exception;
     }

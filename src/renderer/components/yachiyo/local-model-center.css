@@ -230,6 +230,52 @@
   display: grid;
   gap: 12px;
 }
+.local-model-installed-list {
+  display: grid;
+  gap: 12px;
+}
+.local-model-installed-row {
+  min-width: 0;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid #dde3e6;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+}
+.local-model-installed-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.local-model-installed-heading > div:first-child {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.local-model-installed-name,
+.local-model-installed-repository {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.local-model-installed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.local-model-installed-meta span {
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #626d73;
+  background: #f2f4f5;
+  font-size: 12px;
+}
 .local-model-queue-row {
   min-width: 0;
   padding: 16px;
@@ -316,6 +362,9 @@
   }
   .local-model-queue-heading > .mantine-Badge-root {
     display: none;
+  }
+  .local-model-installed-heading {
+    flex-direction: column;
   }
 }
 

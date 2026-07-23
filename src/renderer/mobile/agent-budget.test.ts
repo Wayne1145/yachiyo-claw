@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AgentBudgetExceededError, AgentBudgetTracker, mergeAgentBudget } from './agent-budget'
+import { AgentBudgetTracker, mergeAgentBudget } from './agent-budget'
 
 describe('agent budget', () => {
   it('merges safe defaults and accepts bounded overrides', () => {
@@ -10,24 +10,27 @@ describe('agent budget', () => {
     })
   })
 
-  it('stops additional model requests and commits at the configured limits', () => {
+  it('records model requests and commits without blocking at legacy thresholds', () => {
     const tracker = new AgentBudgetTracker({ maxModelRequests: 1, maxCommits: 1 })
     tracker.reserveModelRequest()
-    expect(() => tracker.reserveModelRequest()).toThrowError(AgentBudgetExceededError)
+    tracker.reserveModelRequest()
     tracker.reserveCommit()
-    expect(() => tracker.reserveCommit()).toThrowError('agent_budget_exceeded:commits')
+    tracker.reserveCommit()
+    expect(tracker.usage).toMatchObject({ modelRequests: 2, commits: 2 })
   })
 
-  it('stops when token or local action usage exceeds the budget', () => {
+  it('records token and local action usage without blocking', () => {
     const tracker = new AgentBudgetTracker({ maxTokens: 10, maxLocalActions: 1 })
-    expect(() => tracker.recordTokens(11)).toThrowError('agent_budget_exceeded:tokens')
+    tracker.recordTokens(11)
     tracker.reserveLocalAction()
-    expect(() => tracker.reserveLocalAction()).toThrowError('agent_budget_exceeded:localActions')
+    tracker.reserveLocalAction()
+    expect(tracker.usage).toMatchObject({ tokens: 11, localActions: 2 })
   })
 
-  it('enforces the wall-clock deadline', () => {
+  it('keeps a stable per-operation timeout without enforcing a run deadline', () => {
     const tracker = new AgentBudgetTracker({ deadlineMs: 10 }, 100)
-    expect(() => tracker.assertWithinDeadline(110)).toThrowError('agent_budget_exceeded:deadline')
+    expect(() => tracker.assertWithinDeadline(10_000)).not.toThrow()
+    expect(tracker.remainingMs).toBe(10)
   })
 
   it('rejects non-finite or fractional limits', () => {

@@ -38,7 +38,7 @@ export const ProviderModelInfoSchema = z.object({
   nickname: z.string().optional().catch(undefined),
   labels: z.array(z.string()).optional().catch([]),
   capabilities: z
-    .array(z.enum(['vision', 'reasoning', 'tool_use', 'web_search']))
+    .array(z.enum(['vision', 'reasoning', 'tool_use', 'web_search', 'audio_input', 'tts']))
     .optional()
     .catch([]),
   contextWindow: z.number().optional().catch(undefined),
@@ -115,7 +115,7 @@ const ClaudeParamsSchema = z.object({
 })
 
 const OpenAIParamsSchema = z.object({
-  reasoningEffort: z.enum(['low', 'medium', 'high']).optional().catch(undefined),
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional().catch(undefined),
 })
 
 const GoogleParamsSchema = z.object({
@@ -126,10 +126,22 @@ const GoogleParamsSchema = z.object({
   }),
 })
 
+const OpenRouterParamsSchema = z.object({
+  reasoning: z
+    .object({
+      enabled: z.boolean().optional(),
+      exclude: z.boolean().optional(),
+      effort: z.enum(['low', 'medium', 'high']).optional(),
+      max_tokens: z.number().optional(),
+    })
+    .optional(),
+})
+
 export const ProviderOptionsSchema = z.object({
   claude: ClaudeParamsSchema.optional(),
   openai: OpenAIParamsSchema.optional(),
   google: GoogleParamsSchema.optional(),
+  openrouter: OpenRouterParamsSchema.optional(),
 })
 
 // NOTICE: Global settings is for new session default settings, set to session when session created, changes will not affect existing sessions
@@ -147,6 +159,7 @@ export const SessionSettingsSchema = GlobalSessionSettingsSchema.extend({
   dalleStyle: z.enum(['vivid', 'natural']).optional().catch('vivid'),
   imageGenerateNum: z.number().optional().catch(1),
   providerOptions: ProviderOptionsSchema.optional().catch(undefined),
+  reasoningStrength: z.enum(['off', 'minimal', 'low', 'medium', 'high', 'max']).optional().catch(undefined),
   autoCompaction: z.boolean().optional().catch(undefined),
 })
 
@@ -430,6 +443,7 @@ export type ClaudeParams = z.infer<typeof ClaudeParamsSchema>
 export type OpenAIParams = z.infer<typeof OpenAIParamsSchema>
 export type GoogleParams = z.infer<typeof GoogleParamsSchema>
 export type ProviderOptions = z.infer<typeof ProviderOptionsSchema>
+export type ReasoningStrength = NonNullable<SessionSettings['reasoningStrength']>
 export type GlobalSessionSettings = z.infer<typeof GlobalSessionSettingsSchema>
 export type ChatboxAILicenseDetail = z.infer<typeof ChatboxAILicenseDetailSchema>
 export type UnifiedTokenUsageDetail = z.infer<typeof UnifiedTokenUsageDetailSchema>

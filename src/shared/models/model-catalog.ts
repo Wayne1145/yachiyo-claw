@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LocalRuntimeCapabilitiesSchema, resolveLocalRuntimeCapabilities, type LocalRuntimeCapabilities } from './local-capabilities'
 
 /**
  * The catalog intentionally knows about only the two runtimes that are part of
@@ -164,6 +165,7 @@ export interface DownloadJob {
   status: DownloadJobStatus
   artifactIds: string[]
   artifacts: ModelArtifact[]
+  runtimeCapabilities?: LocalRuntimeCapabilities
   bytesTotal: number
   bytesDownloaded: number
   /** Native downloaders may use this as their upper bound. */
@@ -1564,6 +1566,7 @@ export class ModelCatalogController {
       status: 'queued',
       artifactIds: artifacts.map((artifact) => artifact.id),
       artifacts: artifacts.map((artifact) => ({ ...artifact })),
+      runtimeCapabilities: resolveLocalRuntimeCapabilities(request.model, artifacts),
       bytesTotal,
       bytesDownloaded: 0,
       maxConcurrentSegments: Math.min(Math.max(request.maxConcurrentSegments ?? 4, 1), 4),
@@ -1784,6 +1787,7 @@ export const DownloadJobSchema = z.object({
   status: z.enum(DOWNLOAD_JOB_STATUSES),
   artifactIds: z.array(z.string()),
   artifacts: z.array(ModelArtifactSchema),
+  runtimeCapabilities: LocalRuntimeCapabilitiesSchema.optional(),
   bytesTotal: z.number().int().nonnegative(),
   bytesDownloaded: z.number().int().nonnegative(),
   maxConcurrentSegments: z.number().int().min(1).max(4),

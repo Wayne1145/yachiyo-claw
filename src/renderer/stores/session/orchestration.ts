@@ -3,11 +3,13 @@ import { ChatboxAIAPIError, OCRError } from '@shared/models/errors'
 import type { ChatStreamOptions, ModelStreamPart } from '@shared/models/types'
 import { type Message, type MessageContentParts, ModelProviderEnum } from '@shared/types'
 import { getMessageText, sequenceMessages } from '@shared/utils/message'
+import { resolveReasoningProviderOptions } from '@shared/utils/reasoning-strength'
 import type { ToolSet } from 'ai'
 import { t } from 'i18next'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
 import { getDisabledAgentCapabilityPrompt } from '@/mobile/agent-disabled-prompt'
+import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from '@/mobile/automatic-memory'
 import { buildSharedUserContextPrompt } from '@/mobile/shared-user-context'
 import * as appleAppStore from '@/packages/apple_app_store'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
@@ -183,8 +185,23 @@ export async function orchestrateGeneration(
       cameraSessionId: sessionId,
       agentSessionId: sessionId,
     })
+    const latestUserMessage = [...promptMsgs].reverse().find((message) => message.role === 'user')
+    const latestUserText = latestUserMessage ? getMessageText(latestUserMessage, true, true) : ''
+    let relevantMemoryPrompt = ''
+    if (latestUserText) {
+      try {
+        await rememberDurableUserStatements(latestUserText, {
+          sessionId,
+          messageId: latestUserMessage?.id,
+        })
+        relevantMemoryPrompt = await buildRelevantLongTermMemoryPrompt(latestUserText)
+      } catch (error) {
+        log.warn('Automatic memory update failed:', error)
+      }
+    }
     const instructions = [
       buildSharedUserContextPrompt(),
+      relevantMemoryPrompt,
       toolInstructions,
       getDisabledAgentCapabilityPrompt(sessionId),
     ]
@@ -218,7 +235,7 @@ export async function orchestrateGeneration(
     const chatOptions: ChatStreamOptions = {
       sessionId: session.id,
       signal: controller.signal,
-      providerOptions: settings.providerOptions,
+      providerOptions: resolveReasoningProviderOptions(settings),
     }
 
     if (Object.keys(tools).length > 0) {

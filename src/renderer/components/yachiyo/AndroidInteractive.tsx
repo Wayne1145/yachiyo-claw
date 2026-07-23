@@ -9,7 +9,7 @@ import {
   Textarea,
   UnstyledButton,
 } from '@mantine/core'
-import { createMessage, ModelProviderEnum } from '@shared/types'
+import { createMessage, ModelProviderEnum, type ReasoningStrength } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
 import {
   IconCamera,
@@ -26,6 +26,7 @@ import {
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
+import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import ProviderImageIcon from '@/components/icons/ProviderImageIcon'
 import ModelSelector from '@/components/ModelSelector'
 import { useProviders } from '@/hooks/useProviders'
@@ -55,12 +56,13 @@ import {
   stopSpeaking,
 } from '@/mobile/speech-runtime'
 import { useSession } from '@/stores/chatStore'
+import { updateSession } from '@/stores/chatStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { submitTaskMessage } from '@/stores/taskSessionActions'
-import { useTaskSessionRecord } from '@/stores/taskSessionStore'
+import { updateTaskSession, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
 import { CharacterSelector } from './CharacterSelector'
 import { Live2DStage, type Live2DStageHandle } from './Live2DStage'
@@ -117,7 +119,7 @@ export function AndroidInteractive({
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId) || models[0],
-    [models, selectedModelId]
+    [models, selectedModelId],
   )
   const conversationModel = useMemo(() => {
     const lastUsed = lastUsedModelStore.getState()
@@ -137,7 +139,7 @@ export function AndroidInteractive({
     if (!conversationModel) return '选择模型'
     const provider = providers.find((item) => item.id === conversationModel.provider)
     const model = (provider?.models || provider?.defaultSettings?.models)?.find(
-      (item) => item.modelId === conversationModel.modelId
+      (item) => item.modelId === conversationModel.modelId,
     )
     return model?.nickname || conversationModel.modelId
   }, [conversationModel, providers])
@@ -219,7 +221,7 @@ export function AndroidInteractive({
       void stopSpeaking()
       if (interactiveRecognitionActiveRef.current) void stopAndroidSpeechRecognition()
     },
-    []
+    [],
   )
 
   useEffect(() => {
@@ -340,8 +342,22 @@ export function AndroidInteractive({
         provider,
         modelId,
       })
+      const selectedInfo = providers
+        .find((item) => item.id === provider)
+        ?.models?.find((item) => item.modelId === modelId)
+      if (agentMode && !selectedInfo?.capabilities?.includes('tool_use')) {
+        setNotice('该模型仅支持聊天，当前不会调用 Agent 工具。')
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '模型切换失败')
+    }
+  }
+
+  const updateReasoningStrength = async (reasoningStrength: ReasoningStrength) => {
+    if (agentMode && taskId) {
+      await updateTaskSession(taskId, { settings: { ...(task?.settings || {}), reasoningStrength } })
+    } else if (sessionId) {
+      await updateSession(sessionId, { settings: { ...(session?.settings || {}), reasoningStrength } })
     }
   }
 
@@ -395,6 +411,7 @@ export function AndroidInteractive({
             modelFilter={(model, providerId) =>
               !agentMode ||
               providerId === ModelProviderEnum.Yachiyo ||
+              providerId === ModelProviderEnum.Local ||
               Boolean(model.capabilities?.includes('tool_use'))
             }
             position="bottom-end"
@@ -413,6 +430,11 @@ export function AndroidInteractive({
         </div>
         <div className="yachiyo-interactive-header-actions">
           <CharacterSelector sessionId={sessionId} />
+          <ReasoningStrengthControl
+            settings={agentMode ? task?.settings : session?.settings}
+            onChange={(value) => void updateReasoningStrength(value)}
+            compact
+          />
           <SegmentedControl
             className="yachiyo-interactive-mode-control"
             size="xs"

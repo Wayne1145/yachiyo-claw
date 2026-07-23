@@ -3,6 +3,7 @@ import {
   createNativeModelDownloadSink,
   NativeLocalInferenceAdapter,
   NativeMobileRagEmbeddingProvider,
+  serializeLocalModelMessages,
 } from './yachiyo_model_manager'
 
 const native = vi.hoisted(() => ({
@@ -11,6 +12,7 @@ const native = vi.hoisted(() => ({
   resume: vi.fn(),
   cancel: vi.fn(),
   healthCheck: vi.fn(),
+  modelCapabilities: vi.fn(),
   infer: vi.fn(),
   cancelInference: vi.fn(),
   embed: vi.fn(),
@@ -42,6 +44,7 @@ describe('YachiyoModelManager bridge', () => {
     await expect(adapter.stream('model-1', { messages: [] }).next()).resolves.toMatchObject({
       value: { type: 'text', text: 'hello' },
     })
+    expect(native.infer).toHaveBeenCalledWith(expect.objectContaining({ messages: [] }))
   })
 
   it('forwards cancellation to the native inference request', async () => {
@@ -78,5 +81,35 @@ describe('YachiyoModelManager bridge', () => {
 
     await expect(provider.embed({ texts: ['query'] })).resolves.toEqual([[1, 0]])
     expect(native.embed).toHaveBeenCalledWith({ modelId: 'embedding', texts: ['query'] })
+  })
+
+  it('serializes base64 image/audio content for native runtimes', () => {
+    expect(
+      serializeLocalModelMessages([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this' },
+            { type: 'image', image: 'aW1hZ2U=', mediaType: 'image/png' },
+            { type: 'file', data: 'data:audio/wav;base64,YXVkaW8=', mediaType: 'audio/wav' },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Describe this' },
+          { type: 'image', data: 'aW1hZ2U=', mediaType: 'image/png' },
+          { type: 'audio', data: 'YXVkaW8=', mediaType: 'audio/wav' },
+        ],
+      },
+    ])
+  })
+
+  it('does not pass remote media URLs to a local runtime', () => {
+    expect(
+      serializeLocalModelMessages([{ role: 'user', content: [{ type: 'image', image: 'https://example.com/a.png' }] }]),
+    ).toEqual([{ role: 'user', content: [] }])
   })
 })

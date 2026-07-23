@@ -150,6 +150,27 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void modelCapabilities(PluginCall call) {
+        String modelId = call.getString("modelId", "");
+        JSONObject job = store.findCompletedModel(modelId);
+        if (job == null) {
+            call.reject("local_model_not_downloaded");
+            return;
+        }
+        JSONObject stored = job.optJSONObject("runtimeCapabilities");
+        JSObject capabilities = new JSObject();
+        capabilities.put("text", stored == null || stored.optBoolean("text", true));
+        capabilities.put("vision", stored != null && stored.optBoolean("vision", false));
+        capabilities.put("audioInput", stored != null && stored.optBoolean("audioInput", false));
+        capabilities.put("speechOutput", stored != null && stored.optBoolean("speechOutput", false));
+        capabilities.put("reasoning", stored != null && stored.optBoolean("reasoning", false));
+        capabilities.put("toolUse", stored != null && stored.optBoolean("toolUse", false));
+        capabilities.put("streaming", stored != null && stored.optBoolean("streaming", false));
+        capabilities.put("reasons", stored == null ? new JSONArray() : stored.optJSONArray("reasons"));
+        call.resolve(capabilities);
+    }
+
+    @PluginMethod
     public void infer(PluginCall call) {
         String modelId = call.getString("modelId", "");
         String requestId = call.getString("requestId", "");

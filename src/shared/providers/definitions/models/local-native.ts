@@ -20,7 +20,7 @@ export default class LocalNativeModel implements ModelInterface {
   }
 
   isSupportVision(): boolean {
-    return false
+    return this.model.capabilities?.includes('vision') || false
   }
 
   isSupportToolUse(): boolean {

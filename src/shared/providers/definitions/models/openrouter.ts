@@ -24,11 +24,14 @@ export default class OpenRouter extends AbstractAISDKModel {
     super(options, dependencies)
   }
 
-  protected getCallSettings() {
+  protected getCallSettings(options: import('../../../models/types').CallChatCompletionOptions) {
     return {
       temperature: this.options.temperature,
       topP: this.options.topP,
       maxOutputTokens: this.options.maxOutputTokens,
+      providerOptions: options.providerOptions?.openrouter
+        ? { openrouter: options.providerOptions.openrouter }
+        : undefined,
     }
   }
 

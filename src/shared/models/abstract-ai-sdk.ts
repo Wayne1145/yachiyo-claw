@@ -47,24 +47,17 @@ const RETRY_CONFIG = {
   BACKOFF_FACTOR: 2,
 } as const
 
-const AGENT_DEFAULT_MAX_STEPS = 6
-const AGENT_DEFAULT_MAX_OUTPUT_TOKENS = 512
-
 function resolveMaxSteps(options: { maxSteps?: number; maxModelRequests?: number; agentMode?: boolean }): number {
   if (!options.agentMode) {
     return options.maxSteps ?? Number.MAX_SAFE_INTEGER
   }
-  return Math.min(
-    options.maxSteps ?? AGENT_DEFAULT_MAX_STEPS,
-    options.maxModelRequests ?? AGENT_DEFAULT_MAX_STEPS,
-    AGENT_DEFAULT_MAX_STEPS,
-  )
+  return Math.min(options.maxSteps ?? Number.MAX_SAFE_INTEGER, options.maxModelRequests ?? Number.MAX_SAFE_INTEGER)
 }
 
 function applyAgentCallLimits(callSettings: CallSettings, options: { maxOutputTokens?: number; agentMode?: boolean }) {
-  if (!options.agentMode) return callSettings
+  if (!options.agentMode || options.maxOutputTokens === undefined) return callSettings
 
-  const requested = options.maxOutputTokens ?? AGENT_DEFAULT_MAX_OUTPUT_TOKENS
+  const requested = options.maxOutputTokens
   const configured = callSettings.maxOutputTokens
   return {
     ...callSettings,
