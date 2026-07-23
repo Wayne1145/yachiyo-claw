@@ -35,8 +35,8 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     public void capabilities(PluginCall call) {
         JSObject result = new JSObject();
         result.put("schemaVersion", 1);
-        result.put("runtimes", new JSArray().put("litert-lm").put("mediapipe-text"));
-        result.put("formats", new JSArray().put("litertlm").put("tflite"));
+        result.put("runtimes", new JSArray().put("litert-lm").put("llama.cpp").put("mediapipe-text"));
+        result.put("formats", new JSArray().put("litertlm").put("gguf").put("tflite"));
         result.put("maxConcurrentFiles", 1);
         result.put("maxConcurrentSegments", 1);
         result.put("appPrivateStorage", true);
@@ -60,8 +60,8 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         result.put("ramBytes", memory.totalMem);
         result.put("availableStorageBytes", storage.getAvailableBytes());
         result.put("storageBytes", storage.getTotalBytes());
-        result.put("supportedRuntimes", new JSArray().put("litert-lm").put("mediapipe-text"));
-        result.put("supportedFormats", new JSArray().put("litertlm").put("tflite"));
+        result.put("supportedRuntimes", new JSArray().put("litert-lm").put("llama.cpp").put("mediapipe-text"));
+        result.put("supportedFormats", new JSArray().put("litertlm").put("gguf").put("tflite"));
         result.put("soc", Build.VERSION.SDK_INT >= 31 ? Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL : Build.HARDWARE);
         result.put("cpu", Build.HARDWARE);
         call.resolve(result);
@@ -138,8 +138,13 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             result.put("status", "unsupported").put("reason", "local_model_not_downloaded");
         } else {
             File model = new File(job.optString("modelPath"));
-            result.put("status", model.isFile() ? "supported" : "unsupported");
+            String runtime = LocalModelFormat.runtimeForPath(model.getPath());
+            boolean formatHealthy = runtime != null && (!"llama.cpp".equals(runtime) || LocalModelFormat.hasValidGgufHeader(model));
+            result.put("status", model.isFile() && formatHealthy ? "supported" : "unsupported");
             if (!model.isFile()) result.put("reason", "local_model_file_missing");
+            else if (runtime == null) result.put("reason", "local_model_format_unsupported");
+            else if (!formatHealthy) result.put("reason", "local_model_header_invalid");
+            else result.put("runtime", runtime);
         }
         call.resolve(result);
     }
@@ -147,21 +152,37 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     @PluginMethod
     public void infer(PluginCall call) {
         String modelId = call.getString("modelId", "");
+        String requestId = call.getString("requestId", "");
         JSArray messages = call.getArray("messages", new JSArray());
         int maxTokens = call.getInt("maxTokens", 2048);
         inferenceExecutor.execute(() -> {
             try {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
-                if (!job.getString("modelPath").toLowerCase().endsWith(".litertlm")) throw new IllegalArgumentException("local_model_not_chat_model");
-                String text = LiteRtLmRunner.infer(job.getString("modelPath"), new JSONArray(messages.toString()), maxTokens);
+                String modelPath = job.getString("modelPath");
+                String text;
+                if (modelPath.toLowerCase().endsWith(".litertlm")) {
+                    text = LiteRtLmRunner.infer(modelPath, new JSONArray(messages.toString()), maxTokens);
+                } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
+                    text = GgufRunner.infer(modelPath, new JSONArray(messages.toString()), maxTokens, requestId);
+                } else {
+                    throw new IllegalArgumentException("local_model_not_chat_model");
+                }
                 JSArray events = new JSArray();
                 events.put(new JSObject().put("type", "text").put("text", text));
-                call.resolve(new JSObject().put("events", events));
+                JSObject result = new JSObject().put("events", events);
+                if (!requestId.isBlank()) result.put("requestId", requestId);
+                call.resolve(result);
             } catch (Exception error) {
                 call.reject(safeError(error), error);
             }
         });
+    }
+
+    @PluginMethod
+    public void cancelInference(PluginCall call) {
+        GgufRunner.cancel(call.getString("requestId", ""));
+        call.resolve(new JSObject().put("cancelled", true));
     }
 
     @PluginMethod
@@ -194,6 +215,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     public void unload(PluginCall call) {
         inferenceExecutor.execute(() -> {
             LiteRtLmRunner.unload();
+            GgufRunner.unload();
             MediaPipeTextEmbeddingRunner.unload();
             call.resolve();
         });
@@ -203,6 +225,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     public void deleteModel(PluginCall call) {
         try {
             LiteRtLmRunner.unload();
+            GgufRunner.unload();
             MediaPipeTextEmbeddingRunner.unload();
             store.deleteModel(call.getString("modelId", ""));
             call.resolve();
@@ -244,8 +267,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             String path = artifact.optString("path");
             ModelDownloadPolicy.resolveArtifact(store.modelDirectory(job), path);
             artifact.put("completedBytes", Math.max(0, artifact.optLong("completedBytes", 0)));
-            runnable |= "litertlm".equals(artifact.optString("format")) || path.toLowerCase().endsWith(".litertlm");
-            runnable |= "tflite".equals(artifact.optString("format")) || path.toLowerCase().endsWith(".tflite");
+            runnable |= LocalModelFormat.isRunnableArtifact(artifact.optString("format"), path);
         }
         if (!runnable) throw new IllegalArgumentException("runnable_model_artifact_required");
         job.put("id", id).put("status", "queued").put("bytesTotal", total).put("bytesDownloaded", 0).put("updatedAt", System.currentTimeMillis());

@@ -18,7 +18,7 @@ describe('Android Agent profiles', () => {
     expect(state.profiles[0].soul).toContain('你不是机器人。你是月见八千代。')
   })
 
-  it('keeps Soul, User, and Memory in the Agent-specific prompt', () => {
+  it('combines Agent Soul with migrated shared User and Memory context', () => {
     const state = getAgentProfileState()
     state.profiles[0] = { ...state.profiles[0], user: '称呼用户为 Wayne', memory: '偏好本地优先' }
     saveAgentProfileState(state)
@@ -28,4 +28,3 @@ describe('Android Agent profiles', () => {
     expect(prompt).toContain('<memory>')
   })
 })
-

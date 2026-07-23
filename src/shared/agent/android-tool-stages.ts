@@ -45,12 +45,19 @@ export function selectAndroidToolStage(stepNumber: number, messages: readonly Mo
 export function selectAndroidActiveTools(
   stepNumber: number,
   messages: readonly ModelMessage[],
-  requested?: readonly string[]
+  requested?: readonly string[],
 ): string[] {
   if (requested?.length && stepNumber <= 0) return [...new Set(requested)]
+  const androidToolNames = new Set<string>(ANDROID_TOOL_STAGE_FALLBACK)
+  const internalTools = (requested ?? []).filter((name) => !androidToolNames.has(name))
   const stage = selectAndroidToolStage(stepNumber, messages)
-  if (stage === 'complete') return ['android_observe']
-  if (stage === 'fallback') return [...ANDROID_TOOL_STAGE_FALLBACK]
-  if (stage === 'stable') return [...ANDROID_TOOL_STAGE_STABLE]
-  return [...ANDROID_TOOL_STAGE_INITIAL]
+  const androidTools =
+    stage === 'complete'
+      ? ['android_observe']
+      : stage === 'fallback'
+        ? [...ANDROID_TOOL_STAGE_FALLBACK]
+        : stage === 'stable'
+          ? [...ANDROID_TOOL_STAGE_STABLE]
+          : [...ANDROID_TOOL_STAGE_INITIAL]
+  return [...new Set([...internalTools, ...androidTools])]
 }

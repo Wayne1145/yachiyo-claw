@@ -20,6 +20,11 @@ The Android local model runtime uses Google LiteRT-LM under Apache-2.0. The
 runtime integration follows the public AI Edge Gallery implementation at
 https://github.com/google-ai-edge/gallery.
 
+GGUF language models run through llama.cpp at commit
+`1a064ab0921238c1daa397d6f4a900ef33884de2` under the MIT license. The vendored
+license and source are retained in
+`android/app/src/main/cpp/third_party/llama.cpp`.
+
 Local text embeddings use Google MediaPipe Tasks Text under Apache-2.0.
 
 Offline Chinese and English speech recognition uses sherpa-onnx v1.13.4 under

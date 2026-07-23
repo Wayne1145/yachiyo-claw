@@ -159,6 +159,8 @@ if (@($toolchain.android.buildTools).Count -eq 0) {
 foreach ($buildToolsVersion in @($toolchain.android.buildTools)) {
   Assert-VersionString ([string]$buildToolsVersion) 'android.buildTools'
 }
+Assert-VersionString ([string]$toolchain.android.ndk) 'android.ndk'
+Assert-VersionString ([string]$toolchain.android.cmake) 'android.cmake'
 
 $nodeRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.node.path)) -AllowedRoot $toolsRoot
 $jdkRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.jdk.path)) -AllowedRoot $toolsRoot
@@ -637,6 +639,32 @@ function Test-BuildTools {
   return $result.ExitCode -eq 0
 }
 
+function Test-Ndk {
+  param([Parameter(Mandatory = $true)][string]$SdkRoot)
+
+  $root = Join-Path $SdkRoot ("ndk\$($toolchain.android.ndk)")
+  $revision = Get-SourceProperty -File (Join-Path $root 'source.properties') -Name 'Pkg.Revision'
+  return $revision -eq [string]$toolchain.android.ndk -and
+    (Test-Path -LiteralPath (Join-Path $root 'ndk-build.cmd') -PathType Leaf) -and
+    (Test-Path -LiteralPath (Join-Path $root 'toolchains\llvm\prebuilt\windows-x86_64\bin\clang.exe') -PathType Leaf)
+}
+
+function Test-Cmake {
+  param([Parameter(Mandatory = $true)][string]$SdkRoot)
+
+  $root = Join-Path $SdkRoot ("cmake\$($toolchain.android.cmake)")
+  $revision = Get-SourceProperty -File (Join-Path $root 'source.properties') -Name 'Pkg.Revision'
+  $cmake = Join-Path $root 'bin\cmake.exe'
+  if ($revision -ne [string]$toolchain.android.cmake -or -not (Test-Path -LiteralPath $cmake -PathType Leaf)) {
+    return $false
+  }
+  if ($VerifyOnly) {
+    return $true
+  }
+  $result = Get-NativeResult -Executable $cmake -Arguments @('--version')
+  return $result.ExitCode -eq 0 -and $result.Output -match ('^cmake version ' + [regex]::Escape([string]$toolchain.android.cmake) + '(?:\s|$)')
+}
+
 function Get-MissingAndroidPackages {
   param([Parameter(Mandatory = $true)][string]$SdkRoot)
 
@@ -651,6 +679,12 @@ function Get-MissingAndroidPackages {
     if (-not (Test-BuildTools -SdkRoot $SdkRoot -Version ([string]$version))) {
       $missing += "build-tools;$version"
     }
+  }
+  if (-not (Test-Ndk -SdkRoot $SdkRoot)) {
+    $missing += "ndk;$($toolchain.android.ndk)"
+  }
+  if (-not (Test-Cmake -SdkRoot $SdkRoot)) {
+    $missing += "cmake;$($toolchain.android.cmake)"
   }
   return $missing
 }
@@ -690,6 +724,20 @@ function Install-AndroidPackages {
         throw "sdkmanager did not install locked Android build-tools $version."
       }
       $relative = "build-tools\$version"
+      Set-DirectoryFromStage -Source (Join-Path $SdkStage $relative) -Destination (Join-Path $androidSdkRoot $relative) -SessionRoot $SessionRoot
+    } elseif ($packageId -like 'ndk;*') {
+      $version = $packageId.Substring('ndk;'.Length)
+      if ($version -ne [string]$toolchain.android.ndk -or -not (Test-Ndk -SdkRoot $SdkStage)) {
+        throw "sdkmanager did not install locked Android NDK $version."
+      }
+      $relative = "ndk\$version"
+      Set-DirectoryFromStage -Source (Join-Path $SdkStage $relative) -Destination (Join-Path $androidSdkRoot $relative) -SessionRoot $SessionRoot
+    } elseif ($packageId -like 'cmake;*') {
+      $version = $packageId.Substring('cmake;'.Length)
+      if ($version -ne [string]$toolchain.android.cmake -or -not (Test-Cmake -SdkRoot $SdkStage)) {
+        throw "sdkmanager did not install locked CMake $version."
+      }
+      $relative = "cmake\$version"
       Set-DirectoryFromStage -Source (Join-Path $SdkStage $relative) -Destination (Join-Path $androidSdkRoot $relative) -SessionRoot $SessionRoot
     }
   }
@@ -733,7 +781,7 @@ function Assert-Toolchain {
   Write-Host "  Node.js: $($toolchain.node.version)"
   Write-Host "  JDK: $($toolchain.jdk.version)"
   Write-Host "  Android command-line tools: $($toolchain.android.commandLineTools.version)"
-  Write-Host "  Android SDK: platform-tools $($toolchain.android.platformTools), platform android-$($toolchain.android.compileSdk), build-tools $(@($toolchain.android.buildTools) -join ', ')"
+  Write-Host "  Android SDK: platform-tools $($toolchain.android.platformTools), platform android-$($toolchain.android.compileSdk), build-tools $(@($toolchain.android.buildTools) -join ', '), NDK $($toolchain.android.ndk), CMake $($toolchain.android.cmake)"
 }
 
 if ($VerifyOnly) {

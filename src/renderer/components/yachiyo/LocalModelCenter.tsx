@@ -7,6 +7,7 @@ import {
   Loader,
   Progress,
   SegmentedControl,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -34,6 +35,12 @@ import {
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type DownloadSample, updateDownloadEstimate } from '@/mobile/model-download-metrics'
+import {
+  buildSelectedLocalModel,
+  listRunnableLocalModelArtifacts,
+  localModelRuntimeForArtifact,
+  resolveLocalModelArtifactGroup,
+} from '@/mobile/local-model-artifacts'
 import { createMobileModelCatalogController, searchMobileModelCatalog } from '@/mobile/model-catalog-controller'
 import {
   deleteNativeModel,
@@ -92,13 +99,12 @@ function reportLabel(report?: CompatibilityReport) {
 }
 
 export function LocalModelCenter() {
-  const [query, setQuery] = useState('litertlm')
+  const [query, setQuery] = useState('gguf')
   const [source, setSource] = useState<SourceFilter>('all')
   const [models, setModels] = useState<RemoteModel[]>([])
   const [selected, setSelected] = useState<RemoteModel>()
   const [detail, setDetail] = useState<RemoteModel>()
   const [profile, setProfile] = useState<DeviceCompatibilityProfile>()
-  const [report, setReport] = useState<CompatibilityReport>()
   const [jobs, setJobs] = useState<DownloadJob[]>([])
   const [downloadQueueOpened, setDownloadQueueOpened] = useState(false)
   const [downloadMetrics, setDownloadMetrics] = useState<
@@ -109,6 +115,7 @@ export function LocalModelCenter() {
   const [error, setError] = useState('')
   const [queueError, setQueueError] = useState('')
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set())
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string>()
   const searchAbortRef = useRef<AbortController>()
   const downloadSamplesRef = useRef<Record<string, DownloadSample>>({})
   const refreshRunIdRef = useRef(0)
@@ -242,7 +249,6 @@ export function LocalModelCenter() {
   const openDetail = async (model: RemoteModel) => {
     setSelected(model)
     setDetail(undefined)
-    setReport(undefined)
     setDetailLoading(true)
     setError('')
     try {
@@ -251,7 +257,7 @@ export function LocalModelCenter() {
         includeArtifacts: true,
       })
       setDetail(complete)
-      if (profile) setReport(controller.checkCompatibility(complete, profile))
+      setSelectedArtifactId(undefined)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '模型详情加载失败')
     } finally {
@@ -259,28 +265,30 @@ export function LocalModelCenter() {
     }
   }
 
-  useEffect(() => {
-    if (detail && profile) setReport(controller.checkCompatibility(detail, profile))
-  }, [detail, profile])
-
   const activeModel = detail || selected
   const activeJob = activeModel
     ? jobs.find((job) => job.modelId === activeModel.id && job.status !== 'cancelled')
     : undefined
-  const artifact = useMemo(
-    () =>
-      detail?.artifacts
-        .filter(
-          (item) =>
-            (item.format === 'litertlm' || item.format === 'tflite') &&
-            item.sha256 &&
-            item.sizeBytes &&
-            item.sizeBytes <= MAX_MODEL_BYTES,
-        )
-        .sort(
-          (left, right) => (left.sizeBytes || Number.MAX_SAFE_INTEGER) - (right.sizeBytes || Number.MAX_SAFE_INTEGER),
-        )[0],
+  const runnableArtifacts = useMemo(
+    () => listRunnableLocalModelArtifacts(detail?.artifacts || [], MAX_MODEL_BYTES),
     [detail],
+  )
+  const artifact = useMemo(
+    () => runnableArtifacts.find((item) => item.id === selectedArtifactId) || runnableArtifacts[0],
+    [runnableArtifacts, selectedArtifactId],
+  )
+  const artifactGroup = useMemo(
+    () => (artifact && detail ? resolveLocalModelArtifactGroup(artifact, detail.artifacts, MAX_MODEL_BYTES) : []),
+    [artifact, detail],
+  )
+  const artifactGroupBytes = artifactGroup.reduce((total, item) => total + (item.sizeBytes || 0), 0)
+  const selectedLocalModel = useMemo(
+    () => (detail && artifactGroup.length > 0 ? buildSelectedLocalModel(detail, artifactGroup) : undefined),
+    [artifactGroup, detail],
+  )
+  const report = useMemo(
+    () => (selectedLocalModel && profile ? controller.checkCompatibility(selectedLocalModel, profile) : undefined),
+    [profile, selectedLocalModel],
   )
   const downloadJobs = useMemo(() => {
     const statusOrder: Record<DownloadJob['status'], number> = {
@@ -298,15 +306,15 @@ export function LocalModelCenter() {
   const activeDownloadCount = jobs.filter((job) => job.status === 'queued' || job.status === 'downloading').length
 
   const startDownload = async () => {
-    if (!detail || !profile || !artifact) return
+    if (!selectedLocalModel || !profile || !artifact || artifactGroup.length === 0) return
     setError('')
     try {
       await controller.createDownloadJob({
-        model: detail,
+        model: selectedLocalModel,
         device: profile,
-        runtime: artifact.format === 'tflite' ? 'mediapipe-text' : 'litert-lm',
-        artifactIds: [artifact.id],
-        allowIncompatible: report?.status !== 'unsupported',
+        runtime: localModelRuntimeForArtifact(artifact),
+        artifactIds: artifactGroup.map((item) => item.id),
+        allowIncompatible: false,
       })
       await refreshJobs()
       setDownloadQueueOpened(true)
@@ -531,7 +539,9 @@ export function LocalModelCenter() {
               </div>
               <div>
                 <small>模型文件</small>
-                <strong>{formatBytes(artifact?.sizeBytes || activeModel.storageSizeBytes)}</strong>
+                <strong>
+                  {formatBytes(artifactGroupBytes || artifact?.sizeBytes || activeModel.storageSizeBytes)}
+                </strong>
               </div>
               <div>
                 <small>上下文</small>
@@ -544,6 +554,20 @@ export function LocalModelCenter() {
                 <strong>{activeModel.formats.join(', ') || '未知'}</strong>
               </div>
             </section>
+            {runnableArtifacts.length > 0 && (
+              <Select
+                label="模型文件与量化"
+                description="GGUF 会使用 llama.cpp 在本机运行；分片模型会下载完整分片组。"
+                value={artifact?.id || null}
+                allowDeselect={false}
+                searchable
+                data={runnableArtifacts.map((item) => ({
+                  value: item.id,
+                  label: `${item.filename} · ${formatBytes(item.sizeBytes)}`,
+                }))}
+                onChange={(value) => setSelectedArtifactId(value || undefined)}
+              />
+            )}
             <section className="local-model-compatibility" data-status={report?.status || 'unknown'}>
               <Group justify="space-between" align="flex-start">
                 <div>
@@ -659,12 +683,14 @@ export function LocalModelCenter() {
                 color="pink"
                 size="md"
                 leftSection={<IconDownload size={19} />}
-                disabled={!artifact || report?.status === 'unsupported' || Boolean(activeJob)}
+                disabled={
+                  !artifact || artifactGroup.length === 0 || report?.status === 'unsupported' || Boolean(activeJob)
+                }
                 onClick={() => void startDownload()}
               >
                 {artifact
-                  ? `下载到应用目录 · ${formatBytes(artifact.sizeBytes)}`
-                  : '没有可验证的 LiteRT-LM / TFLite 文件'}
+                  ? `下载到应用目录 · ${formatBytes(artifactGroupBytes || artifact.sizeBytes)}`
+                  : '没有可验证的 GGUF / LiteRT-LM / TFLite 文件'}
               </Button>
             )}
             {(error || queueError) && (

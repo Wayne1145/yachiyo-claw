@@ -171,6 +171,50 @@ describe('ModelScopeModelCatalogAdapter', () => {
     })
   })
 
+  it('normalizes grouped GGUF quantization files from the current detail API', async () => {
+    const fetch = createFetch([
+      jsonResponse({
+        Code: 200,
+        Success: true,
+        Data: {
+          Path: 'Qwen',
+          Name: 'Qwen2.5-7B-Instruct-GGUF',
+          Revision: 'master',
+          StorageSize: 105_754_450_421,
+          ModelInfos: {
+            gguf: {
+              gguf_file_list: [
+                {
+                  quantized: 'Q4_K_M',
+                  file_info: [
+                    {
+                      name: 'qwen2.5-7b-instruct-q4_k_m.gguf',
+                      size: 4_683_073_536,
+                      sha256: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      }),
+    ])
+    const adapter = new ModelScopeModelCatalogAdapter({ fetch, baseUrl: 'https://ms.test' })
+
+    const model = await adapter.getModel('Qwen/Qwen2.5-7B-Instruct-GGUF')
+
+    expect(model.storageSizeBytes).toBe(105_754_450_421)
+    expect(model.artifacts).toHaveLength(1)
+    expect(model.artifacts[0]).toMatchObject({
+      filename: 'qwen2.5-7b-instruct-q4_k_m.gguf',
+      format: 'gguf',
+      runtime: 'llama.cpp',
+      sizeBytes: 4_683_073_536,
+      sha256: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+    })
+  })
+
   it('accepts a normalized search result envelope', async () => {
     const fetch = createFetch([
       jsonResponse({
@@ -306,7 +350,7 @@ describe('ModelCompatibilityEngine', () => {
     expect(report.status).toBe('warning')
     expect(report.checks.ram).toBe('pass')
     expect(report.issues.map((issue) => issue.message)).toContain(
-      'Current free RAM is low; Android may close background apps while loading this model'
+      'Current free RAM is low; Android may close background apps while loading this model',
     )
   })
 })
@@ -327,6 +371,34 @@ describe('ModelCatalogController', () => {
     expect((await controller.pauseDownload('job-1')).status).toBe('paused')
     expect((await controller.resumeDownload('job-1')).status).toBe('downloading')
     expect((await controller.cancelDownload('job-1')).status).toBe('cancelled')
+  })
+
+  it('selects primary Q4 GGUF shards without downloading mmproj or alternate weights', async () => {
+    const base = createCompatibilityModel()
+    const makeArtifact = (id: string, sizeBytes: number) => ({
+      ...base.artifacts[0],
+      id,
+      path: id,
+      filename: id,
+      sizeBytes,
+      size: sizeBytes,
+    })
+    const model = createCompatibilityModel({
+      artifacts: [
+        makeArtifact('model-Q8_0.gguf', 4_000),
+        makeArtifact('model-Q4_K_M-00001-of-00002.gguf', 1_500),
+        makeArtifact('model-Q4_K_M-00002-of-00002.gguf', 1_500),
+        makeArtifact('mmproj-model-f16.gguf', 500),
+      ],
+    })
+    const controller = new ModelCatalogController({ createId: () => 'job-gguf' })
+
+    const job = await controller.createDownloadJob({ model, runtime: 'llama.cpp' })
+
+    expect(job.artifacts.map((artifact) => artifact.filename)).toEqual([
+      'model-Q4_K_M-00001-of-00002.gguf',
+      'model-Q4_K_M-00002-of-00002.gguf',
+    ])
   })
 
   it('does not queue an unpinned or incomplete artifact by default', async () => {

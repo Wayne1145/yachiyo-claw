@@ -5,6 +5,7 @@ import {
   IconAdjustments,
   IconBrain,
   IconUserHeart,
+  IconNotebook,
   IconMicrophone,
   IconChevronRight,
   IconMessages,
@@ -97,6 +98,12 @@ const GROUPS: Array<{ title: string; items: SettingsItem[] }> = [
         detail: '人格、头像、Live2D 与默认模型',
         icon: IconUserHeart,
         open: () => void router.navigate({ to: '/settings/characters' }),
+      },
+      {
+        label: '用户与记忆',
+        detail: '普通聊天与 Agent 共用的用户画像和长期记忆',
+        icon: IconNotebook,
+        open: () => void router.navigate({ to: '/settings/user-memory' }),
       },
       {
         label: '语音服务',

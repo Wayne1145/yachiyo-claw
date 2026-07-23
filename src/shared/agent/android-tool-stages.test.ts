@@ -32,4 +32,17 @@ describe('Android tool stages', () => {
   it('reduces the tool set after a verified tool result', () => {
     expect(selectAndroidActiveTools(2, [message('tool', 'recipe_verified')])).toEqual(['android_observe'])
   })
+
+  it('keeps internal tools available while Android tools advance through stages', () => {
+    const requested = ['sandbox_bash', 'load_skill', 'android_observe', 'android_launch_app']
+
+    expect(selectAndroidActiveTools(1, [message('assistant', 'continue')], requested)).toEqual(
+      expect.arrayContaining(['sandbox_bash', 'load_skill', 'android_click_node']),
+    )
+    expect(selectAndroidActiveTools(2, [message('tool', 'recipe_verified')], requested)).toEqual([
+      'sandbox_bash',
+      'load_skill',
+      'android_observe',
+    ])
+  })
 })

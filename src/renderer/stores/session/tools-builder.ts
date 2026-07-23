@@ -3,7 +3,6 @@ import type { KnowledgeBase, Message } from '@shared/types'
 import type { SkillInfo } from '@shared/types/skills'
 import { type ToolExecutionOptions, type ToolSet, tool } from 'ai'
 import { z } from 'zod'
-import { getAgentBackend } from '@/mobile/agent-broker'
 import { ANDROID_TOOL_STAGE_INITIAL } from '@shared/agent/android-tool-stages'
 import { createCameraCaptureTool } from '@/mobile/camera-tool'
 import { mcpController } from '@/packages/mcp/controller'
@@ -29,8 +28,8 @@ export interface BuildToolsOptions {
   /** Conversation id used for persisted approval policy. */
   agentApprovalSessionId?: string
   cameraSessionId?: string
-  /** Keep mobile device runs to the compact Android/camera tool surface. */
-  deviceAgentOnly?: boolean
+  /** Adds phone-control tools without removing internal Agent tools. */
+  deviceControlEnabled?: boolean
 }
 
 export interface BuildToolsResult {
@@ -72,7 +71,16 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use the load_skill tool to load its full instructions before proceeding.\n"
+    ? [
+        '',
+        '<skills_usage>',
+        'Scan the catalog before acting. When a task clearly matches a skill, call load_skill with its exact listed name before proceeding.',
+        'Choose the most specific match. Load more than one only when each is necessary for a distinct part of the task.',
+        'Follow the loaded instructions and referenced resources. Use execute_skill_script for a referenced script when that tool is available.',
+        'Never invent an unlisted skill name, path, script, or instruction. If no skill matches, use the other available tools.',
+        '</skills_usage>',
+        '',
+      ].join('\n')
     : '\n'
 
   return `
@@ -92,20 +100,18 @@ export async function buildToolsForSession(
   model: ModelInterface,
   options: BuildToolsOptions,
 ): Promise<BuildToolsResult> {
-  const { webBrowsing, knowledgeBase, messages, sandboxEnabled, enabledSkillNames, deviceAgentOnly } = options
+  const { webBrowsing, knowledgeBase, messages, sandboxEnabled, enabledSkillNames, deviceControlEnabled } = options
   const androidDeviceToolSet = createAndroidDeviceToolSet(options.agentSessionId, options.agentApprovalSessionId)
-  const useSandboxTools =
-    !deviceAgentOnly && sandboxEnabled && !(platform.type === 'mobile' && getAgentBackend() === 'accessibility')
+  const useSandboxTools = Boolean(sandboxEnabled)
 
   const hasInlineFileOrLink = messages.some(
     (m) => m.links?.length || m.files?.some((file) => file.ragMode !== 'session-retrieval'),
   )
   const sessionAttachmentIds = getSessionAttachmentRagIds(messages)
-  const needFileToolSet = !deviceAgentOnly && hasInlineFileOrLink && model.isSupportToolUse('read-file')
-  const needSessionAttachmentRagToolSet =
-    !deviceAgentOnly && sessionAttachmentIds.length > 0 && model.isSupportToolUse('read-file')
-  const kbSupported = !deviceAgentOnly && knowledgeBase && model.isSupportToolUse('knowledge-base')
-  const webSupported = !deviceAgentOnly && webBrowsing && model.isSupportToolUse('web-browsing')
+  const needFileToolSet = hasInlineFileOrLink && model.isSupportToolUse('read-file')
+  const needSessionAttachmentRagToolSet = sessionAttachmentIds.length > 0 && model.isSupportToolUse('read-file')
+  const kbSupported = knowledgeBase && model.isSupportToolUse('knowledge-base')
+  const webSupported = webBrowsing && model.isSupportToolUse('web-browsing')
   const searchProvider = settingActions.getExtensionSettings().webSearch.provider
   const includeParseLinkTool = webSupported && PROVIDERS_WITH_PARSE_LINK.has(searchProvider)
 
@@ -143,18 +149,14 @@ export async function buildToolsForSession(
   if (useSandboxTools) {
     instructions += sandboxToolSet.description
   }
-  if (sandboxEnabled && platform.type === 'mobile') {
-    instructions += deviceAgentOnly
-      ? '\n<android_device_agent>Use the local App Index and semantic Android actions. Launch by app name or package; observe before acting and verify after side effects.</android_device_agent>\n'
-      : androidDeviceToolSet.description
+  if (deviceControlEnabled && platform.type === 'mobile') {
+    instructions += androidDeviceToolSet.description
   }
 
-  let tools: ToolSet = deviceAgentOnly ? {} : { ...mcpController.getAvailableTools(options.agentSessionId) }
+  let tools: ToolSet = { ...mcpController.getAvailableTools(options.agentSessionId) }
 
   const cameraCaptureTool =
-    !deviceAgentOnly && model.isSupportToolUse() && options.cameraSessionId
-      ? createCameraCaptureTool(options.cameraSessionId)
-      : undefined
+    model.isSupportToolUse() && options.cameraSessionId ? createCameraCaptureTool(options.cameraSessionId) : undefined
   if (cameraCaptureTool) {
     tools.camera_capture = cameraCaptureTool
     instructions +=
@@ -185,26 +187,26 @@ export async function buildToolsForSession(
   if (useSandboxTools) {
     tools = { ...tools, ...sandboxToolSet.tools }
   }
-  if (sandboxEnabled && platform.type === 'mobile') {
+  if (deviceControlEnabled && platform.type === 'mobile') {
     tools = { ...tools, ...androidDeviceToolSet.tools }
-    if (!deviceAgentOnly)
-      tools.write_skill = tool({
-        description: 'Create or update a reusable local Agent skill on this Android device.',
-        inputSchema: z.object({
-          name: z
-            .string()
-            .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
-            .max(64),
-          description: z.string().min(1).max(1024),
-          instructions: z.string().min(1).max(20_000),
-        }),
-        execute: ({ name, description, instructions }) =>
-          skillsController.saveSkill({ name, description }, instructions),
-      })
+  }
+  if (sandboxEnabled && platform.type === 'mobile') {
+    tools.write_skill = tool({
+      description: 'Create or update a reusable local Agent skill on this Android device.',
+      inputSchema: z.object({
+        name: z
+          .string()
+          .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+          .max(64),
+        description: z.string().min(1).max(1024),
+        instructions: z.string().min(1).max(20_000),
+      }),
+      execute: ({ name, description, instructions }) => skillsController.saveSkill({ name, description }, instructions),
+    })
   }
 
   // Skills integration
-  if (!deviceAgentOnly && enabledSkillNames && enabledSkillNames.length > 0) {
+  if (enabledSkillNames && enabledSkillNames.length > 0) {
     let allSkills: SkillInfo[] = []
     try {
       allSkills = await skillsController.discoverSkills()
@@ -237,43 +239,53 @@ export async function buildToolsForSession(
         })
 
         const scriptExecutionAvailable =
-          platform.type !== 'mobile' || enabledSkills.some((skill) => skill.scriptExecutionEnabled)
+          platform.type !== 'mobile' || (sandboxEnabled && enabledSkills.some((skill) => skill.scriptExecutionEnabled))
         if (scriptExecutionAvailable)
           tools.execute_skill_script = tool({
-          description:
-            "Execute a script from a skill's scripts directory. Use when a loaded skill references executable scripts.",
-          inputSchema: z.object({
-            skill_name: z.string().describe('The name of the skill'),
-            script_name: z.string().describe('The script filename to execute'),
-            arguments: z.array(z.string()).optional().describe('Optional arguments to pass to the script'),
-          }),
-          execute: async (
-            input: { skill_name: string; script_name: string; arguments?: string[] },
-            context: ToolExecutionOptions
-          ) => {
-            if (!enabledSkillNames.includes(input.skill_name)) {
-              return {
-                success: false,
-                stdout: '',
-                stderr: `Skill "${input.skill_name}" is not enabled.`,
-                exitCode: null,
+            description:
+              "Execute a script from a skill's scripts directory. Use when a loaded skill references executable scripts.",
+            inputSchema: z.object({
+              skill_name: z.string().describe('The name of the skill'),
+              script_name: z.string().describe('The script filename to execute'),
+              arguments: z.array(z.string()).optional().describe('Optional arguments to pass to the script'),
+            }),
+            execute: async (
+              input: { skill_name: string; script_name: string; arguments?: string[] },
+              context: ToolExecutionOptions,
+            ) => {
+              if (!enabledSkillNames.includes(input.skill_name)) {
+                return {
+                  success: false,
+                  stdout: '',
+                  stderr: `Skill "${input.skill_name}" is not enabled.`,
+                  exitCode: null,
+                }
               }
-            }
-            const result = await skillsController.executeScript(input.skill_name, input.script_name, input.arguments, {
-              sessionId: options.agentApprovalSessionId || options.agentSessionId,
-              toolCallId: context.toolCallId,
-              abortSignal: context.abortSignal,
-            })
-            return result
-          },
+              const result = await skillsController.executeScript(
+                input.skill_name,
+                input.script_name,
+                input.arguments,
+                {
+                  sessionId: options.agentApprovalSessionId || options.agentSessionId,
+                  toolCallId: context.toolCallId,
+                  abortSignal: context.abortSignal,
+                },
+              )
+              return result
+            },
           })
       }
     }
   }
 
+  const stagedActiveTools =
+    deviceControlEnabled && platform.type === 'mobile'
+      ? [...Object.keys(tools).filter((name) => !name.startsWith('android_')), ...ANDROID_TOOL_STAGE_INITIAL]
+      : undefined
+
   return {
     tools,
     instructions,
-    ...(deviceAgentOnly ? { activeTools: [...ANDROID_TOOL_STAGE_INITIAL] } : {}),
+    ...(stagedActiveTools ? { activeTools: [...new Set(stagedActiveTools)] } : {}),
   }
 }

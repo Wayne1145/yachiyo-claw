@@ -12,6 +12,7 @@ const native = vi.hoisted(() => ({
   cancel: vi.fn(),
   healthCheck: vi.fn(),
   infer: vi.fn(),
+  cancelInference: vi.fn(),
   embed: vi.fn(),
   list: vi.fn(),
   addListener: vi.fn(),
@@ -41,6 +42,20 @@ describe('YachiyoModelManager bridge', () => {
     await expect(adapter.stream('model-1', { messages: [] }).next()).resolves.toMatchObject({
       value: { type: 'text', text: 'hello' },
     })
+  })
+
+  it('forwards cancellation to the native inference request', async () => {
+    native.healthCheck.mockResolvedValue({ status: 'supported' })
+    native.infer.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({ events: [] }), 10)))
+    native.cancelInference.mockResolvedValue({ cancelled: true })
+    const adapter = new NativeLocalInferenceAdapter()
+    const controller = new AbortController()
+    const stream = adapter.stream('model-1', { messages: [], signal: controller.signal })
+    const pending = stream.next()
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(native.cancelInference).toHaveBeenCalledWith({ requestId: expect.stringMatching(/^local-/) })
   })
 
   it('uses an explicitly configured installed local embedding model', async () => {

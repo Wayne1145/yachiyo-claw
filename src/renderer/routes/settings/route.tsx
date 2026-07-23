@@ -11,6 +11,7 @@ import {
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
+  IconNotebook,
   IconWand,
   IconWorldWww,
 } from '@tabler/icons-react'
@@ -73,6 +74,11 @@ const ITEMS = [
     key: 'document-parser',
     label: 'Document Parser',
     icon: <IconFileText className="w-full h-full" />,
+  },
+  {
+    key: 'user-memory',
+    label: 'User & Memory',
+    icon: <IconNotebook className="w-full h-full" />,
   },
   {
     key: 'chat',

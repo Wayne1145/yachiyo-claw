@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(yachiyo_llama LANGUAGES C CXX)
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
+set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(third_party/llama.cpp llama.cpp-build EXCLUDE_FROM_ALL)
+
+add_library(yachiyo_llama SHARED yachiyo_llama_jni.cpp)
+target_compile_features(yachiyo_llama PRIVATE cxx_std_17)
+target_compile_options(yachiyo_llama PRIVATE -Wall -Wextra -Werror=return-type)
+target_link_libraries(yachiyo_llama PRIVATE llama android log)

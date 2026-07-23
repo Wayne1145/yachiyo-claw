@@ -273,7 +273,7 @@ describe('buildToolsForSession interactive camera tool', () => {
   })
 })
 
-describe('buildToolsForSession device Agent isolation', () => {
+describe('buildToolsForSession combined internal and phone-control Agent', () => {
   const model = {
     name: 'mock',
     modelId: 'mock-model',
@@ -285,18 +285,33 @@ describe('buildToolsForSession device Agent isolation', () => {
     paint: vi.fn(),
   } as unknown as ModelInterface
 
-  it('returns the initial Android tool stage without exposing unrelated chat tools', async () => {
+  it('does not remove internal tools when phone control is requested', async () => {
     const result = await buildToolsForSession(model, {
       webBrowsing: true,
       messages: [],
       sandboxEnabled: true,
       cameraSessionId: 'device-agent-session',
-      deviceAgentOnly: true,
+      deviceControlEnabled: true,
     })
 
-    expect(result.activeTools).toEqual([...ANDROID_TOOL_STAGE_INITIAL])
-    expect(result.tools).not.toHaveProperty('web_search')
-    expect(result.tools).not.toHaveProperty('camera_capture')
-    expect(result.tools).not.toHaveProperty('write_skill')
+    expect(result.tools).toHaveProperty('web_search')
+    expect(result.tools).toHaveProperty('sandbox_bash')
+    if (result.activeTools) {
+      expect(result.activeTools).toEqual(expect.arrayContaining([...ANDROID_TOOL_STAGE_INITIAL, 'web_search']))
+    }
+  })
+
+  it('keeps non-sandbox tools available when the mobile sandbox is unavailable', async () => {
+    const result = await buildToolsForSession(model, {
+      webBrowsing: true,
+      messages: [],
+      sandboxEnabled: false,
+      cameraSessionId: 'internal-agent-session',
+      deviceControlEnabled: false,
+    })
+
+    expect(result.tools).toHaveProperty('web_search')
+    expect(result.tools).not.toHaveProperty('sandbox_bash')
+    expect(result.instructions).not.toContain('sandbox_bash')
   })
 })

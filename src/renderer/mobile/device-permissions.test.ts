@@ -24,17 +24,15 @@ describe('Android permission guidance', () => {
   })
 
   it('prompts for missing required access but respects defer for this app session', () => {
-    expect(shouldOpenPermissionWizard(permissions(), false, false)).toBe(true)
-    expect(shouldOpenPermissionWizard(permissions(), false, true)).toBe(false)
+    expect(shouldOpenPermissionWizard(permissions({ notificationsGranted: false }), false)).toBe(true)
+    expect(shouldOpenPermissionWizard(permissions({ notificationsGranted: false }), true)).toBe(false)
   })
 
   it('does not require optional all-files access', () => {
-    expect(shouldOpenPermissionWizard(permissions({ shizukuGranted: true, allFiles: false }), false, false)).toBe(false)
+    expect(shouldOpenPermissionWizard(permissions({ allFiles: false }), false)).toBe(false)
   })
 
   it('requires notification permission so scheduled-task wakes remain visible', () => {
-    expect(
-      shouldOpenPermissionWizard(permissions({ shizukuGranted: true, notificationsGranted: false }), false, false)
-    ).toBe(true)
+    expect(shouldOpenPermissionWizard(permissions({ notificationsGranted: false }), false)).toBe(true)
   })
 })

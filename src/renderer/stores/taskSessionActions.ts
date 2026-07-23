@@ -12,7 +12,6 @@ import {
   KNOWN_PRICE_AGENT_BUDGET,
   UNKNOWN_PRICE_AGENT_BUDGET,
 } from '@/mobile/agent-budget'
-import { buildDeviceGoalContext } from '@/mobile/agent-goal'
 import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-policy'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import { tryRunLocalAndroidRecipe } from '@/mobile/android-task-recipe'
@@ -109,18 +108,14 @@ export async function submitTaskMessage(taskId: string, content: string): Promis
     log.error('Task session not found:', taskId)
     return
   }
-  const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).enabled)
+  const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).deviceControlEnabled)
 
-  // Device runs already reduce the prompt to one GoalSpec. A second
-  // summarization request here would add an unbudgeted billable model call.
-  if (!deviceAgent) {
-    try {
-      const { runTaskCompaction } = await import('./taskCompaction')
-      await runTaskCompaction(taskId)
-      currentSession = queryClient.getQueryData<TaskSession>(queryKey) ?? currentSession
-    } catch (err) {
-      log.error('Task compaction failed:', err)
-    }
+  try {
+    const { runTaskCompaction } = await import('./taskCompaction')
+    await runTaskCompaction(taskId)
+    currentSession = queryClient.getQueryData<TaskSession>(queryKey) ?? currentSession
+  } catch (err) {
+    log.error('Task compaction failed:', err)
   }
 
   const userMessage: Message = createMessage('user', content)
@@ -209,7 +204,7 @@ function getDefaultModelSettings(sessionSettings?: { provider?: string; modelId?
 async function generateTaskResponse(taskId: string, targetMsg: Message, contextMessages: Message[]): Promise<void> {
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   const abortController = new AbortController()
-  const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).enabled)
+  const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).deviceControlEnabled)
   // Scope persisted Broker checkpoints to one generated task message. A later
   // user request in the same session must be allowed to perform the same
   // legitimate action again, while retries of this message remain idempotent.
@@ -221,8 +216,10 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
   let overlayStopListener: Awaited<ReturnType<typeof yachiyoDeviceAccessNative.onOverlayStopRequested>> | undefined
   let overlayVisible = false
   let overlayStartPromise: Promise<void> | undefined
-  let removeDeviceOperationListener: (() => void) | undefined
-  let completedSuccessfully = false
+    let removeDeviceOperationListener: (() => void) | undefined
+    let completedSuccessfully = false
+    let sandboxEnabled = true
+    let sandboxUnavailableReason = ''
   let usageReservations = new Map<number, string>()
   let settlePendingUsage: (usage?: unknown, result?: unknown) => Promise<void> = async () => undefined
 
@@ -288,15 +285,27 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
         await overlayStartPromise
       })
     }
-    if (!deviceAgent && session?.workingDirectory && platform.sandboxInit) {
-      const initResult = await platform.sandboxInit({ workingDirectory: session.workingDirectory })
-      if (!initResult.success) {
-        throw new Error(`Sandbox initialization failed: ${initResult.error || 'Unknown error'}`)
+    if (session?.workingDirectory && platform.sandboxInit) {
+      try {
+        const sandboxStatus = platform.type === 'mobile' ? await platform.sandboxStatus?.() : undefined
+        if (sandboxStatus && sandboxStatus.state !== 'ready') {
+          sandboxEnabled = false
+          sandboxUnavailableReason = `sandbox_${sandboxStatus.state}`
+        } else {
+          const initResult = await platform.sandboxInit({ workingDirectory: session.workingDirectory })
+          if (!initResult.success) {
+            sandboxEnabled = false
+            sandboxUnavailableReason = initResult.error || 'sandbox_initialization_failed'
+          }
+        }
+      } catch (error) {
+        sandboxEnabled = false
+        sandboxUnavailableReason = error instanceof Error ? error.message : 'sandbox_initialization_failed'
       }
     }
 
     let filteredContext = contextMessages
-    if (!deviceAgent && session?.compactionPoints?.length) {
+    if (session?.compactionPoints?.length) {
       try {
         const { buildContext } = await import('@shared/context')
         const noopResolver = { read: async () => null }
@@ -314,31 +323,35 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const systemMessage: Message = createMessage(
       'system',
       buildTaskSystemPrompt(workingDir, {
-        agentIdentity: deviceAgent ? buildAgentIdentityPrompt() : undefined,
+        agentIdentity: buildAgentIdentityPrompt(),
         deviceAgent,
       }),
     )
 
-    const promptMessages = [systemMessage, ...(deviceAgent ? buildDeviceGoalContext(filteredContext) : filteredContext)]
+    const promptMessages = [systemMessage, ...filteredContext]
 
     const skillSettings = settingsStore.getState().getSettings().skills
     const enabledSkillNames = featureFlags.skills ? skillSettings.enabledSkillNames : []
 
     const { tools, instructions, activeTools } = await buildToolsForSession(model, {
-      webBrowsing: !deviceAgent,
+      webBrowsing: true,
       messages: promptMessages,
-      sandboxEnabled: true,
-      enabledSkillNames: deviceAgent ? [] : enabledSkillNames,
+      sandboxEnabled,
+      enabledSkillNames,
       agentSessionId: deviceAgent ? agentRunId : taskId,
       agentApprovalSessionId: deviceAgent ? taskId : undefined,
       cameraSessionId: taskId,
-      deviceAgentOnly: deviceAgent,
+      deviceControlEnabled: deviceAgent,
     })
+
+    const runtimeInstructions = sandboxUnavailableReason
+      ? `${instructions}\n<sandbox_status>The local Linux sandbox is unavailable for this turn (${sandboxUnavailableReason}). Do not claim to run sandbox commands or skill scripts. Continue with other available tools and explain the limitation only when it affects the request.</sandbox_status>`
+      : instructions
 
     let injectedMessages = injectModelSystemPrompt(
       model.modelId,
       promptMessages,
-      instructions,
+      runtimeInstructions,
       model.isSupportSystemMessage() ? 'system' : 'user',
     )
 
@@ -362,7 +375,8 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const chatOptions: ChatStreamOptions = {
       sessionId: taskId,
       signal: abortController.signal,
-      agentMode: deviceAgent,
+      // A task session is always an Agent loop; phone control only changes which tools are exposed.
+      agentMode: true,
       ...(activeTools ? { activeTools } : {}),
       ...(deviceAgent
         ? {

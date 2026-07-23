@@ -4,16 +4,7 @@ export function hasAgentAccessBackend(status: DevicePermissionStatus, rootAvaila
   return rootAvailable || status.shizukuGranted || status.accessibility
 }
 
-export function shouldOpenPermissionWizard(
-  status: DevicePermissionStatus,
-  rootAvailable: boolean,
-  deferredForSession: boolean
-): boolean {
+export function shouldOpenPermissionWizard(status: DevicePermissionStatus, deferredForSession: boolean): boolean {
   if (deferredForSession) return false
-  return (
-    !status.overlay ||
-    !status.notificationsGranted ||
-    !status.batteryOptimizationIgnored ||
-    !hasAgentAccessBackend(status, rootAvailable)
-  )
+  return !status.notificationsGranted || !status.batteryOptimizationIgnored
 }

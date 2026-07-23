@@ -105,10 +105,20 @@ forbidPatterns('Yachiyo native Android code', firstPartyNativeFiles, [
   { label: 'Capacitor Logger call is forbidden', pattern: /\bLogger\.(?:verbose|debug|info|warn|error)\s*\(/g },
 ])
 
+const firstPartyCppFiles = collectSourceFiles(
+  'android/app/src/main/cpp',
+  new Set(['.c', '.cc', '.cpp', '.h', '.hpp'])
+).filter((path) => !path.includes(`${join('third_party', '')}`))
+forbidPatterns('Yachiyo native Android C/C++ code', firstPartyCppFiles, [
+  { label: 'direct Android Logcat access is forbidden', pattern: /\b__android_log_(?:print|write|vprint)\s*\(/g },
+  { label: 'standard stream output is forbidden', pattern: /\bstd::(?:cout|cerr|clog)\b/g },
+  { label: 'standard C output is forbidden', pattern: /\b(?:f?printf|puts)\s*\(/g },
+])
+
 if (failures.length > 0) {
   console.error('Android native log privacy gate failed:')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exitCode = 1
 } else {
-  console.log(`Android native log privacy gate passed (${sqliteFiles.length + streamHttpFiles.length + firstPartyNativeFiles.length} source files checked).`)
+  console.log(`Android native log privacy gate passed (${sqliteFiles.length + streamHttpFiles.length + firstPartyNativeFiles.length + firstPartyCppFiles.length} source files checked).`)
 }

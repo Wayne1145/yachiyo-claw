@@ -1,13 +1,7 @@
 import { SkillScriptEntrypointSchema, type SkillScriptCapability } from '@shared/types/skills'
 import { requestAgentApproval } from './agent-approval'
-import {
-  executeAgentAction,
-  getAgentBackend,
-  getAgentWorkingDirectory,
-  isAgentFullAccessEnabled,
-} from './agent-broker'
-import { yachiyoAgentNative } from '@/platform/native/yachiyo_agent'
-import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
+import { executeAgentAction } from './agent-broker'
+import { yachiyoSandboxNative } from '@/platform/native/yachiyo_sandbox'
 
 const MAX_RESULT_BYTES = 64 * 1024
 
@@ -60,63 +54,50 @@ async function verifyScript(scriptBase64: string, expectedSha256: string, expect
   if (hash !== expectedSha256.toLowerCase()) throw new Error('skill_script_hash_mismatch')
 }
 
-async function runAbortable<T>(run: Promise<T>, signal: AbortSignal | undefined, executionId: string): Promise<T> {
+async function runAbortable<T>(run: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return run
   if (signal.aborted) throw new Error('skill_script_cancelled')
   return new Promise<T>((resolve, reject) => {
     const cancel = () => {
-      const backend = getAgentBackend()
-      const cancellation =
-        backend === 'shizuku' ? yachiyoDeviceAccessNative.cancelShizukuScript(executionId) : yachiyoAgentNative.kill()
-      void cancellation.finally(() => reject(new Error('skill_script_cancelled')))
+      void yachiyoSandboxNative.kill().finally(() => reject(new Error('skill_script_cancelled')))
     }
     signal.addEventListener('abort', cancel, { once: true })
     run.then(resolve, reject).finally(() => signal.removeEventListener('abort', cancel))
   })
 }
 
-async function requestNativeAuthorization(
-  options: Parameters<typeof yachiyoDeviceAccessNative.requestSkillScriptAuthorization>[0],
-  signal?: AbortSignal
-): Promise<string> {
-  if (signal?.aborted) throw new Error('skill_script_cancelled')
-  const authorization = yachiyoDeviceAccessNative.requestSkillScriptAuthorization(options)
-  if (!signal) {
-    const result = await authorization
-    if (!result.approvalNonce) throw new Error('skill_script_native_approval_denied')
-    return result.approvalNonce
-  }
-  return new Promise<string>((resolve, reject) => {
-    const abort = () => {
-      void yachiyoDeviceAccessNative.cancelOperationApproval().finally(() => reject(new Error('skill_script_cancelled')))
-    }
-    signal.addEventListener('abort', abort, { once: true })
-    authorization
-      .then((result) => {
-        if (!result.approvalNonce) throw new Error('skill_script_native_approval_denied')
-        resolve(result.approvalNonce)
-      }, reject)
-      .finally(() => signal.removeEventListener('abort', abort))
-  })
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
-/** Execute one installed, hash-bound entrypoint through the Android Tool Broker. */
+function scriptCommand(
+  runtime: 'shell' | 'python' | 'javascript',
+  scriptPath: string,
+  workingDirectory: 'skill-private' | 'workspace',
+  args: string[],
+): string {
+  const runner = runtime === 'python' ? 'python3' : runtime === 'javascript' ? 'node' : '/bin/sh'
+  const privateRoot = scriptPath.slice(0, scriptPath.lastIndexOf('/'))
+  const entrypoint = workingDirectory === 'skill-private' ? scriptPath.slice(privateRoot.length + 1) : scriptPath
+  const cwd = workingDirectory === 'skill-private' ? privateRoot : '/workspace'
+  return `cd ${shellQuote(cwd)} && ${runner} ${shellQuote(entrypoint)}${args.length ? ` ${args.map(shellQuote).join(' ')}` : ''}`
+}
+
+/** Execute one installed, hash-bound entrypoint inside the app-private Linux sandbox. */
 export async function executeMobileSkillScript(
-  options: MobileSkillScriptExecutionOptions
+  options: MobileSkillScriptExecutionOptions,
 ): Promise<MobileSkillScriptResult> {
   const entrypoint = SkillScriptEntrypointSchema.parse(options.script.entrypoint)
   const args = options.args || []
   if (args.length > 64 || args.some((argument) => typeof argument !== 'string' || argument.includes('\0'))) {
     throw new Error('invalid_skill_script_arguments')
   }
-  if (new TextEncoder().encode(args.join('')).byteLength > 16 * 1024) throw new Error('skill_script_arguments_too_large')
+  if (new TextEncoder().encode(args.join('')).byteLength > 16 * 1024)
+    throw new Error('skill_script_arguments_too_large')
   const missingCapabilities = entrypoint.capabilities.filter(
-    (capability) => !options.grantedCapabilities.includes(capability)
+    (capability) => !options.grantedCapabilities.includes(capability),
   )
   if (missingCapabilities.length) throw new Error(`skill_capability_not_granted:${missingCapabilities.join(',')}`)
-  if (!isAgentFullAccessEnabled()) throw new Error('skill_script_requires_full_access')
-  const backend = getAgentBackend()
-  if (backend === 'accessibility') throw new Error('skill_script_unavailable_with_accessibility')
   await verifyScript(options.script.scriptBase64, entrypoint.sha256, entrypoint.size)
 
   const approved = await requestAgentApproval({
@@ -127,6 +108,7 @@ export async function executeMobileSkillScript(
       runtime: entrypoint.runtime,
       args,
       workingDirectory: entrypoint.workingDirectory,
+      isolation: 'android-proot-alpine',
       capabilities: entrypoint.capabilities,
       sha256: entrypoint.sha256,
     }),
@@ -135,36 +117,27 @@ export async function executeMobileSkillScript(
   })
   if (!approved) return { success: false, stdout: '', stderr: 'skill_script_approval_denied', exitCode: 126 }
 
-  const executionId = `skill-${crypto.randomUUID()}`
-  const nativeOptions = {
-    backend,
+  const scriptRoot = `.yachiyo/skills/${options.skillName}/${entrypoint.sha256.slice(0, 16)}`
+  const scriptPath = `${scriptRoot}/${entrypoint.path}`
+  const scriptText = new TextDecoder('utf-8', { fatal: true }).decode(decodeBase64(options.script.scriptBase64))
+  const writeResult = await yachiyoSandboxNative.write({ filePath: scriptPath, content: scriptText })
+  if (!writeResult.success) throw new Error(writeResult.error || 'skill_script_stage_failed')
+  const command = scriptCommand(entrypoint.runtime, scriptPath, entrypoint.workingDirectory, args)
+
+  const executionParameters = {
     skillName: options.skillName,
     entrypointName: entrypoint.name,
     runtime: entrypoint.runtime,
-    scriptBase64: options.script.scriptBase64,
     scriptSha256: entrypoint.sha256,
     args,
-    workingDirectoryMode: entrypoint.workingDirectory,
-    workspaceDirectory: getAgentWorkingDirectory(),
-    timeout: entrypoint.timeoutMs,
-    executionId,
+    workingDirectory: entrypoint.workingDirectory,
+    capabilities: entrypoint.capabilities,
     signatureVerified: options.signatureVerified,
   }
-  const approvalNonce = await requestNativeAuthorization(nativeOptions, options.abortSignal)
   const result = await executeAgentAction({
     toolId: 'skill.script.execute',
-    backend,
-    parameters: {
-      skillName: options.skillName,
-      entrypointName: entrypoint.name,
-      runtime: entrypoint.runtime,
-      scriptSha256: entrypoint.sha256,
-      args,
-      workingDirectory: entrypoint.workingDirectory,
-      capabilities: entrypoint.capabilities,
-      executionId,
-      signatureVerified: options.signatureVerified,
-    },
+    backend: 'sandbox',
+    parameters: executionParameters,
     taskId: options.sessionId,
     toolCallId: options.toolCallId,
     abortSignal: options.abortSignal,
@@ -174,12 +147,8 @@ export async function executeMobileSkillScript(
     isSuccess: (value) => value.exitCode === 0,
     resultToJson: (value) => ({ exitCode: value.exitCode, timedOut: value.timedOut }),
     execute: () =>
-      runAbortable(
-        backend === 'shizuku'
-          ? yachiyoDeviceAccessNative.execShizukuSkillScript({ ...nativeOptions, approvalNonce })
-          : yachiyoAgentNative.execRootSkillScript({ ...nativeOptions, approvalNonce }),
-        options.abortSignal,
-        executionId
+      runAbortable(yachiyoSandboxNative.exec({ command, timeout: entrypoint.timeoutMs }), options.abortSignal).then(
+        (value) => ({ ...value, timedOut: value.exitCode === 124 }),
       ),
   })
   const stdout = truncateUtf8(result.stdout)

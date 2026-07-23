@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -52,12 +51,7 @@ public final class YachiyoModelDownloadWorker extends Worker {
                 File output = ModelDownloadPolicy.resolveArtifact(modelDirectory, artifact.getString("path"));
                 downloadArtifact(jobId, job, artifact, output, total);
                 artifact.put("completedBytes", artifact.getLong("sizeBytes"));
-                if ("litertlm".equals(artifact.optString("format")) || output.getName().toLowerCase(Locale.ROOT).endsWith(".litertlm")) {
-                    runtimePath = output.getAbsolutePath();
-                }
-                if ("tflite".equals(artifact.optString("format")) || output.getName().toLowerCase(Locale.ROOT).endsWith(".tflite")) {
-                    runtimePath = output.getAbsolutePath();
-                }
+                runtimePath = LocalModelFormat.chooseRuntimePath(runtimePath, artifact.optString("format"), output);
                 if (!store.saveIfWorkerActive(job)) return Result.success();
             }
             if (runtimePath == null) throw new IllegalArgumentException("runnable_model_artifact_missing");

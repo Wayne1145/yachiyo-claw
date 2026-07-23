@@ -597,6 +597,21 @@ function parseFileList(
   return value.map((item, index) => parseFileLike(item, `${context}[${index}]`, url))
 }
 
+function modelScopeInfoFiles(info: Record<string, unknown>): unknown[] {
+  const directFiles = firstValue(info, ['files', 'Files'])
+  if (Array.isArray(directFiles)) return directFiles
+
+  // ModelScope's GGUF metadata groups alternative quantizations, with each
+  // group containing either one complete file or all shards for that variant.
+  const groups = firstValue(info, ['gguf_file_list', 'GgufFileList'])
+  if (!Array.isArray(groups)) return []
+  return groups.flatMap((group) => {
+    if (!isRecord(group)) return []
+    const files = firstValue(group, ['file_info', 'FileInfo', 'files', 'Files'])
+    return Array.isArray(files) ? files : []
+  })
+}
+
 async function fetchJson(fetchImpl: ModelCatalogFetch, url: string, init: RequestInit = {}): Promise<unknown> {
   let response: Response
   try {
@@ -1011,8 +1026,8 @@ export class ModelScopeModelCatalogAdapter implements ModelCatalogAdapter {
       if (_options.includeArtifacts === false) break
       if (!isRecord(infoValue)) continue
       const info = infoValue
-      const files = firstValue(info, ['files', 'Files'])
-      if (!Array.isArray(files)) continue
+      const files = modelScopeInfoFiles(info)
+      if (!files.length) continue
       for (const file of parseFileList(files, `ModelScope ${formatName} files`, url)) {
         artifacts.push(
           buildArtifact({
@@ -1436,11 +1451,18 @@ function selectDefaultArtifacts(artifacts: ModelArtifact[], runtime?: ModelRunti
   const candidates = artifacts.filter((artifact) => artifact.required && (!runtime || artifact.runtime === runtime))
   if (candidates.length <= 1) return artifacts
 
+  const ggufShard = (artifact: ModelArtifact) =>
+    (artifact.filename || artifact.path).match(/^(.*?)-(\d{5})-of-(\d{5})\.gguf$/i)
+  const isPrimaryGguf = (artifact: ModelArtifact) =>
+    artifact.format === 'gguf' &&
+    !/(?:^|[._-])(mmproj|projector|vision|draft|speculative)(?:[._-]|$)/i.test(artifact.filename || artifact.path) &&
+    (!ggufShard(artifact) || ggufShard(artifact)?.[2] === '00001')
+
   // Quantized GGUF/LiteRT files are alternative weights. Sharded safetensors
   // are not alternatives and therefore remain in the default set.
   const independentWeights = candidates.filter(
     (artifact) =>
-      artifact.format === 'gguf' ||
+      isPrimaryGguf(artifact) ||
       artifact.format === 'litertlm' ||
       artifact.format === 'task' ||
       artifact.format === 'tflite',
@@ -1451,7 +1473,24 @@ function selectDefaultArtifacts(artifacts: ModelArtifact[], runtime?: ModelRunti
     [...independentWeights].sort(
       (left, right) => (left.sizeBytes ?? Number.MAX_SAFE_INTEGER) - (right.sizeBytes ?? Number.MAX_SAFE_INTEGER),
     )[0]
-  return artifacts.filter((artifact) => !artifact.required || artifact === preferred)
+  const preferredShard = preferred ? ggufShard(preferred) : null
+  const selectedIds = new Set(
+    preferredShard
+      ? artifacts
+          .filter((artifact) => {
+            const candidate = ggufShard(artifact)
+            return Boolean(candidate && candidate[1] === preferredShard[1] && candidate[3] === preferredShard[3])
+          })
+          .map((artifact) => artifact.id)
+      : preferred
+        ? [preferred.id]
+        : [],
+  )
+  return artifacts.filter((artifact) => {
+    if (selectedIds.has(artifact.id)) return true
+    if (artifact.format === 'gguf') return false
+    return !artifact.required || !independentWeights.includes(artifact)
+  })
 }
 
 export class ModelCatalogController {

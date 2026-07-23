@@ -24,8 +24,10 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -156,10 +158,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
     @PluginMethod
     public void kill(PluginCall call) {
         Process process = activeProcess.getAndSet(null);
-        if (process != null) {
-            process.destroy();
-            process.destroyForcibly();
-        }
+        if (process != null) killProcessTree(process);
         call.resolve(new JSObject().put("killed", process != null));
     }
 
@@ -372,13 +371,69 @@ public final class YachiyoSandboxPlugin extends Plugin {
         errThread.start();
         boolean completed = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
         if (!completed) {
-            process.destroy();
-            if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly();
+            killProcessTree(process);
+            process.waitFor(2, TimeUnit.SECONDS);
         }
         outThread.join(2_000);
         errThread.join(2_000);
         activeProcess.compareAndSet(process, null);
         return new CommandResult(stdout.text(), stderr.text(), completed ? process.exitValue() : 124);
+    }
+
+    private void killProcessTree(Process process) {
+        process.destroy();
+        killSandboxProcesses();
+        process.destroyForcibly();
+    }
+
+    private void killSandboxProcesses() {
+        File[] entries = new File("/proc").listFiles();
+        if (entries == null) return;
+        String sandboxPath = new File(getContext().getFilesDir(), "linux-sandbox").getAbsolutePath();
+        Set<Integer> visited = new HashSet<>();
+        for (File entry : entries) {
+            int processId;
+            try {
+                processId = Integer.parseInt(entry.getName());
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            try {
+                String command = new String(
+                    Files.readAllBytes(new File(entry, "cmdline").toPath()),
+                    StandardCharsets.UTF_8
+                );
+                if (command.contains("libyachiyo_proot.so") && command.contains(sandboxPath)) {
+                    killProcessTree(processId, visited);
+                }
+            } catch (IOException | SecurityException ignored) {
+                // The process may exit between listing /proc and reading it.
+            }
+        }
+    }
+
+    private static void killProcessTree(int processId, Set<Integer> visited) {
+        if (processId <= 0 || !visited.add(processId)) return;
+        // PRoot traces its guest as a child; killing only the tracer can leave
+        // that guest stopped forever and keep the sandbox slot occupied.
+        Path childrenPath = new File(
+            "/proc/" + processId + "/task/" + processId + "/children"
+        ).toPath();
+        try {
+            String children = new String(Files.readAllBytes(childrenPath), StandardCharsets.US_ASCII).trim();
+            if (!children.isEmpty()) {
+                for (String value : children.split("\\s+")) {
+                    try {
+                        killProcessTree(Integer.parseInt(value), visited);
+                    } catch (NumberFormatException ignored) {
+                        // The proc entry may change while the process exits.
+                    }
+                }
+            }
+        } catch (IOException | SecurityException ignored) {
+            // destroyForcibly below remains the fallback when proc is hidden.
+        }
+        android.os.Process.killProcess(processId);
     }
 
     private void syncGuestDns() throws Exception {

@@ -1,4 +1,5 @@
 import { YACHIYO_PERSONA_ID, YACHIYO_PERSONA_NAME, YACHIYO_SOUL } from '@shared/personas/yachiyo'
+import { buildSharedUserContextPrompt } from './shared-user-context'
 
 const AGENT_PROFILE_KEY = 'yachiyo-agent-profiles-v1'
 
@@ -6,8 +7,10 @@ export interface AgentProfile {
   id: string
   name: string
   soul: string
-  user: string
-  memory: string
+  /** @deprecated Migrated to shared-user-context and retained for stored-profile compatibility. */
+  user?: string
+  /** @deprecated Migrated to shared-user-context and retained for stored-profile compatibility. */
+  memory?: string
   builtin?: boolean
 }
 
@@ -20,8 +23,6 @@ const builtinProfile = (): AgentProfile => ({
   id: YACHIYO_PERSONA_ID,
   name: YACHIYO_PERSONA_NAME,
   soul: YACHIYO_SOUL,
-  user: '',
-  memory: '',
   builtin: true,
 })
 
@@ -61,8 +62,7 @@ export function buildAgentIdentityPrompt(profile = getActiveAgentProfile()): str
     '<agent_soul>',
     profile.soul.trim(),
     '</agent_soul>',
-    profile.user.trim() ? `<user_profile>\n${profile.user.trim()}\n</user_profile>` : '',
-    profile.memory.trim() ? `<memory>\n${profile.memory.trim()}\n</memory>` : '',
+    buildSharedUserContextPrompt(),
   ]
     .filter(Boolean)
     .join('\n\n')

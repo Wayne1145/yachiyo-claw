@@ -2,7 +2,6 @@ import { Badge, Button, Flex, Loader, Stack, Text, Title } from '@mantine/core'
 import { IconCheck, IconExternalLink, IconShieldCheck, IconX } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
-import { getCachedRootCapability, getRootCapability } from '@/mobile/agent-broker'
 import { shouldOpenPermissionWizard } from '@/mobile/device-permissions'
 import {
   type DevicePermissionStatus,
@@ -68,21 +67,17 @@ function PermissionRow({
 
 export function AndroidPermissionWizard() {
   const [status, setStatus] = useState<DevicePermissionStatus | null>(null)
-  const [rootCapability, setRootCapability] = useState(getCachedRootCapability)
-  const [rootChecking, setRootChecking] = useState(false)
   const [opened, setOpened] = useState(false)
   const [loading, setLoading] = useState(true)
   const [deferred, setDeferred] = useState(
-    () => sessionStorage.getItem('yachiyo-permission-wizard-deferred') === 'true'
+    () => sessionStorage.getItem('yachiyo-permission-wizard-deferred') === 'true',
   )
 
   const refresh = useCallback(async () => {
     try {
       const permissions = await yachiyoDeviceAccessNative.getPermissionStatus()
       setStatus(permissions)
-      const cachedRoot = getCachedRootCapability()
-      setRootCapability(cachedRoot)
-      if (shouldOpenPermissionWizard(permissions, Boolean(cachedRoot?.available), deferred)) {
+      if (shouldOpenPermissionWizard(permissions, deferred)) {
         setOpened(true)
       }
     } finally {
@@ -107,27 +102,11 @@ export function AndroidPermissionWizard() {
 
   const requiredReady = useMemo(() => {
     if (!status) return false
-    return (
-      status.overlay &&
-      status.batteryOptimizationIgnored &&
-      status.notificationsGranted &&
-      (rootCapability?.available || status.shizukuGranted || status.accessibility)
-    )
-  }, [rootCapability?.available, status])
+    return status.batteryOptimizationIgnored && status.notificationsGranted
+  }, [status])
 
   const openSettings = (target: PermissionTarget) => {
     void yachiyoDeviceAccessNative.openPermissionSettings(target)
-  }
-
-  const checkRoot = async () => {
-    setRootChecking(true)
-    try {
-      setRootCapability(await getRootCapability())
-    } catch (reason) {
-      setRootCapability({ available: false, detail: reason instanceof Error ? reason.message : String(reason) })
-    } finally {
-      setRootChecking(false)
-    }
   }
 
   const deferWizard = () => {
@@ -143,7 +122,7 @@ export function AndroidPermissionWizard() {
   }
 
   return (
-    <AdaptiveModal opened={opened} onClose={deferWizard} title="Agent 权限设置" centered size="lg">
+    <AdaptiveModal opened={opened} onClose={deferWizard} title="基础权限设置" centered size="lg">
       <Stack gap="md">
         <Flex align="center" gap="sm">
           <div className="yachiyo-permission-hero">
@@ -151,7 +130,7 @@ export function AndroidPermissionWizard() {
           </div>
           <div>
             <Title order={3} size="h4">
-              让 Yachiyo Claw 可以持续操作设备
+              让 Yachiyo Claw 可以稳定运行
             </Title>
             <Text c="dimmed" size="sm">
               必选权限未完成时，本向导会在下次启动时再次出现。
@@ -165,12 +144,6 @@ export function AndroidPermissionWizard() {
           </Flex>
         ) : (
           <Stack gap={0} className="yachiyo-permission-list">
-            <PermissionRow
-              label="悬浮窗"
-              description="显示屏幕边缘光晕、操作状态和停止按钮。"
-              granted={status.overlay}
-              onAction={() => openSettings('overlay')}
-            />
             <PermissionRow
               label="任务通知"
               description="显示定时任务唤醒和待继续状态；通知不包含提示词、密钥或执行结果。"
@@ -194,35 +167,6 @@ export function AndroidPermissionWizard() {
                 onAction={() => openSettings('autostart')}
               />
             )}
-            <PermissionRow
-              label="Root"
-              description={
-                rootCapability?.detail
-                  ? `Magisk、KernelSU、APatch 或原生 Root Shell。${rootCapability.detail}`
-                  : '支持 Magisk、KernelSU、APatch 和原生 Root；仅在点击检测时申请授权。'
-              }
-              granted={Boolean(rootCapability?.available)}
-              actionLabel={rootCapability ? '重新检测' : '检测并授权'}
-              actionLoading={rootChecking}
-              onAction={() => void checkRoot()}
-            />
-            <PermissionRow
-              label="Shizuku"
-              description="无需 Root 的 ADB 级 Shell 后端。"
-              granted={status.shizukuGranted}
-              actionLabel={status.shizukuRunning ? '授权' : '打开'}
-              onAction={() =>
-                status.shizukuRunning
-                  ? void yachiyoDeviceAccessNative.requestShizukuPermission().then(refresh)
-                  : openSettings('shizuku')
-              }
-            />
-            <PermissionRow
-              label="无障碍服务"
-              description="观察界面并执行点击、滑动、输入和系统导航。"
-              granted={status.accessibility}
-              onAction={() => openSettings('accessibility')}
-            />
             <PermissionRow
               label="所有文件访问"
               description="让 Agent 处理所选工作区之外的共享存储文件。"

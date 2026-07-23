@@ -16,6 +16,8 @@ $proxyUrl = if ($env:YACHIYO_PROXY_URL) { $env:YACHIYO_PROXY_URL } else { 'http:
 $toolchainLockPath = Join-Path $workspaceRoot 'toolchain.lock.json'
 $toolchainLock = Get-Content -Raw $toolchainLockPath | ConvertFrom-Json
 $workspaceNode = Join-Path $workspaceRoot $toolchainLock.node.path
+$androidNdk = Join-Path $androidSdk ("ndk\$($toolchainLock.android.ndk)")
+$androidCmake = Join-Path $androidSdk ("cmake\$($toolchainLock.android.cmake)")
 
 try {
   $proxyUri = [Uri]$proxyUrl
@@ -169,15 +171,29 @@ function Set-GradleProxyProperties {
 }
 
 $gradleProperties = Join-Path $env:GRADLE_USER_HOME 'gradle.properties'
-Set-GradleProxyProperties `
-  -Path $gradleProperties `
-  -HostName $proxyHost `
-  -Port $proxyPort `
-  -NonProxyHosts 'localhost|127.*|[::1]'
+$gradleProxyMutex = [Threading.Mutex]::new($false, 'Local\YachiyoClawGradleProxyProperties')
+$gradleProxyMutexAcquired = $false
+try {
+  $gradleProxyMutexAcquired = $gradleProxyMutex.WaitOne([TimeSpan]::FromSeconds(30))
+  if (-not $gradleProxyMutexAcquired) {
+    throw 'Timed out waiting to configure the workspace Gradle proxy.'
+  }
+  Set-GradleProxyProperties `
+    -Path $gradleProperties `
+    -HostName $proxyHost `
+    -Port $proxyPort `
+    -NonProxyHosts 'localhost|127.*|[::1]'
+} finally {
+  if ($gradleProxyMutexAcquired) {
+    $gradleProxyMutex.ReleaseMutex()
+  }
+  $gradleProxyMutex.Dispose()
+}
 
 $androidPaths = @(
   (Join-Path $androidSdk 'platform-tools'),
-  (Join-Path $androidSdk 'cmdline-tools\latest\bin')
+  (Join-Path $androidSdk 'cmdline-tools\latest\bin'),
+  (Join-Path $androidCmake 'bin')
 )
 $workspaceJdkBin = Join-Path $workspaceJdk 'bin'
 $env:Path = (@($workspaceNode, $workspaceJdkBin, $env:PNPM_HOME) + $androidPaths + @($env:Path)) -join [IO.Path]::PathSeparator
@@ -188,6 +204,26 @@ function Invoke-WorkspaceCommand {
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
   }
+}
+
+function Get-AndroidPackageStatus {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion
+  )
+
+  $properties = Join-Path $Root 'source.properties'
+  if (-not (Test-Path -LiteralPath $properties -PathType Leaf)) {
+    return "missing (expected $ExpectedVersion at $Root)"
+  }
+
+  $revision = Get-Content -LiteralPath $properties |
+    ForEach-Object { if ($_ -match '^Pkg\.Revision\s*=\s*(.+?)\s*$') { $Matches[1] } } |
+    Select-Object -First 1
+  if ($revision -ne $ExpectedVersion) {
+    return "version $revision (expected $ExpectedVersion at $Root)"
+  }
+  return "$revision ($Root)"
 }
 
 switch ($Action) {
@@ -226,6 +262,8 @@ switch ($Action) {
       PnpmStore = $env:PNPM_STORE_DIR
       GradleHome = $env:GRADLE_USER_HOME
       AndroidSdk = $env:ANDROID_SDK_ROOT
+      AndroidNdk = Get-AndroidPackageStatus -Root $androidNdk -ExpectedVersion ([string]$toolchainLock.android.ndk)
+      AndroidCmake = Get-AndroidPackageStatus -Root $androidCmake -ExpectedVersion ([string]$toolchainLock.android.cmake)
     } | Format-List
   }
 }

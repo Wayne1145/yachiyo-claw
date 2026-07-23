@@ -2,25 +2,20 @@ import { Button, Flex, SegmentedControl, Select, Stack, Text, Textarea, TextInpu
 import { IconBook2, IconBrain, IconPlugConnected, IconUserCog, IconWand } from '@tabler/icons-react'
 import { useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
-import {
-  type AgentBackend,
-  getAgentBackend,
-  setAgentBackend as persistAgentBackend,
-} from '@/mobile/agent-broker'
-import {
-  type AgentProfile,
-  getAgentProfileState,
-  saveAgentProfileState,
-} from '@/mobile/agent-profile'
+import { type AgentBackend, getAgentBackend, setAgentBackend as persistAgentBackend } from '@/mobile/agent-broker'
+import { type AgentProfile, getAgentProfileState, saveAgentProfileState } from '@/mobile/agent-profile'
 import { router } from '@/router'
 
-type EditorTab = 'soul' | 'user' | 'memory'
-
-export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?: (backend: AgentBackend) => void }) {
+export function AgentConfigurationPanel({
+  onBackendChange,
+  showAccessBackend = true,
+}: {
+  onBackendChange?: (backend: AgentBackend) => void
+  showAccessBackend?: boolean
+}) {
   const [backend, setBackend] = useState<AgentBackend>(getAgentBackend)
   const [profileState, setProfileState] = useState(getAgentProfileState)
   const [editorOpened, setEditorOpened] = useState(false)
-  const [editorTab, setEditorTab] = useState<EditorTab>('soul')
   const activeProfile =
     profileState.profiles.find((profile) => profile.id === profileState.activeProfileId) || profileState.profiles[0]
 
@@ -34,7 +29,9 @@ export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?:
   const updateProfile = (patch: Partial<AgentProfile>) => {
     setProfileState((current) => ({
       ...current,
-      profiles: current.profiles.map((profile) => (profile.id === current.activeProfileId ? { ...profile, ...patch } : profile)),
+      profiles: current.profiles.map((profile) =>
+        profile.id === current.activeProfileId ? { ...profile, ...patch } : profile,
+      ),
     }))
   }
 
@@ -57,24 +54,26 @@ export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?:
 
   return (
     <>
-      <section className="yachiyo-agent-config-panel">
-        <div>
-          <Title order={2}>访问后端</Title>
-          <Text c="dimmed" size="sm">
-            Root 和 Shizuku 提供 Shell；无障碍提供界面观察与交互。
-          </Text>
-        </div>
-        <SegmentedControl
-          fullWidth
-          value={backend}
-          onChange={changeBackend}
-          data={[
-            { value: 'root', label: 'Root' },
-            { value: 'shizuku', label: 'Shizuku' },
-            { value: 'accessibility', label: '无障碍' },
-          ]}
-        />
-      </section>
+      {showAccessBackend && (
+        <section className="yachiyo-agent-config-panel">
+          <div>
+            <Title order={2}>手机控制后端</Title>
+            <Text c="dimmed" size="sm">
+              Root 和 Shizuku 提供 Shell；无障碍提供界面观察与交互。
+            </Text>
+          </div>
+          <SegmentedControl
+            fullWidth
+            value={backend}
+            onChange={changeBackend}
+            data={[
+              { value: 'root', label: 'Root' },
+              { value: 'shizuku', label: 'Shizuku' },
+              { value: 'accessibility', label: '无障碍' },
+            ]}
+          />
+        </section>
+      )}
 
       <section className="yachiyo-agent-config-panel">
         <Flex justify="space-between" align="center" gap="sm">
@@ -89,7 +88,11 @@ export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?:
           </Button>
         </Flex>
         <div className="yachiyo-agent-feature-grid">
-          <Button variant="subtle" leftSection={<IconWand size={17} />} onClick={() => router.navigate({ to: '/settings/skills' })}>
+          <Button
+            variant="subtle"
+            leftSection={<IconWand size={17} />}
+            onClick={() => router.navigate({ to: '/settings/skills' })}
+          >
             Skills
           </Button>
           <Button
@@ -99,22 +102,28 @@ export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?:
           >
             MCP Server
           </Button>
-          <Button variant="subtle" leftSection={<IconBrain size={17} />} onClick={() => {
-            setEditorTab('memory')
-            setEditorOpened(true)
-          }}>
+          <Button
+            variant="subtle"
+            leftSection={<IconBrain size={17} />}
+            onClick={() => {
+              void router.navigate({ to: '/settings/user-memory' })
+            }}
+          >
             记忆
           </Button>
-          <Button variant="subtle" leftSection={<IconBook2 size={17} />} onClick={() => {
-            setEditorTab('user')
-            setEditorOpened(true)
-          }}>
+          <Button
+            variant="subtle"
+            leftSection={<IconBook2 size={17} />}
+            onClick={() => {
+              void router.navigate({ to: '/settings/user-memory' })
+            }}
+          >
             用户画像
           </Button>
         </div>
       </section>
 
-      <AdaptiveModal opened={editorOpened} onClose={() => setEditorOpened(false)} title="Agent 人格与记忆" centered size="lg">
+      <AdaptiveModal opened={editorOpened} onClose={() => setEditorOpened(false)} title="Agent 人格" centered size="lg">
         <Stack gap="md">
           <Flex gap="xs" align="flex-end">
             <Select
@@ -129,30 +138,19 @@ export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?:
               新建副本
             </Button>
           </Flex>
-          <TextInput label="名称" value={activeProfile.name} onChange={(event) => updateProfile({ name: event.currentTarget.value })} />
-          <SegmentedControl
-            fullWidth
-            value={editorTab}
-            onChange={(value) => setEditorTab(value as EditorTab)}
-            data={[
-              { value: 'soul', label: 'Soul' },
-              { value: 'user', label: 'User' },
-              { value: 'memory', label: 'Memory' },
-            ]}
+          <TextInput
+            label="名称"
+            value={activeProfile.name}
+            onChange={(event) => updateProfile({ name: event.currentTarget.value })}
           />
           <Textarea
             autosize
             minRows={12}
             maxRows={22}
-            value={activeProfile[editorTab]}
-            placeholder={
-              editorTab === 'soul'
-                ? '人格与行为原则'
-                : editorTab === 'user'
-                  ? '用户偏好、称呼和背景'
-                  : '需要长期保留的单文件笔记'
-            }
-            onChange={(event) => updateProfile({ [editorTab]: event.currentTarget.value })}
+            label="Soul"
+            value={activeProfile.soul}
+            placeholder="人格与行为原则"
+            onChange={(event) => updateProfile({ soul: event.currentTarget.value })}
           />
           <AdaptiveModal.Actions>
             <Button variant="default" onClick={() => setEditorOpened(false)}>
@@ -165,4 +163,3 @@ export function AgentConfigurationPanel({ onBackendChange }: { onBackendChange?:
     </>
   )
 }
-

@@ -137,6 +137,8 @@ jobs:
         run: |
           set -euo pipefail
           compile_sdk="$(node -p "require('./toolchain.lock.json').android.compileSdk")"
+          ndk_revision="$(node -p "require('./toolchain.lock.json').android.ndk")"
+          cmake_revision="$(node -p "require('./toolchain.lock.json').android.cmake")"
           mapfile -t build_tools < <(
             node -e "for (const version of require('./toolchain.lock.json').android.buildTools) console.log(version)"
           )
@@ -145,6 +147,10 @@ jobs:
           for version in "${build_tools[@]}"; do
             packages+=("build-tools;${version}")
           done
+          packages+=(
+            "ndk;${ndk_revision}"
+            "cmake;${cmake_revision}"
+          )
           sdkmanager --install "${packages[@]}"
 
       - name: Verify pinned Java and Android SDK revisions
@@ -180,6 +186,8 @@ jobs:
           platform_tools_revision="$(node -p "require('./toolchain.lock.json').android.platformTools")"
           compile_sdk="$(node -p "require('./toolchain.lock.json').android.compileSdk")"
           platform_revision="$(node -p "require('./toolchain.lock.json').android.platformRevision")"
+          ndk_revision="$(node -p "require('./toolchain.lock.json').android.ndk")"
+          cmake_revision="$(node -p "require('./toolchain.lock.json').android.cmake")"
 
           assert_revision \
             "${ANDROID_SDK_ROOT}/cmdline-tools/${ANDROID_COMMAND_LINE_TOOLS_BUILD}/source.properties" \
@@ -203,6 +211,16 @@ jobs:
               "${version}" \
               "Android build-tools ${version}"
           done
+          assert_revision \
+            "${ANDROID_SDK_ROOT}/ndk/${ndk_revision}/source.properties" \
+            "${ndk_revision}" \
+            "Android NDK ${ndk_revision}"
+          assert_revision \
+            "${ANDROID_SDK_ROOT}/cmake/${cmake_revision}/source.properties" \
+            "${cmake_revision}" \
+            "CMake ${cmake_revision}"
+          test -x "${ANDROID_SDK_ROOT}/ndk/${ndk_revision}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          test -x "${ANDROID_SDK_ROOT}/cmake/${cmake_revision}/bin/cmake"
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts

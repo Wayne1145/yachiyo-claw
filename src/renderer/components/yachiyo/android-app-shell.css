@@ -234,6 +234,34 @@ body:has(.yachiyo-mobile-shell),
   font-size: 10px;
 }
 
+.yachiyo-interactive-llm-selector {
+  display: flex;
+  min-width: 32px;
+  max-width: 150px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(221, 207, 214, 0.85);
+  border-radius: 16px;
+  align-items: center;
+  gap: 4px;
+  color: var(--yachiyo-text-muted);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.yachiyo-interactive-llm-selector span {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yachiyo-interactive-llm-selector svg,
+.yachiyo-interactive-llm-selector img {
+  flex: 0 0 auto;
+}
+
 .yachiyo-interactive-scene {
   position: relative;
   min-height: 0;
@@ -1761,6 +1789,17 @@ body:has(.yachiyo-mobile-shell),
     width: 32px;
     min-width: 32px;
     height: 32px;
+  }
+
+  .yachiyo-interactive-llm-selector {
+    width: 32px;
+    padding: 0 6px;
+    justify-content: center;
+  }
+
+  .yachiyo-interactive-llm-selector span,
+  .yachiyo-interactive-llm-selector > svg:last-child {
+    display: none;
   }
 }
 

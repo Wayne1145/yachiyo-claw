@@ -1,12 +1,16 @@
 import type { AgentBackend } from './agent-broker'
 import { getAgentBackend, setAgentBackend } from './agent-broker'
 
-const CONFIG_KEY = 'yachiyo-agent-session-config-v1'
+const CONFIG_KEY = 'yachiyo-agent-session-config-v2'
+const LEGACY_CONFIG_KEY = 'yachiyo-agent-session-config-v1'
 
 export type AgentApprovalMode = 'manual' | 'smart' | 'full'
 
 export interface AgentSessionConfig {
+  /** Enables internal tools such as sandbox, Skills, MCP, files, and retrieval. */
   enabled: boolean
+  /** Adds privileged Android phone-control tools to the internal Agent. */
+  deviceControlEnabled: boolean
   configured: boolean
   backend: AgentBackend
   approvalMode: AgentApprovalMode
@@ -15,6 +19,7 @@ export interface AgentSessionConfig {
 
 const defaultConfig = (): AgentSessionConfig => ({
   enabled: false,
+  deviceControlEnabled: false,
   configured: false,
   backend: getAgentBackend(),
   approvalMode: 'manual',
@@ -24,7 +29,28 @@ const defaultConfig = (): AgentSessionConfig => ({
 function readAll(): Record<string, AgentSessionConfig> {
   if (typeof localStorage === 'undefined') return {}
   try {
-    return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}') as Record<string, AgentSessionConfig>
+    const current = localStorage.getItem(CONFIG_KEY)
+    if (current) return JSON.parse(current) as Record<string, AgentSessionConfig>
+
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_CONFIG_KEY) || '{}') as Record<
+      string,
+      Partial<AgentSessionConfig>
+    >
+    const migrated = Object.fromEntries(
+      Object.entries(legacy).map(([sessionId, config]) => [
+        sessionId,
+        {
+          ...defaultConfig(),
+          ...config,
+          // Before v2, enabling Agent always enabled phone control as well.
+          deviceControlEnabled: Boolean(config.enabled),
+        },
+      ]),
+    )
+    if (Object.keys(migrated).length > 0) {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(migrated))
+    }
+    return migrated
   } catch {
     return {}
   }
@@ -35,10 +61,7 @@ export function getAgentSessionConfig(sessionId?: string | null): AgentSessionCo
   return { ...defaultConfig(), ...readAll()[sessionId] }
 }
 
-export function saveAgentSessionConfig(
-  sessionId: string,
-  patch: Partial<AgentSessionConfig>
-): AgentSessionConfig {
+export function saveAgentSessionConfig(sessionId: string, patch: Partial<AgentSessionConfig>): AgentSessionConfig {
   const all = readAll()
   const next = { ...defaultConfig(), ...all[sessionId], ...patch }
   all[sessionId] = next

@@ -34,7 +34,7 @@ const ParameterBindingShape = {
 }
 
 // Companion is a broker-bound remote adapter, never a model-selected shell.
-export const BACKEND_KINDS = ['standard', 'accessibility', 'adb', 'shizuku', 'root', 'companion'] as const
+export const BACKEND_KINDS = ['standard', 'sandbox', 'accessibility', 'adb', 'shizuku', 'root', 'companion'] as const
 export const BackendKindSchema = z.enum(BACKEND_KINDS)
 export type BackendKind = z.infer<typeof BackendKindSchema>
 

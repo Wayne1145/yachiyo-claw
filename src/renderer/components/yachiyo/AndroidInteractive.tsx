@@ -1,8 +1,19 @@
-import { ActionIcon, Button, FileButton, Loader, SegmentedControl, Select, Text, Textarea } from '@mantine/core'
-import { createMessage } from '@shared/types'
+import {
+  ActionIcon,
+  Button,
+  FileButton,
+  Loader,
+  SegmentedControl,
+  Select,
+  Text,
+  Textarea,
+  UnstyledButton,
+} from '@mantine/core'
+import { createMessage, ModelProviderEnum } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
 import {
   IconCamera,
+  IconChevronDown,
   IconHistory,
   IconKeyboard,
   IconMicrophone,
@@ -15,10 +26,14 @@ import {
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
+import ProviderImageIcon from '@/components/icons/ProviderImageIcon'
+import ModelSelector from '@/components/ModelSelector'
+import { useProviders } from '@/hooks/useProviders'
 import { saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
 import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conversation-bridge'
 import { applyLive2DPromptToSession } from '@/mobile/interactive-conversation'
+import { resolveInteractiveModelSelection, updateInteractiveModelSelection } from '@/mobile/interactive-model-selection'
 import {
   completeLive2DOnboarding,
   deleteLive2DModel,
@@ -31,7 +46,7 @@ import {
   parseLive2DActionMarkers,
   setSelectedLive2DModelId,
 } from '@/mobile/live2d-models'
-import { getLive2DRenderQuality, setLive2DRenderQuality, type Live2DRenderQuality } from '@/mobile/live2d-performance'
+import { getLive2DRenderQuality, type Live2DRenderQuality, setLive2DRenderQuality } from '@/mobile/live2d-performance'
 import {
   getSpeechRecognitionErrorMessage,
   recognizeAndroidSpeech,
@@ -40,8 +55,10 @@ import {
   stopSpeaking,
 } from '@/mobile/speech-runtime'
 import { useSession } from '@/stores/chatStore'
+import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { submitTaskMessage } from '@/stores/taskSessionActions'
 import { useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
@@ -86,6 +103,8 @@ export function AndroidInteractive({
   const handledMessageRef = useRef<{ id?: string; markers: Set<string> }>({ markers: new Set() })
   const { session } = useSession(sessionId || null)
   const { data: task } = useTaskSessionRecord(taskId || null)
+  const { providers } = useProviders()
+  const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
 
   useEffect(() => {
     void listLive2DModels().then(setModels)
@@ -100,6 +119,28 @@ export function AndroidInteractive({
     () => models.find((model) => model.id === selectedModelId) || models[0],
     [models, selectedModelId]
   )
+  const conversationModel = useMemo(() => {
+    const lastUsed = lastUsedModelStore.getState()
+    return resolveInteractiveModelSelection({
+      mode: agentMode ? 'agent' : 'chat',
+      chatSettings: session?.settings,
+      taskSettings: task?.settings,
+      lastUsedChat: lastUsed.chat,
+      lastUsedTask: lastUsed.task,
+      defaultChat:
+        defaultChatModel?.provider && defaultChatModel.model
+          ? { provider: defaultChatModel.provider, modelId: defaultChatModel.model }
+          : undefined,
+    })
+  }, [agentMode, defaultChatModel, session?.settings, task?.settings])
+  const conversationModelName = useMemo(() => {
+    if (!conversationModel) return '选择模型'
+    const provider = providers.find((item) => item.id === conversationModel.provider)
+    const model = (provider?.models || provider?.defaultSettings?.models)?.find(
+      (item) => item.modelId === conversationModel.modelId
+    )
+    return model?.nickname || conversationModel.modelId
+  }, [conversationModel, providers])
   const messages = agentMode ? task?.messages || [] : session?.messages || []
   const latestAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
   const latestText = latestAssistant ? getMessageText(latestAssistant) : ''
@@ -288,6 +329,22 @@ export function AndroidInteractive({
     }
   }
 
+  const selectConversationModel = async (provider: string, modelId: string) => {
+    try {
+      await updateInteractiveModelSelection({
+        mode: agentMode ? 'agent' : 'chat',
+        sessionId,
+        taskId,
+        chatSettings: session?.settings,
+        taskSettings: task?.settings,
+        provider,
+        modelId,
+      })
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '模型切换失败')
+    }
+  }
+
   const submit = async (value = input) => {
     const text = value.trim()
     if (!text || !sessionId || !selectedModel || submitting) return
@@ -331,6 +388,28 @@ export function AndroidInteractive({
             <strong>{selectedModel.name}</strong>
             <span>{session?.name || '交互式对话'}</span>
           </button>
+          <ModelSelector
+            onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
+            selectedProviderId={conversationModel?.provider}
+            selectedModelId={conversationModel?.modelId}
+            modelFilter={(model, providerId) =>
+              !agentMode ||
+              providerId === ModelProviderEnum.Yachiyo ||
+              Boolean(model.capabilities?.includes('tool_use'))
+            }
+            position="bottom-end"
+            transitionProps={{ transition: 'fade-down', duration: 180 }}
+          >
+            <UnstyledButton
+              className="yachiyo-interactive-llm-selector"
+              aria-label={`切换模型：${conversationModelName}`}
+              title={conversationModelName}
+            >
+              {conversationModel && <ProviderImageIcon size={18} provider={conversationModel.provider} />}
+              <span>{conversationModelName}</span>
+              <IconChevronDown size={14} />
+            </UnstyledButton>
+          </ModelSelector>
         </div>
         <div className="yachiyo-interactive-header-actions">
           <CharacterSelector sessionId={sessionId} />

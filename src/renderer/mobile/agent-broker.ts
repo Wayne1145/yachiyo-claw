@@ -16,7 +16,7 @@ const ROOT_CAPABILITY_KEY = 'yachiyo-agent-root-capability-v1'
 
 export const ANDROID_AGENT_WORKING_DIRECTORY = '/data/local/tmp/yachiyo-agent'
 export type AgentBackend = 'root' | 'shizuku' | 'accessibility'
-export type AgentExecutionBackend = AgentBackend | 'adb' | 'companion'
+export type AgentExecutionBackend = AgentBackend | 'adb' | 'companion' | 'sandbox'
 export interface RootCapability {
   available: boolean
   detail: string
@@ -127,7 +127,7 @@ export class AgentActionAlreadyAppliedError extends Error {
 export class AgentActionRecoveryRequiredError extends Error {
   constructor(
     public readonly callId: string,
-    public readonly state: 'running' | 'unknown'
+    public readonly state: 'running' | 'unknown',
   ) {
     super('agent_action_recovery_required')
     this.name = 'AgentActionRecoveryRequiredError'
@@ -224,7 +224,7 @@ function checkpointRecordBase(
   parameterDigest: string,
   expectedState: JsonValue,
   sideEffectState: 'not_started' | 'running' | 'applied' | 'verified' | 'unknown',
-  resultDigest: string | null
+  resultDigest: string | null,
 ) {
   return {
     schemaVersion: 1 as const,
@@ -284,7 +284,7 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
           (record) =>
             record.toolId === options.toolId &&
             record.parameterDigest === parameterDigest &&
-            (record.sideEffectState === 'applied' || record.sideEffectState === 'verified')
+            (record.sideEffectState === 'applied' || record.sideEffectState === 'verified'),
         )
       : undefined
     if (matchingApplied && matchingApplied.callId !== callId) {
@@ -400,7 +400,7 @@ function isAccessibilitySideEffect(action: AccessibilityActionOptions['action'])
 
 export async function executeAccessibilityAction(
   options: AccessibilityActionOptions,
-  context: AgentBrokerCallContext = {}
+  context: AgentBrokerCallContext = {},
 ): Promise<AccessibilityActionResult> {
   if (getAgentBackend() !== 'accessibility') {
     return { success: false, reason: 'accessibility_backend_required' }
@@ -445,7 +445,7 @@ export async function executeAccessibilityAction(
 export async function executeAppLaunch(
   packageName: string,
   activityName?: string,
-  context: AgentBrokerCallContext = {}
+  context: AgentBrokerCallContext = {},
 ): Promise<AccessibilityActionResult> {
   const parameters = {
     action: 'launch' as const,
@@ -490,7 +490,7 @@ export async function executeAppLaunch(
 export async function executeCompanionAction(
   capability: AndroidCanonicalCapability,
   parameters: JsonValue,
-  context: AgentBrokerCallContext = {}
+  context: AgentBrokerCallContext = {},
 ): Promise<AndroidControlResult> {
   const registry = companionRegistry
   if (!registry) {
@@ -534,8 +534,16 @@ export async function executeCompanionAction(
       execute: () => registry.call(capability, parameters as object, { signal: context.abortSignal }),
     })
   } catch (error) {
-    if (error instanceof AgentActionAlreadyAppliedError) return { ...errorResultForCompanion(capability), error: { code: 'already_applied', message: 'already_applied', retryable: false } }
-    if (error instanceof AgentActionRecoveryRequiredError) return { ...errorResultForCompanion(capability), error: { code: `recovery_required:${error.state}`, message: 'recovery_required', retryable: false } }
+    if (error instanceof AgentActionAlreadyAppliedError)
+      return {
+        ...errorResultForCompanion(capability),
+        error: { code: 'already_applied', message: 'already_applied', retryable: false },
+      }
+    if (error instanceof AgentActionRecoveryRequiredError)
+      return {
+        ...errorResultForCompanion(capability),
+        error: { code: `recovery_required:${error.state}`, message: 'recovery_required', retryable: false },
+      }
     throw error
   }
 }
@@ -558,7 +566,7 @@ function errorResultForCompanion(capability: AndroidCanonicalCapability): Androi
 export async function executeRootShell(
   command: string,
   timeout = 120_000,
-  context: AgentBrokerCallContext = {}
+  context: AgentBrokerCallContext = {},
 ): Promise<RootCommandResult> {
   if (!isAgentFullAccessEnabled()) {
     const callId = createAgentId('call')

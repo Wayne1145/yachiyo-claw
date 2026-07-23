@@ -33,13 +33,20 @@ interface NativeModelManagerPlugin {
   healthCheck(options: {
     modelId: string
   }): Promise<{ status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }>
-  infer(options: { modelId: string; messages: unknown[]; tools?: unknown }): Promise<{
+  infer(options: {
+    modelId: string
+    requestId: string
+    messages: unknown[]
+    tools?: unknown
+    maxTokens?: number
+  }): Promise<{
     events: Array<
       | { type: 'text'; text: string }
       | { type: 'tool-call'; name: string; arguments: unknown; callId: string }
       | { type: 'status'; status: string }
     >
   }>
+  cancelInference(options: { requestId: string }): Promise<{ cancelled: boolean }>
   embed(options: { modelId: string; texts: string[] }): Promise<{ modelId: string; embeddings: number[][] }>
   unload(options?: { modelId?: string }): Promise<void>
   deleteModel(options: { modelId: string }): Promise<void>
@@ -72,12 +79,25 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
     | { type: 'status'; status: string }
   > {
     if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    const result = await yachiyoModelManagerNative.infer({ modelId, messages: input.messages, tools: input.tools })
-    for (const event of result.events) {
+    const requestId = `local-${globalThis.crypto?.randomUUID?.() || Date.now().toString(36)}`
+    const cancel = () => void yachiyoModelManagerNative.cancelInference({ requestId }).catch(() => undefined)
+    input.signal?.addEventListener('abort', cancel, { once: true })
+    try {
+      const result = await yachiyoModelManagerNative.infer({
+        modelId,
+        requestId,
+        messages: input.messages,
+        tools: input.tools,
+      })
       if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      // No event is executed here. Tool-call events are consumed by the model
-      // orchestration layer and must pass the same Broker as cloud models.
-      yield event
+      for (const event of result.events) {
+        if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+        // No event is executed here. Tool-call events are consumed by the model
+        // orchestration layer and must pass the same Broker as cloud models.
+        yield event
+      }
+    } finally {
+      input.signal?.removeEventListener('abort', cancel)
     }
   }
 

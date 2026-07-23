@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createAgentRunId, shouldUseDeviceAgent } from './agent-run-policy'
 
 describe('agent run policy', () => {
-  it('does not apply device-agent budgets to ordinary mobile chat', () => {
+  it('applies device budgets only when phone control is enabled on mobile', () => {
     expect(shouldUseDeviceAgent('mobile', false)).toBe(false)
     expect(shouldUseDeviceAgent('mobile', true)).toBe(true)
     expect(shouldUseDeviceAgent('desktop', true)).toBe(false)

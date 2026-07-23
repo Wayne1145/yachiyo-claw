@@ -23,12 +23,14 @@ describe('Agent session configuration', () => {
     saveAgentSessionConfig('chat-1', {
       configured: true,
       enabled: true,
+      deviceControlEnabled: true,
       backend: 'shizuku',
       approvalMode: 'smart',
     })
     expect(getAgentSessionConfig('chat-1')).toMatchObject({
       configured: true,
       enabled: true,
+      deviceControlEnabled: true,
       backend: 'shizuku',
       approvalMode: 'smart',
     })
@@ -37,6 +39,22 @@ describe('Agent session configuration', () => {
   it('copies conversation settings without copying an approval bypass', () => {
     saveAgentSessionConfig('source', { allowDangerousForConversation: true, configured: true })
     expect(copyAgentSessionConfig('source', 'fork').allowDangerousForConversation).toBe(false)
+  })
+
+  it('keeps phone control off by default for a new internal Agent', () => {
+    const config = saveAgentSessionConfig('internal-only', { enabled: true, configured: true })
+
+    expect(config.enabled).toBe(true)
+    expect(config.deviceControlEnabled).toBe(false)
+  })
+
+  it('migrates legacy enabled conversations with their previous phone-control behavior', () => {
+    localStorage.setItem(
+      'yachiyo-agent-session-config-v1',
+      JSON.stringify({ legacy: { enabled: true, configured: true, backend: 'root' } }),
+    )
+
+    expect(getAgentSessionConfig('legacy').deviceControlEnabled).toBe(true)
   })
 
   it('marks destructive shell commands as dangerous', () => {
@@ -65,11 +83,13 @@ describe('Agent session configuration', () => {
 
   it('lets smart review pass safe operations without prompting', async () => {
     saveAgentSessionConfig('smart-chat', { configured: true, approvalMode: 'smart' })
-    await expect(requestAgentApproval({
-      sessionId: 'smart-chat',
-      title: '滑动屏幕',
-      detail: 'scroll',
-      risk: 'safe',
-    })).resolves.toBe(true)
+    await expect(
+      requestAgentApproval({
+        sessionId: 'smart-chat',
+        title: '滑动屏幕',
+        detail: 'scroll',
+        risk: 'safe',
+      }),
+    ).resolves.toBe(true)
   })
 })

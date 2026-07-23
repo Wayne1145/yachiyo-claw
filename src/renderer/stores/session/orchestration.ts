@@ -8,6 +8,7 @@ import { t } from 'i18next'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
 import { getDisabledAgentCapabilityPrompt } from '@/mobile/agent-disabled-prompt'
+import { buildSharedUserContextPrompt } from '@/mobile/shared-user-context'
 import * as appleAppStore from '@/packages/apple_app_store'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { estimateTokensFromMessages } from '@/packages/token'
@@ -182,7 +183,13 @@ export async function orchestrateGeneration(
       cameraSessionId: sessionId,
       agentSessionId: sessionId,
     })
-    const instructions = [toolInstructions, getDisabledAgentCapabilityPrompt(sessionId)].filter(Boolean).join('\n')
+    const instructions = [
+      buildSharedUserContextPrompt(),
+      toolInstructions,
+      getDisabledAgentCapabilityPrompt(sessionId),
+    ]
+      .filter(Boolean)
+      .join('\n\n')
 
     let injectedMessages = injectModelSystemPrompt(
       model.modelId,
