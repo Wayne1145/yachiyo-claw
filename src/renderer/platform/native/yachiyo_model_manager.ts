@@ -1,4 +1,5 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
+import { asSchema, type ToolSet } from 'ai'
 import type { DeviceCompatibilityProfile, DownloadJob, ModelRuntime } from '@shared/models/model-catalog'
 import type { LocalRuntimeCapabilities } from '@shared/models/local-capabilities'
 import type { LocalInferenceAdapter } from '@shared/types/adapters'
@@ -33,7 +34,7 @@ interface NativeModelManagerPlugin {
   deviceProfile(): Promise<DeviceCompatibilityProfile>
   healthCheck(options: {
     modelId: string
-  }): Promise<{ status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }>
+  }): Promise<{ status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string; runtime?: string }>
   modelCapabilities(options: { modelId: string }): Promise<LocalRuntimeCapabilities>
   infer(options: {
     modelId: string
@@ -68,13 +69,21 @@ export function createNativeModelDownloadSink() {
 
 export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
   async isAvailable(modelId: string): Promise<boolean> {
+    return (await this.checkAvailability(modelId)).available
+  }
+
+  async checkAvailability(modelId: string): Promise<{ available: boolean; reason?: string; runtime?: string }> {
     const result = await yachiyoModelManagerNative.healthCheck({ modelId })
-    return result.status === 'supported' || result.status === 'warning'
+    return {
+      available: result.status === 'supported' || result.status === 'warning',
+      ...(result.reason ? { reason: result.reason } : {}),
+      ...('runtime' in result && typeof result.runtime === 'string' ? { runtime: result.runtime } : {}),
+    }
   }
 
   async *stream(
     modelId: string,
-    input: { messages: unknown[]; tools?: unknown; signal?: AbortSignal },
+    input: { messages: unknown[]; tools?: unknown; maxTokens?: number; signal?: AbortSignal },
   ): AsyncGenerator<
     | { type: 'text'; text: string }
     | { type: 'tool-call'; name: string; arguments: unknown; callId: string }
@@ -89,7 +98,8 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
         modelId,
         requestId,
         messages: serializeLocalModelMessages(input.messages),
-        tools: input.tools,
+        tools: await serializeLocalTools(input.tools),
+        maxTokens: input.maxTokens,
       })
       if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
       for (const event of result.events) {
@@ -106,6 +116,21 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
   async unload(modelId?: string): Promise<void> {
     await yachiyoModelManagerNative.unload({ modelId })
   }
+}
+
+/** Removes executable functions while preserving the descriptions and schemas the native model needs. */
+export async function serializeLocalTools(tools: unknown): Promise<Record<string, unknown>> {
+  if (!tools || typeof tools !== 'object') return {}
+  const result: Record<string, unknown> = {}
+  for (const [name, value] of Object.entries(tools as ToolSet)) {
+    if (!value || typeof value !== 'object' || !('inputSchema' in value) || typeof value.execute !== 'function') continue
+    const schema = asSchema(value.inputSchema)
+    result[name] = {
+      description: typeof value.description === 'string' ? value.description : '',
+      inputSchema: await schema.jsonSchema,
+    }
+  }
+  return result
 }
 
 function mediaPayload(value: unknown): string | undefined {

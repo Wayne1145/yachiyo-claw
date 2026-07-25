@@ -6,8 +6,15 @@ import { resolveReasoningProviderOptions } from '@shared/utils/reasoning-strengt
 import type { ToolSet } from 'ai'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
-import { cancelPendingAgentApprovals, requestAgentDecision, setActiveAgentSession } from '@/mobile/agent-approval'
+import {
+  cancelPendingAgentApprovals,
+  onAgentApprovalLifecycle,
+  requestAgentDecision,
+  setActiveAgentSession,
+  setActiveAgentRun,
+} from '@/mobile/agent-approval'
 import { AgentLoopGuard, AgentLoopStoppedError } from '@/mobile/agent-loop-guard'
+import { AgentRunCheckpointStore, type AgentRunCheckpoint } from '@/mobile/agent-run-checkpoints'
 import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-policy'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import { tryRunLocalAndroidRecipe } from '@/mobile/android-task-recipe'
@@ -26,7 +33,7 @@ import { queryClient } from './queryClient'
 import { createInitialState, processStreamChunk } from './session/stream-chunk-processor'
 import { buildToolsForSession } from './session/tools-builder'
 import { settingsStore } from './settingsStore'
-import { TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
+import { getTaskSession, TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
 import { buildTaskSystemPrompt } from './taskSystemPrompt'
 import { uiStore } from './uiStore'
 
@@ -38,6 +45,8 @@ const AGENT_STREAM_IDLE_TIMEOUT_MS = 180_000
 // If concurrent task generation is needed in the future, replace with a Map<taskId, AbortController>.
 let currentAbortController: AbortController | null = null
 let currentAgentRunId: string | null = null
+const runCheckpointStore = new AgentRunCheckpointStore()
+let recoveryRunning = false
 
 export function isTaskGenerating(): boolean {
   return currentAbortController !== null
@@ -209,7 +218,12 @@ function getDefaultModelSettings(sessionSettings?: { provider?: string; modelId?
   throw new Error('No AI model configured. Please set a default chat model in Settings or start a normal chat first.')
 }
 
-async function generateTaskResponse(taskId: string, targetMsg: Message, contextMessages: Message[]): Promise<void> {
+async function generateTaskResponse(
+  taskId: string,
+  targetMsg: Message,
+  contextMessages: Message[],
+  recovery?: AgentRunCheckpoint,
+): Promise<void> {
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   const abortController = new AbortController()
   const deviceAgent = shouldUseDeviceAgent(platform.type, getAgentSessionConfig(taskId).deviceControlEnabled)
@@ -221,6 +235,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
   if (deviceAgent) resetSemanticObservationCache(agentRunId)
   currentAbortController = abortController
   currentAgentRunId = agentRunId
+  setActiveAgentRun(agentRunId)
   let overlayStopListener: Awaited<ReturnType<typeof yachiyoDeviceAccessNative.onOverlayStopRequested>> | undefined
   let overlayVisible = false
   let overlayStartPromise: Promise<void> | undefined
@@ -231,8 +246,32 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
   let detectedLoopStop: AgentLoopStoppedError | null = null
   let usageReservations = new Map<number, string>()
   let settlePendingUsage: (usage?: unknown, result?: unknown) => Promise<void> = async () => undefined
+  let removeApprovalLifecycleListener: (() => void) | undefined
+  let lastDraftPersistedAt = 0
 
   try {
+    await runCheckpointStore.put({
+      schemaVersion: 1,
+      runId: agentRunId,
+      taskId,
+      assistantMessageId: targetMsg.id,
+      phase: 'preparing',
+      currentStep: recovery?.currentStep || 0,
+      completedSteps: recovery?.completedSteps || [],
+      updatedAt: Date.now(),
+    })
+    removeApprovalLifecycleListener = onAgentApprovalLifecycle((event) => {
+      if (event.runId !== agentRunId) return
+      if (event.state === 'requested') {
+        void runCheckpointStore.update(agentRunId, {
+          phase: 'awaiting_approval',
+          pendingApproval: { title: event.title, risk: event.risk, kind: event.kind },
+        })
+      } else {
+        void runCheckpointStore.update(agentRunId, { phase: 'requesting', pendingApproval: undefined })
+      }
+    })
+
     const session = queryClient.getQueryData<TaskSession>(queryKey)
     const { provider, modelId } = getDefaultModelSettings(session?.settings)
     const sessionSettings = {
@@ -384,6 +423,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       ...(activeTools ? { activeTools } : {}),
       agentLifecycle: {
         beforeRequest: async ({ stepNumber, messages, tools: toolDefinitions, activeTools: visibleTools }) => {
+          await runCheckpointStore.update(agentRunId, { phase: 'requesting', currentStep: stepNumber })
           const strategyInstruction = loopGuard.takeStrategyInstruction()
           if (strategyInstruction) {
             messages.push({ role: 'user', content: `<loop_guard>${strategyInstruction}</loop_guard>` })
@@ -414,6 +454,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
           if (reservation) usageReservations.set(stepNumber, reservation.reservationId)
         },
         onStepFinish: async ({ stepNumber, usage, result }) => {
+          await runCheckpointStore.addStepResult(agentRunId, stepNumber, result)
           const reservationId = usageReservations.get(stepNumber)
           if (reservationId) {
             await usageLedger
@@ -500,6 +541,11 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       }
 
       updateTaskQueryCache(queryKey, targetMsg)
+      if (Date.now() - lastDraftPersistedAt >= 1_000) {
+        lastDraftPersistedAt = Date.now()
+        await persistTaskDraft(taskId, targetMsg)
+        await runCheckpointStore.update(agentRunId, { phase: 'streaming' })
+      }
       if (deviceAgent && overlayVisible && Date.now() - lastOverlayUpdate >= 120) {
         lastOverlayUpdate = Date.now()
         void yachiyoDeviceAccessNative
@@ -535,6 +581,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
       }
     }
     completedSuccessfully = true
+    await runCheckpointStore.finish(agentRunId, 'completed')
   } catch (err) {
     if (!abortController.signal.aborted) {
       log.error('Task generation failed:', err)
@@ -564,11 +611,14 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
         await syncTaskSessionToChat(persisted)
       }
     }
+    await runCheckpointStore.finish(agentRunId, 'failed').catch(() => undefined)
   } finally {
     if (currentAbortController === abortController) currentAbortController = null
     if (currentAgentRunId === agentRunId) currentAgentRunId = null
+    setActiveAgentRun(null)
     setActiveAgentSession(null)
     cancelPendingAgentApprovals(agentRunId)
+    removeApprovalLifecycleListener?.()
     abortController.abort()
     try {
       removeDeviceOperationListener?.()
@@ -586,6 +636,50 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     }
     await settlePendingUsage().catch(() => undefined)
     if (deviceAgent) resetSemanticObservationCache(agentRunId)
+  }
+}
+
+async function persistTaskDraft(taskId: string, targetMsg: Message): Promise<void> {
+  const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
+  const currentSession = queryClient.getQueryData<TaskSession>(queryKey)
+  if (!currentSession) return
+  const draft = { ...targetMsg, cancel: undefined }
+  const messages = currentSession.messages.map((message) => (message.id === draft.id ? draft : message))
+  const persisted = await updateTaskSession(taskId, { messages })
+  if (persisted) queryClient.setQueryData(queryKey, persisted)
+}
+
+/** Restarts interrupted model rounds with the same run id; Broker checkpoints prevent side-effect replay. */
+export async function recoverInterruptedAgentRuns(): Promise<number> {
+  if (recoveryRunning || currentAbortController) return 0
+  recoveryRunning = true
+  let recovered = 0
+  try {
+    const records = (await runCheckpointStore.listActive()).sort((left, right) => left.updatedAt - right.updatedAt)
+    for (const record of records) {
+      const session = await getTaskSession(record.taskId)
+      if (!session) {
+        await runCheckpointStore.finish(record.runId, 'failed')
+        continue
+      }
+      const assistantIndex = session.messages.findIndex((message) => message.id === record.assistantMessageId)
+      if (assistantIndex < 0) {
+        await runCheckpointStore.finish(record.runId, 'failed')
+        continue
+      }
+      const target = session.messages[assistantIndex]
+      if (!target.generating) {
+        await runCheckpointStore.finish(record.runId, target.error ? 'failed' : 'completed')
+        continue
+      }
+      const resumableTarget = { ...target, generating: true, error: undefined }
+      queryClient.setQueryData([TASK_SESSION_QUERY_KEY, record.taskId], session)
+      await generateTaskResponse(record.taskId, resumableTarget, session.messages.slice(0, assistantIndex), record)
+      recovered += 1
+    }
+    return recovered
+  } finally {
+    recoveryRunning = false
   }
 }
 

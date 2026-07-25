@@ -15,6 +15,10 @@ export interface AgentApprovalRequest {
 
 export type ApprovalDecision = 'once' | 'conversation' | 'deny'
 type ApprovalListener = (request: AgentApprovalRequest) => void
+export type AgentApprovalLifecycleEvent =
+  | { state: 'requested'; sessionId: string; runId: string; title: string; risk: AgentOperationRisk; kind: 'operation' | 'loop' }
+  | { state: 'resolved'; sessionId: string; runId: string; decision: ApprovalDecision }
+type ApprovalLifecycleListener = (event: AgentApprovalLifecycleEvent) => void
 
 interface PendingApproval {
   sessionId: string
@@ -38,10 +42,12 @@ interface ApprovalJob {
 }
 
 const listeners = new Set<ApprovalListener>()
+const lifecycleListeners = new Set<ApprovalLifecycleListener>()
 const pending = new Map<string, PendingApproval>()
 const approvalQueue: ApprovalJob[] = []
 let activeApproval: ApprovalJob | null = null
 let activeAgentSessionId: string | null = null
+let activeAgentRunId: string | null = null
 
 export function setActiveAgentSession(sessionId: string | null): void {
   activeAgentSessionId = sessionId
@@ -51,9 +57,22 @@ export function getActiveAgentSession(): string | null {
   return activeAgentSessionId
 }
 
+export function setActiveAgentRun(runId: string | null): void {
+  activeAgentRunId = runId
+}
+
+export function getActiveAgentRun(): string | null {
+  return activeAgentRunId
+}
+
 export function onAgentApprovalRequest(listener: ApprovalListener): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+export function onAgentApprovalLifecycle(listener: ApprovalLifecycleListener): () => void {
+  lifecycleListeners.add(listener)
+  return () => lifecycleListeners.delete(listener)
 }
 
 export function resolveAgentApproval(id: string, decision: ApprovalDecision): void {
@@ -200,8 +219,23 @@ function pumpApprovalQueue(): void {
   }
 
   activeApproval = job
+  lifecycleListeners.forEach((listener) =>
+    listener({
+      state: 'requested',
+      sessionId: job.sessionId,
+      runId: job.runId,
+      title: job.title,
+      risk: job.risk,
+      kind: job.kind || 'operation',
+    }),
+  )
   void executeApprovalJob(job)
-    .then((decision) => settleJob(job, decision))
+    .then((decision) => {
+      lifecycleListeners.forEach((listener) =>
+        listener({ state: 'resolved', sessionId: job.sessionId, runId: job.runId, decision }),
+      )
+      settleJob(job, decision)
+    })
     .catch(() => settleJob(job, 'deny'))
     .finally(() => {
       if (activeApproval === job) activeApproval = null

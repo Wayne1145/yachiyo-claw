@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -91,9 +92,26 @@
             android:foregroundServiceType="dataSync|shortService"
             tools:node="merge" />
 
+        <service
+            android:name=".sandbox.YachiyoSandboxService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:process=":sandbox"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-requested local builds and development servers" />
+        </service>
+
         <meta-data
             android:name="io.github.yachiyoclaw.AUTHOR"
             android:value="NewDreamStudio" />
+
+        <activity
+            android:name=".workspace.ControlledWebViewActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|uiMode"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"

@@ -37,6 +37,9 @@ Use to explore the file system structure.
 ## sandbox_find
 Find files by name pattern (glob). Returns matching file paths.
 Use to locate files when you know part of the name but not the exact path.
+
+## sandbox_start_background / sandbox_job_status / sandbox_job_output / sandbox_stop_job
+Start and manage persistent build, preview, or development-server jobs. Background jobs survive Activity and WebView recreation.
 `
 
 const DEFAULT_BASH_TIMEOUT = 120_000
@@ -236,6 +239,53 @@ const sandbox_find = tool({
   },
 })
 
+const sandbox_start_background = tool({
+  description: 'Start a persistent background command in the Linux sandbox and return its job id.',
+  inputSchema: z.object({
+    command: z.string().describe('Shell command to run'),
+    timeout: z.number().optional().describe('Timeout in milliseconds, up to 24 hours'),
+  }),
+  execute: async (input: { command: string; timeout?: number }) => {
+    if (!platform.sandboxStartBackground) return 'Persistent sandbox jobs are unavailable on this platform'
+    return platform.sandboxStartBackground(input)
+  },
+})
+
+const sandbox_job_status = tool({
+  description: 'Query a persistent sandbox job status.',
+  inputSchema: z.object({ job_id: z.string() }),
+  execute: async (input: { job_id: string }) => {
+    if (!platform.sandboxQueryJob) return 'Persistent sandbox jobs are unavailable on this platform'
+    return platform.sandboxQueryJob({ jobId: input.job_id })
+  },
+})
+
+const sandbox_job_output = tool({
+  description: 'Read incremental stdout and stderr from a persistent sandbox job.',
+  inputSchema: z.object({
+    job_id: z.string(),
+    stdout_offset: z.number().int().nonnegative().optional(),
+    stderr_offset: z.number().int().nonnegative().optional(),
+  }),
+  execute: async (input: { job_id: string; stdout_offset?: number; stderr_offset?: number }) => {
+    if (!platform.sandboxReadJobOutput) return 'Persistent sandbox jobs are unavailable on this platform'
+    return platform.sandboxReadJobOutput({
+      jobId: input.job_id,
+      stdoutOffset: input.stdout_offset,
+      stderrOffset: input.stderr_offset,
+    })
+  },
+})
+
+const sandbox_stop_job = tool({
+  description: 'Stop a persistent sandbox job after policy approval.',
+  inputSchema: z.object({ job_id: z.string() }),
+  execute: async (input: { job_id: string }) => {
+    if (!platform.sandboxStopJob) return 'Persistent sandbox jobs are unavailable on this platform'
+    return platform.sandboxStopJob({ jobId: input.job_id })
+  },
+})
+
 export default {
   description: toolSetDescription,
   tools: {
@@ -246,5 +296,9 @@ export default {
     sandbox_grep,
     sandbox_ls,
     sandbox_find,
+    sandbox_start_background,
+    sandbox_job_status,
+    sandbox_job_output,
+    sandbox_stop_job,
   },
 }

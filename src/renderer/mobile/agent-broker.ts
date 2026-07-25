@@ -279,16 +279,19 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
   const run = (async () => {
     const store = options.checkpointStore || getAgentCheckpointStore()
     const previous = await store.get(taskId, stepId, callId)
-    const matchingApplied = options.dedupeByParameters
+    const matchingCheckpoint = options.dedupeByParameters
       ? (await store.list(taskId)).find(
           (record) =>
             record.toolId === options.toolId &&
             record.parameterDigest === parameterDigest &&
-            (record.sideEffectState === 'applied' || record.sideEffectState === 'verified'),
+            ['running', 'applied', 'verified', 'unknown'].includes(record.sideEffectState),
         )
       : undefined
-    if (matchingApplied && matchingApplied.callId !== callId) {
-      throw new AgentActionAlreadyAppliedError(matchingApplied.callId)
+    if (matchingCheckpoint && matchingCheckpoint.callId !== callId) {
+      if (matchingCheckpoint.sideEffectState === 'running' || matchingCheckpoint.sideEffectState === 'unknown') {
+        throw new AgentActionRecoveryRequiredError(matchingCheckpoint.callId, matchingCheckpoint.sideEffectState)
+      }
+      throw new AgentActionAlreadyAppliedError(matchingCheckpoint.callId)
     }
     if (previous?.backend && previous.backend !== options.backend) {
       throw new Error('agent_call_backend_mismatch')

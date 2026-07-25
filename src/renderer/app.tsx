@@ -208,6 +208,15 @@ async function startApp() {
     </StrictMode>
   )
 
+  if (platform.type === 'mobile') {
+    // Let the router mount approval surfaces before replaying interrupted Agent rounds.
+    window.setTimeout(() => {
+      void import('./stores/taskSessionActions')
+        .then(({ recoverInterruptedAgentRuns }) => recoverInterruptedAgentRuns())
+        .catch((error) => log.error('Agent recovery failed:', error))
+    }, 750)
+  }
+
   hideSplashScreen()
 
   if (window.navigator.storage) {

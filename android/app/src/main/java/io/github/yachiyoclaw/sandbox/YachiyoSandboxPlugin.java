@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import org.json.JSONArray;
 
 @CapacitorPlugin(name = "YachiyoSandbox")
 public final class YachiyoSandboxPlugin extends Plugin {
@@ -48,7 +49,9 @@ public final class YachiyoSandboxPlugin extends Plugin {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean installRunning = new AtomicBoolean(false);
     private final AtomicReference<Process> activeProcess = new AtomicReference<>();
+    private final AtomicReference<String> activeJobId = new AtomicReference<>();
     private volatile AlpineSandboxInstaller installer;
+    private volatile SandboxJobStore jobStore;
     private volatile File workspace;
     private volatile String state = "not_installed";
     private volatile String lastError;
@@ -61,6 +64,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
             return;
         }
         installer = new AlpineSandboxInstaller(getContext(), distribution);
+        jobStore = new SandboxJobStore(getContext());
         workspace = new File(getContext().getFilesDir(), "linux-sandbox/workspaces/default");
         state = installer.isInstalled() ? (toolchainMarker().isFile() ? "ready" : "rootfs_ready") : "not_installed";
     }
@@ -86,6 +90,9 @@ public final class YachiyoSandboxPlugin extends Plugin {
         result.put("state", state);
         result.put("installed", installer != null && installer.isInstalled());
         result.put("toolchainReady", toolchainMarker().isFile());
+        result.put("androidToolchainReady", androidToolchainMarker().isFile());
+        result.put("androidToolchainSupported", isAndroidSdkHostSupported());
+        result.put("androidToolchainVariant", androidToolchainVariant());
         result.put("workingDirectory", workspace == null ? null : workspace.getAbsolutePath());
         result.put("platform", "android-proot-alpine");
         result.put("distribution", SandboxDistribution.VERSION);
@@ -147,19 +154,118 @@ public final class YachiyoSandboxPlugin extends Plugin {
         executor.execute(() -> {
             try {
                 requireReady();
-                CommandResult result = runGuestCommand(command, timeout);
+                String jobId = createJobId();
+                jobStore.create(jobId, command, workspace.getCanonicalPath(), timeout, System.currentTimeMillis());
+                activeJobId.set(jobId);
+                YachiyoSandboxService.start(getContext(), jobId);
+                CommandResult result = awaitJob(jobId, timeout + 10_000L);
                 call.resolve(commandResult(result));
             } catch (Exception error) {
                 call.resolve(new JSObject().put("stdout", "").put("stderr", safeError(error, "sandbox_exec_failed")).put("exitCode", 1));
+            } finally {
+                activeJobId.set(null);
             }
         });
     }
 
     @PluginMethod
+    public void startBackground(PluginCall call) {
+        String command = call.getString("command", "").trim();
+        int timeout = Math.max(1_000, Math.min(call.getInt("timeout", 86_400_000), 86_400_000));
+        if (command.isEmpty() || command.length() > 64 * 1024 || command.indexOf('\0') >= 0) {
+            call.reject("sandbox_command_invalid");
+            return;
+        }
+        try {
+            requireReady();
+            String jobId = createJobId();
+            jobStore.create(jobId, command, workspace.getCanonicalPath(), timeout, System.currentTimeMillis());
+            YachiyoSandboxService.start(getContext(), jobId);
+            call.resolve(new JSObject().put("accepted", true).put("jobId", jobId));
+        } catch (Exception error) {
+            call.reject(safeError(error, "sandbox_background_start_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void listJobs(PluginCall call) {
+        try {
+            jobStore.reconcile(System.currentTimeMillis());
+            JSONArray jobs = new JSONArray();
+            for (SandboxJobStore.Job job : jobStore.list()) jobs.put(job.publicJson());
+            call.resolve(new JSObject().put("jobs", jobs));
+        } catch (Exception error) {
+            call.reject(safeError(error, "sandbox_jobs_unavailable"));
+        }
+    }
+
+    @PluginMethod
+    public void queryJob(PluginCall call) {
+        String id = call.getString("jobId", "");
+        try {
+            jobStore.reconcile(System.currentTimeMillis());
+            SandboxJobStore.Job job = jobStore.get(id);
+            if (job == null) throw new IOException("sandbox_job_not_found");
+            call.resolve(JSObject.fromJSONObject(job.publicJson()));
+        } catch (Exception error) {
+            call.reject(safeError(error, "sandbox_job_query_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void readJobOutput(PluginCall call) {
+        String id = call.getString("jobId", "");
+        int stdoutOffset = Math.max(0, call.getInt("stdoutOffset", 0));
+        int stderrOffset = Math.max(0, call.getInt("stderrOffset", 0));
+        try {
+            if (jobStore.get(id) == null) throw new IOException("sandbox_job_not_found");
+            OutputSlice stdout = readSlice(jobStore.stdout(id), stdoutOffset);
+            OutputSlice stderr = readSlice(jobStore.stderr(id), stderrOffset);
+            call.resolve(new JSObject()
+                .put("stdout", stdout.text).put("stderr", stderr.text)
+                .put("stdoutOffset", stdout.nextOffset).put("stderrOffset", stderr.nextOffset));
+        } catch (Exception error) {
+            call.reject(safeError(error, "sandbox_job_output_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void stopJob(PluginCall call) {
+        String id = call.getString("jobId", "");
+        try {
+            if (jobStore.get(id) == null) throw new IOException("sandbox_job_not_found");
+            YachiyoSandboxService.stop(getContext(), id);
+            call.resolve(new JSObject().put("accepted", true).put("jobId", id));
+        } catch (Exception error) {
+            call.reject(safeError(error, "sandbox_job_stop_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void installAndroidToolchain(PluginCall call) {
+        try {
+            requireReady();
+            if (!isAndroidSdkHostSupported()) {
+                call.resolve(new JSObject().put("accepted", false).put("reason", "android_sdk_host_tools_unsupported"));
+                return;
+            }
+            String command = androidToolchainInstallCommand();
+            String jobId = createJobId();
+            jobStore.create(jobId, command, workspace.getCanonicalPath(), 3_600_000, System.currentTimeMillis());
+            YachiyoSandboxService.start(getContext(), jobId);
+            call.resolve(new JSObject().put("accepted", true).put("jobId", jobId));
+        } catch (Exception error) {
+            call.reject(safeError(error, "android_toolchain_install_failed"));
+        }
+    }
+
+    @PluginMethod
     public void kill(PluginCall call) {
+        String jobId = activeJobId.getAndSet(null);
+        if (jobId != null) YachiyoSandboxService.stop(getContext(), jobId);
         Process process = activeProcess.getAndSet(null);
         if (process != null) killProcessTree(process);
-        call.resolve(new JSObject().put("killed", process != null));
+        call.resolve(new JSObject().put("killed", process != null || jobId != null));
     }
 
     @PluginMethod
@@ -479,6 +585,81 @@ public final class YachiyoSandboxPlugin extends Plugin {
         return new File(installer == null ? getContext().getFilesDir() : installer.rootfsDirectory(), ".yachiyo-toolchain-v1");
     }
 
+    private File androidToolchainMarker() {
+        return new File(installer == null ? getContext().getFilesDir() : installer.rootfsDirectory(), ".yachiyo-android-toolchain-v1");
+    }
+
+    private boolean isAndroidSdkHostSupported() {
+        SandboxDistribution.Spec distribution = SandboxDistribution.current(getContext().getApplicationInfo().nativeLibraryDir);
+        return distribution != null && ("x86_64".equals(distribution.alpineArch()) || "aarch64".equals(distribution.alpineArch()));
+    }
+
+    private String androidToolchainVariant() {
+        SandboxDistribution.Spec distribution = SandboxDistribution.current(getContext().getApplicationInfo().nativeLibraryDir);
+        if (distribution != null && "x86_64".equals(distribution.alpineArch())) return "x86_64-official";
+        if (distribution != null && "aarch64".equals(distribution.alpineArch())) return "arm64-patched-aapt2";
+        return "unsupported";
+    }
+
+    private String androidToolchainInstallCommand() {
+        return "set -eu; apk add --no-cache openjdk21-jdk gradle android-tools gcompat libstdc++ wget unzip zip; " +
+            "export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; " +
+            "export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH; " +
+            "mkdir -p $ANDROID_HOME/cmdline-tools /root/.gradle; cd /tmp; " +
+            "wget -q -O commandlinetools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip; " +
+            "rm -rf /opt/android-sdk/cmdline-tools/latest /tmp/cmdline-tools; unzip -q commandlinetools.zip; " +
+            "mv /tmp/cmdline-tools $ANDROID_HOME/cmdline-tools/latest; " +
+            "yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses >/dev/null || true; " +
+            "sdkmanager --sdk_root=$ANDROID_HOME 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'; " +
+            "case \"$(uname -m)\" in aarch64|arm64) " +
+            "wget -q -O /tmp/aapt2-arm64 https://github.com/ReVanced/aapt2/releases/download/v1.0.0/aapt2-arm64-v8a; " +
+            "echo 'e5b5ff7f0d4f6ecd7fa5d05d77fed3f09f6f1bf80f078b8aada82bc578848561  /tmp/aapt2-arm64' | sha256sum -c -; " +
+            "install -m 0755 /tmp/aapt2-arm64 $ANDROID_HOME/build-tools/35.0.0/aapt2; " +
+            "printf '%s\\n' 'android.aapt2FromMavenOverride=/opt/android-sdk/build-tools/35.0.0/aapt2' >> /root/.gradle/gradle.properties;; esac; " +
+            "java -version; gradle --version; sdkmanager --sdk_root=$ANDROID_HOME --list_installed; $ANDROID_HOME/build-tools/35.0.0/aapt2 version; " +
+            "touch /.yachiyo-android-toolchain-v1";
+    }
+
+    private String createJobId() {
+        return "job_" + java.util.UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private CommandResult awaitJob(String id, long waitMs) throws Exception {
+        long deadline = System.currentTimeMillis() + waitMs;
+        while (System.currentTimeMillis() < deadline) {
+            SandboxJobStore.Job job = jobStore.get(id);
+            if (job == null) throw new IOException("sandbox_job_not_found");
+            if (!SandboxJobStore.STATE_QUEUED.equals(job.state) && !SandboxJobStore.STATE_RUNNING.equals(job.state)) {
+                String stdout = readSlice(jobStore.stdout(id), 0).text;
+                String stderr = readSlice(jobStore.stderr(id), 0).text;
+                int exitCode = job.exitCode == null ? 1 : job.exitCode;
+                return new CommandResult(stdout, stderr, exitCode);
+            }
+            Thread.sleep(150);
+        }
+        YachiyoSandboxService.stop(getContext(), id);
+        return new CommandResult("", "sandbox_job_wait_timeout", 124);
+    }
+
+    private static OutputSlice readSlice(File file, int offset) throws Exception {
+        if (!file.isFile()) return new OutputSlice("", offset);
+        long length = file.length();
+        int safeOffset = (int) Math.min(Math.max(0, offset), length);
+        int amount = (int) Math.min(MAX_OUTPUT_BYTES, length - safeOffset);
+        byte[] bytes = new byte[amount];
+        try (FileInputStream input = new FileInputStream(file)) {
+            long skipped = input.skip(safeOffset);
+            if (skipped != safeOffset) throw new IOException("sandbox_job_output_seek_failed");
+            int total = 0;
+            while (total < amount) {
+                int read = input.read(bytes, total, amount - total);
+                if (read < 0) break;
+                total += read;
+            }
+            return new OutputSlice(new String(bytes, 0, total, StandardCharsets.UTF_8), safeOffset + total);
+        }
+    }
+
     private void emitProgress(String stage, int percent, long transferred, long total) {
         JSObject event = new JSObject();
         event.put("stage", stage);
@@ -494,6 +675,9 @@ public final class YachiyoSandboxPlugin extends Plugin {
             .put("state", state)
             .put("installed", installer.isInstalled())
             .put("toolchainReady", toolchainMarker().isFile())
+            .put("androidToolchainReady", androidToolchainMarker().isFile())
+            .put("androidToolchainSupported", isAndroidSdkHostSupported())
+            .put("androidToolchainVariant", androidToolchainVariant())
             .put("workingDirectory", workspace == null ? null : workspace.getAbsolutePath())
             .put("platform", "android-proot-alpine")
             .put("distribution", SandboxDistribution.VERSION);
@@ -522,7 +706,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
-        killProcess();
+        // Persistent jobs belong to YachiyoSandboxService, not the transient WebView plugin.
         executor.shutdownNow();
         super.handleOnDestroy();
     }
@@ -568,6 +752,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
     }
 
     private record CommandResult(String stdout, String stderr, int exitCode) {}
+    private record OutputSlice(String text, int nextOffset) {}
 
     private static final class StreamCollector implements Runnable {
         private final InputStream input;

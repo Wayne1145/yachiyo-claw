@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -96,13 +97,50 @@ final class ModelRegistryStore {
 
     JSONObject findCompletedModel(String modelId) {
         JSONArray jobs = list();
+        String requested = normalizeIdentity(modelId);
         for (int index = 0; index < jobs.length(); index++) {
             JSONObject job = jobs.optJSONObject(index);
-            if (job != null && modelId.equals(job.optString("modelId")) && "completed".equals(job.optString("status"))) {
+            if (job != null && job.optString("modelId").equals(modelId) && "completed".equals(job.optString("status"))) {
+                return job;
+            }
+        }
+        for (int index = 0; index < jobs.length(); index++) {
+            JSONObject job = jobs.optJSONObject(index);
+            if (job == null || !"completed".equals(job.optString("status"))) continue;
+            if (matchesModelIdentity(requested, job.optString("modelId"), job.optString("repository"), job.optString("id"))) {
                 return job;
             }
         }
         return null;
+    }
+
+    File resolveRuntimeFile(JSONObject job) throws Exception {
+        File recorded = new File(job.optString("modelPath"));
+        File canonicalContent = contentDir.getCanonicalFile();
+        File canonicalRecorded = recorded.getCanonicalFile();
+        if (recorded.isFile()
+                && isWithin(canonicalContent, canonicalRecorded)
+                && LocalModelFormat.runtimeForPath(recorded.getPath()) != null) {
+            return canonicalRecorded;
+        }
+
+        File directory = modelDirectory(job);
+        JSONArray artifacts = job.optJSONArray("artifacts");
+        String runtimePath = null;
+        if (artifacts != null) {
+            for (int index = 0; index < artifacts.length(); index++) {
+                JSONObject artifact = artifacts.optJSONObject(index);
+                if (artifact == null) continue;
+                File candidate = ModelDownloadPolicy.resolveArtifact(directory, artifact.optString("path"));
+                if (!candidate.isFile()) continue;
+                runtimePath = LocalModelFormat.chooseRuntimePath(runtimePath, artifact.optString("format"), candidate);
+            }
+        }
+        if (runtimePath == null) return recorded;
+        File recovered = new File(runtimePath).getCanonicalFile();
+        job.put("modelPath", recovered.getPath());
+        save(job);
+        return recovered;
     }
 
     File modelDirectory(JSONObject job) throws Exception {
@@ -148,6 +186,36 @@ final class ModelRegistryStore {
     private static String requireId(String value) {
         if (value == null || !value.matches("[A-Za-z0-9._-]{1,100}")) throw new IllegalArgumentException("model_job_id_invalid");
         return value;
+    }
+
+    private static boolean isWithin(File parent, File child) {
+        String root = parent.getPath() + File.separator;
+        return child.getPath().startsWith(root);
+    }
+
+    private static String normalizeIdentity(String value) {
+        String normalized = value == null ? "" : value.trim().replace('\\', '/').toLowerCase(Locale.ROOT);
+        while (normalized.startsWith("/")) normalized = normalized.substring(1);
+        String[] prefixes = { "yachiyo-local:", "local:", "huggingface:", "modelscope:" };
+        boolean changed;
+        do {
+            changed = false;
+            for (String prefix : prefixes) {
+                if (normalized.startsWith(prefix)) {
+                    normalized = normalized.substring(prefix.length());
+                    changed = true;
+                }
+            }
+        } while (changed);
+        return normalized;
+    }
+
+    static boolean matchesModelIdentity(String requested, String modelId, String repository, String jobId) {
+        String normalized = normalizeIdentity(requested);
+        return !normalized.isEmpty()
+            && (normalized.equals(normalizeIdentity(modelId))
+                || normalized.equals(normalizeIdentity(repository))
+                || normalized.equals(normalizeIdentity(jobId)));
     }
 
     private static String sha256(String value) throws Exception {

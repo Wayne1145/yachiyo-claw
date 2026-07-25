@@ -11,6 +11,7 @@ import io.github.yachiyoclaw.memory.YachiyoMemoryPlugin;
 import io.github.yachiyoclaw.update.YachiyoUpdatePlugin;
 import io.github.yachiyoclaw.model.YachiyoModelManagerPlugin;
 import io.github.yachiyoclaw.sandbox.YachiyoSandboxPlugin;
+import io.github.yachiyoclaw.workspace.YachiyoWorkspacePlugin;
 
 public class MainActivity extends BridgeActivity {
 
@@ -25,6 +26,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(YachiyoUpdatePlugin.class);
         registerPlugin(YachiyoModelManagerPlugin.class);
         registerPlugin(YachiyoSandboxPlugin.class);
+        registerPlugin(YachiyoWorkspacePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

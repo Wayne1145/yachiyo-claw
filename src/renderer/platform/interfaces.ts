@@ -112,6 +112,17 @@ export interface Platform extends Storage {
     command: string
     timeout?: number
   }): Promise<{ stdout: string; stderr: string; exitCode: number }>
+  sandboxStartBackground?(params: { command: string; timeout?: number }): Promise<{ accepted: boolean; jobId: string }>
+  sandboxListJobs?(): Promise<{ jobs: import('./native/yachiyo_sandbox').NativeSandboxJob[] }>
+  sandboxQueryJob?(params: { jobId: string }): Promise<import('./native/yachiyo_sandbox').NativeSandboxJob>
+  sandboxReadJobOutput?(params: { jobId: string; stdoutOffset?: number; stderrOffset?: number }): Promise<{
+    stdout: string
+    stderr: string
+    stdoutOffset: number
+    stderrOffset: number
+  }>
+  sandboxStopJob?(params: { jobId: string }): Promise<{ accepted: boolean; jobId: string }>
+  sandboxInstallAndroidToolchain?(): Promise<{ accepted: boolean; jobId?: string; reason?: string }>
   sandboxRead?(params: { filePath: string }): Promise<{ success: boolean; content?: string; error?: string }>
   sandboxWrite?(params: { filePath: string; content: string }): Promise<{ success: boolean; error?: string }>
   sandboxEdit?(params: {
@@ -131,11 +142,55 @@ export interface Platform extends Storage {
   }): Promise<{ success: boolean; content?: string; error?: string }>
   sandboxKill?(): Promise<{ killed: boolean }>
   sandboxReset?(): Promise<{ success: boolean; error?: string }>
-  sandboxStatus?(): Promise<{ state: string; workingDirectory?: string | null; platform?: string }>
+  sandboxStatus?(): Promise<{
+    state: string
+    workingDirectory?: string | null
+    platform?: string
+    androidToolchainReady?: boolean
+    androidToolchainSupported?: boolean
+    androidToolchainVariant?: 'x86_64-official' | 'arm64-patched-aapt2' | 'unsupported'
+  }>
   sandboxCheckAvailability?(): Promise<{ available: boolean; reason?: string }>
 
   // Native directory dialog when supported by the platform.
   openDirectoryDialog?(): Promise<{ canceled: boolean; path?: string }>
+
+  externalWorkspaceStatus?(): Promise<{
+    available?: boolean
+    uri?: string
+    workspaceKey?: string
+    displayName?: string
+    canRead?: boolean
+    canWrite?: boolean
+    error?: string
+  }>
+  pickExternalWorkspace?(): Promise<{ canceled?: boolean; workspaceKey?: string; displayName?: string; error?: string }>
+  syncExternalWorkspace?(direction: 'in' | 'out'): Promise<{
+    success: boolean
+    files?: number
+    bytes?: number
+    workspaceKey?: string
+    error?: string
+  }>
+  exportWorkspaceZip?(options: { name?: string; share?: boolean }): Promise<{
+    success: boolean
+    name?: string
+    bytes?: number
+    shared?: boolean
+    error?: string
+  }>
+  registerWorkspacePreview?(options: { port: number; path?: string }): Promise<{
+    success: boolean
+    id?: string
+    url?: string
+    error?: string
+  }>
+  openWorkspacePreview?(id: string): Promise<{ success: boolean; url?: string; error?: string }>
+  controlledBrowserNavigate?(url: string): Promise<{ success: boolean; url?: string; error?: string }>
+  controlledBrowserClick?(selector: string): Promise<{ success: boolean; value?: unknown; error?: string }>
+  controlledBrowserType?(selector: string, text: string): Promise<{ success: boolean; value?: unknown; error?: string }>
+  controlledBrowserSnapshot?(): Promise<{ success: boolean; value?: unknown; error?: string }>
+  controlledBrowserScreenshot?(): Promise<{ success: boolean; mimeType?: string; base64?: string; error?: string }>
 
   // window controls
   minimize(): Promise<void>

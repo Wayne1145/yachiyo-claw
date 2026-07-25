@@ -49,4 +49,21 @@ public final class LocalModelFormatTest {
             invalid.delete();
         }
     }
+
+    @Test
+    public void requiresEveryShardBesideTheFirstShard() throws Exception {
+        File directory = java.nio.file.Files.createTempDirectory("yachiyo-shards").toFile();
+        File first = new File(directory, "gemma-00001-of-00002.gguf");
+        File second = new File(directory, "gemma-00002-of-00002.gguf");
+        try {
+            assertTrue(first.createNewFile());
+            assertFalse(LocalModelFormat.hasCompleteGgufShardSet(first));
+            assertTrue(second.createNewFile());
+            assertTrue(LocalModelFormat.hasCompleteGgufShardSet(first));
+        } finally {
+            first.delete();
+            second.delete();
+            directory.delete();
+        }
+    }
 }

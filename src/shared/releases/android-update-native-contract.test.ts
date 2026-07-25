@@ -31,9 +31,13 @@ describe('Android in-app update native contract', () => {
     })
   })
 
-  it('exposes only the dedicated verified update cache through FileProvider', () => {
+  it('exposes only dedicated update and workspace-export cache directories through FileProvider', () => {
     const paths = parser.parse(readFileSync('android/app/src/main/res/xml/file_paths.xml', 'utf8')).paths
-    expect(paths['cache-path']).toEqual({ name: 'verified_updates', path: 'verified-updates/' })
+    const cachePaths = Array.isArray(paths['cache-path']) ? paths['cache-path'] : [paths['cache-path']]
+    expect(cachePaths).toEqual([
+      { name: 'verified_updates', path: 'verified-updates/' },
+      { name: 'workspace_exports', path: 'workspace-exports/' },
+    ])
     expect(JSON.stringify(paths)).not.toContain('path":"."')
   })
 

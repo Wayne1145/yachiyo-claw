@@ -13,6 +13,7 @@ import { createLongTermMemoryToolSet } from '@/packages/model-calls/toolsets/lon
 import sandboxToolSet from '@/packages/model-calls/toolsets/sandbox'
 import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-calls/toolsets/session-attachment-rag'
 import { getToolSetDescription, parseLinkTool, webSearchTool } from '@/packages/model-calls/toolsets/web-search'
+import workspaceBrowserToolSet from '@/packages/model-calls/toolsets/workspace-browser'
 import { skillsController } from '@/packages/skills/controller'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import platform from '@/platform'
@@ -150,6 +151,7 @@ export async function buildToolsForSession(
   }
   if (useSandboxTools) {
     instructions += sandboxToolSet.description
+    if (platform.type === 'mobile') instructions += workspaceBrowserToolSet.description
   }
   if (deviceControlEnabled && platform.type === 'mobile') {
     instructions += androidDeviceToolSet.description
@@ -191,6 +193,7 @@ export async function buildToolsForSession(
 
   if (useSandboxTools) {
     tools = { ...tools, ...sandboxToolSet.tools }
+    if (platform.type === 'mobile') tools = { ...tools, ...workspaceBrowserToolSet.tools }
   }
   if (deviceControlEnabled && platform.type === 'mobile') {
     tools = { ...tools, ...androidDeviceToolSet.tools }

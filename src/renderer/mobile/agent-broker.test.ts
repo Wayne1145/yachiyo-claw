@@ -228,4 +228,28 @@ describe('Android Agent Tool Broker', () => {
       sideEffectState: 'verified',
     })
   })
+
+  it('blocks a regenerated call id when the same parameter-bound action is uncertain', async () => {
+    const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
+    const execute = vi.fn().mockRejectedValue(new Error('activity_recreated'))
+    const request = {
+      toolId: 'sandbox.command.start_background',
+      backend: 'sandbox' as const,
+      parameters: { command: 'npm run dev' },
+      taskId: 'run-1',
+      stepId: 'step-1',
+      callId: 'call-before-restart',
+      deadline: Date.now() + 30_000,
+      sideEffect: true,
+      dedupeByParameters: true,
+      checkpointStore,
+      execute,
+    }
+
+    await expect(executeAgentAction(request)).rejects.toThrow('activity_recreated')
+    await expect(
+      executeAgentAction({ ...request, stepId: 'step-after-restart', callId: 'call-after-restart' }),
+    ).rejects.toBeInstanceOf(AgentActionRecoveryRequiredError)
+    expect(execute).toHaveBeenCalledTimes(1)
+  })
 })

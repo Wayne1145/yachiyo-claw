@@ -8,12 +8,13 @@ import { getLatestYachiyoAndroidRelease, type YachiyoAndroidRelease } from '@sha
 import localforage from 'localforage'
 import { v4 as uuidv4 } from 'uuid'
 import { parseLocale } from '@/i18n/parser'
-import { getAgentWorkingDirectory, setAgentWorkingDirectory } from '@/mobile/agent-broker'
-import { requestAgentApproval } from '@/mobile/agent-approval'
-import { yachiyoAgentNative } from '@/platform/native/yachiyo_agent'
+import { executeAgentAction, getAgentWorkingDirectory, setAgentWorkingDirectory } from '@/mobile/agent-broker'
+import { getActiveAgentRun, getActiveAgentSession, requestAgentApproval } from '@/mobile/agent-approval'
+import { runWorkspaceBrokeredAction } from '@/mobile/workspace-action-broker'
 import { NativeMobileRagEmbeddingProvider } from '@/platform/native/yachiyo_model_manager'
 import { yachiyoSandboxNative } from '@/platform/native/yachiyo_sandbox'
 import { yachiyoUpdateNative } from '@/platform/native/yachiyo_update'
+import { parseBrowserEvaluation, yachiyoWorkspaceNative } from '@/platform/native/yachiyo_workspace'
 import type { ImageGenerationStorage } from '@/storage/ImageGenerationStorage'
 import type { SessionMetaStorage } from '@/storage/SessionMetaStorage'
 import { SQLiteImageGenerationStorage } from '@/storage/SQLiteImageGenerationStorage'
@@ -399,7 +400,86 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
       risk: 'dangerous',
     })
     if (!approved) return { stdout: '', stderr: '用户拒绝了此操作', exitCode: 126 }
-    return yachiyoSandboxNative.exec(params)
+    return executeAgentAction({
+      toolId: 'sandbox.command.exec',
+      backend: 'sandbox',
+      parameters: params,
+      taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
+      sideEffect: true,
+      dedupeByParameters: true,
+      execute: () => yachiyoSandboxNative.exec(params),
+      resultToJson: (result) => ({ exitCode: result.exitCode }),
+    })
+  }
+
+  public async sandboxStartBackground(params: { command: string; timeout?: number }) {
+    const approved = await requestAgentApproval({
+      title: '启动 Linux 沙箱后台任务',
+      detail: params.command,
+      risk: 'dangerous',
+    })
+    if (!approved) throw new Error('sandbox_background_approval_denied')
+    return executeAgentAction({
+      toolId: 'sandbox.command.start_background',
+      backend: 'sandbox',
+      parameters: params,
+      taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
+      sideEffect: true,
+      dedupeByParameters: true,
+      execute: () => yachiyoSandboxNative.startBackground(params),
+      isSuccess: (result) => result.accepted,
+      resultToJson: (result) => ({ accepted: result.accepted, jobId: result.jobId }),
+    })
+  }
+
+  public async sandboxListJobs() {
+    return yachiyoSandboxNative.listJobs()
+  }
+
+  public async sandboxQueryJob(params: { jobId: string }) {
+    return yachiyoSandboxNative.queryJob(params)
+  }
+
+  public async sandboxReadJobOutput(params: { jobId: string; stdoutOffset?: number; stderrOffset?: number }) {
+    return yachiyoSandboxNative.readJobOutput(params)
+  }
+
+  public async sandboxStopJob(params: { jobId: string }) {
+    const approved = await requestAgentApproval({
+      title: '停止 Linux 沙箱后台任务',
+      detail: params.jobId,
+      risk: 'safe',
+    })
+    if (!approved) throw new Error('sandbox_stop_approval_denied')
+    return executeAgentAction({
+      toolId: 'sandbox.command.stop_background',
+      backend: 'sandbox',
+      parameters: params,
+      taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
+      sideEffect: true,
+      dedupeByParameters: true,
+      execute: () => yachiyoSandboxNative.stopJob(params),
+      isSuccess: (result) => result.accepted,
+    })
+  }
+
+  public async sandboxInstallAndroidToolchain() {
+    const approved = await requestAgentApproval({
+      title: '安装 Android SDK 与 Gradle 工具链',
+      detail: '将在 Linux 沙箱中下载并安装 JDK、Gradle、Android SDK Platform 35 和 Build Tools 35。',
+      risk: 'dangerous',
+    })
+    if (!approved) return { accepted: false, reason: 'android_toolchain_approval_denied' }
+    return executeAgentAction({
+      toolId: 'sandbox.toolchain.install_android',
+      backend: 'sandbox',
+      parameters: { version: 1 },
+      taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
+      sideEffect: true,
+      dedupeByParameters: true,
+      execute: () => yachiyoSandboxNative.installAndroidToolchain(),
+      isSuccess: (result) => result.accepted,
+    })
   }
 
   public async sandboxKill() {
@@ -444,12 +524,96 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   }
 
   public async openDirectoryDialog(): Promise<{ canceled: boolean; path?: string }> {
-    const result = await yachiyoAgentNative.pickWorkingDirectory()
-    if (!result.canceled && result.path) {
-      setAgentWorkingDirectory(result.path)
-      this.agentWorkingDirectory = result.path
+    const result = await yachiyoWorkspaceNative.pickExternalWorkspace()
+    if (!result.canceled && result.workspaceKey) {
+      setAgentWorkingDirectory(result.workspaceKey)
+      this.agentWorkingDirectory = result.workspaceKey
+      const synced = await this.syncExternalWorkspace('in')
+      if (!synced.success) throw new Error(synced.error || 'workspace_sync_in_failed')
+      const initialized = await this.sandboxInit({ workingDirectory: result.workspaceKey })
+      if (!initialized.success) throw new Error(initialized.error || 'sandbox_init_failed')
     }
-    return { canceled: result.canceled, path: result.path }
+    return { canceled: Boolean(result.canceled), path: result.workspaceKey }
+  }
+
+  public externalWorkspaceStatus() {
+    return yachiyoWorkspaceNative.getExternalWorkspace()
+  }
+
+  public async pickExternalWorkspace() {
+    const result = await yachiyoWorkspaceNative.pickExternalWorkspace()
+    if (!result.canceled && result.workspaceKey) {
+      setAgentWorkingDirectory(result.workspaceKey)
+      this.agentWorkingDirectory = result.workspaceKey
+    }
+    return result
+  }
+
+  public async syncExternalWorkspace(direction: 'in' | 'out') {
+    return runWorkspaceBrokeredAction({
+      title: direction === 'in' ? '导入外部工作区' : '写回外部工作区',
+      detail: direction === 'in' ? '将已授权目录复制到 Linux 沙箱工作区' : '将沙箱中的项目文件覆盖写入已授权目录（不会自动删除外部文件）',
+      risk: direction === 'in' ? 'safe' : 'dangerous',
+      mutating: true,
+    }, () => direction === 'in' ? yachiyoWorkspaceNative.syncFromExternal() : yachiyoWorkspaceNative.syncToExternal(), {
+      success: false,
+      error: 'workspace_sync_denied',
+    })
+  }
+
+  public async exportWorkspaceZip(options: { name?: string; share?: boolean }) {
+    return runWorkspaceBrokeredAction({
+      title: '导出项目',
+      detail: `创建 ZIP${options.share ? ' 并打开系统分享面板' : ''}: ${options.name || 'yachiyo-project.zip'}`,
+      risk: options.share ? 'dangerous' : 'safe',
+      mutating: true,
+    }, () => yachiyoWorkspaceNative.exportZip(options), { success: false, error: 'workspace_export_denied' })
+  }
+
+  public registerWorkspacePreview(options: { port: number; path?: string }) {
+    return yachiyoWorkspaceNative.registerPreview(options)
+  }
+
+  public openWorkspacePreview(id: string) {
+    return yachiyoWorkspaceNative.openPreview({ id })
+  }
+
+  public async controlledBrowserNavigate(url: string) {
+    return runWorkspaceBrokeredAction({
+      title: '受控浏览器导航',
+      detail: url,
+      risk: 'dangerous',
+      mutating: true,
+    }, () => yachiyoWorkspaceNative.browserNavigate({ url }), { success: false, error: 'browser_navigation_denied' })
+  }
+
+  public async controlledBrowserClick(selector: string) {
+    const result = await runWorkspaceBrokeredAction({
+      title: '受控浏览器点击',
+      detail: selector,
+      risk: 'dangerous',
+      mutating: true,
+    }, () => yachiyoWorkspaceNative.browserClick({ selector }), { success: false, error: 'browser_click_denied' })
+    return { ...result, value: parseBrowserEvaluation(result.value) }
+  }
+
+  public async controlledBrowserType(selector: string, text: string) {
+    const result = await runWorkspaceBrokeredAction({
+      title: '受控浏览器输入',
+      detail: `${selector}\n${text.slice(0, 240)}`,
+      risk: 'dangerous',
+      mutating: true,
+    }, () => yachiyoWorkspaceNative.browserType({ selector, text }), { success: false, error: 'browser_type_denied' })
+    return { ...result, value: parseBrowserEvaluation(result.value) }
+  }
+
+  public async controlledBrowserSnapshot() {
+    const result = await yachiyoWorkspaceNative.browserSnapshot()
+    return { ...result, value: parseBrowserEvaluation(result.value) }
+  }
+
+  public controlledBrowserScreenshot() {
+    return yachiyoWorkspaceNative.browserScreenshot()
   }
 
   public minimize() {

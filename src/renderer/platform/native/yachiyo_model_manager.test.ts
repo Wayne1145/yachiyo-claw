@@ -4,7 +4,10 @@ import {
   NativeLocalInferenceAdapter,
   NativeMobileRagEmbeddingProvider,
   serializeLocalModelMessages,
+  serializeLocalTools,
 } from './yachiyo_model_manager'
+import { tool } from 'ai'
+import { z } from 'zod'
 
 const native = vi.hoisted(() => ({
   enqueue: vi.fn(),
@@ -45,6 +48,35 @@ describe('YachiyoModelManager bridge', () => {
       value: { type: 'text', text: 'hello' },
     })
     expect(native.infer).toHaveBeenCalledWith(expect.objectContaining({ messages: [] }))
+  })
+
+  it('keeps the native health reason so callers can distinguish missing registrations and files', async () => {
+    native.healthCheck.mockResolvedValue({ status: 'unsupported', reason: 'local_model_file_missing' })
+    const adapter = new NativeLocalInferenceAdapter()
+
+    await expect(adapter.checkAvailability('model-1')).resolves.toEqual({
+      available: false,
+      reason: 'local_model_file_missing',
+    })
+  })
+
+  it('serializes tool descriptions and JSON schemas without executable functions', async () => {
+    const execute = vi.fn()
+    const serialized = await serializeLocalTools({
+      inspect: tool({
+        description: 'Inspect a project file',
+        inputSchema: z.object({ path: z.string() }),
+        execute,
+      }),
+    })
+
+    expect(serialized).toMatchObject({
+      inspect: {
+        description: 'Inspect a project file',
+        inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+      },
+    })
+    expect(JSON.stringify(serialized)).not.toContain('execute')
   })
 
   it('forwards cancellation to the native inference request', async () => {

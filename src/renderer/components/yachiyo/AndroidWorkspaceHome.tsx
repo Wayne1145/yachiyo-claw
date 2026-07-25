@@ -27,6 +27,7 @@ import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_acce
 import { createEmpty } from '@/stores/sessionActions'
 import { AgentConfigurationPanel } from './AgentConfigurationPanel'
 import { AndroidScheduledTasks } from './AndroidScheduledTasks'
+import { AndroidWorkspaceDeliveryPanel } from './AndroidWorkspaceDeliveryPanel'
 import { YachiyoMark } from './YachiyoMark'
 
 function StatusRow({
@@ -235,6 +236,8 @@ export function AndroidAgentWorkspace() {
       </section>
 
       <AgentConfigurationPanel onBackendChange={handleBackendChange} />
+
+      <AndroidWorkspaceDeliveryPanel />
 
       <section className="yachiyo-agent-access-panel">
         <IconShieldLock size={32} aria-hidden="true" />

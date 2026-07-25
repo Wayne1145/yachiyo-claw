@@ -58,6 +58,30 @@ final class LocalModelFormat {
         }
     }
 
+    static boolean hasCompleteGgufShardSet(File file) {
+        if (file == null || !file.isFile()) return false;
+        var matcher = GGUF_FIRST_SHARD.matcher(file.getName());
+        if (!matcher.matches()) return true;
+        String name = file.getName();
+        int marker = name.toLowerCase(Locale.ROOT).lastIndexOf("-00001-of-");
+        int suffix = name.length() - ".gguf".length();
+        if (marker < 0 || suffix <= marker + 10) return false;
+        int count;
+        try {
+            count = Integer.parseInt(name.substring(marker + 10, suffix));
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+        if (count < 1 || count > 99999) return false;
+        String prefix = name.substring(0, marker + 1);
+        String tail = name.substring(marker + 10);
+        for (int index = 1; index <= count; index++) {
+            File shard = new File(file.getParentFile(), prefix + String.format(Locale.ROOT, "%05d", index) + "-of-" + tail);
+            if (!shard.isFile()) return false;
+        }
+        return true;
+    }
+
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }

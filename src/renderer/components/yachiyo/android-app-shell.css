@@ -1771,7 +1771,7 @@ body:has(.yachiyo-mobile-shell),
 
   .yachiyo-interactive-header-actions {
     display: grid;
-    grid-template-columns: minmax(70px, 1fr) minmax(106px, auto) repeat(3, 32px);
+    grid-template-columns: minmax(70px, 1fr) 28px minmax(106px, auto) repeat(3, 32px);
     gap: 5px;
   }
 
@@ -1782,6 +1782,7 @@ body:has(.yachiyo-mobile-shell),
   }
 
   .yachiyo-interactive-mode-control {
+    width: 100%;
     min-width: 106px;
   }
 
@@ -1800,6 +1801,23 @@ body:has(.yachiyo-mobile-shell),
   .yachiyo-interactive-llm-selector span,
   .yachiyo-interactive-llm-selector > svg:last-child {
     display: none;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 360px) {
+  .yachiyo-interactive-header-actions {
+    grid-template-columns: minmax(50px, 1fr) 28px minmax(90px, auto) repeat(3, 30px);
+    gap: 3px;
+  }
+
+  .yachiyo-interactive-mode-control {
+    min-width: 90px;
+  }
+
+  .yachiyo-interactive-header-actions .mantine-ActionIcon-root {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
   }
 }
 

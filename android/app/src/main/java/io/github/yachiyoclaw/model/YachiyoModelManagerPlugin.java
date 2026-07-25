@@ -137,13 +137,23 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         if (job == null) {
             result.put("status", "unsupported").put("reason", "local_model_not_downloaded");
         } else {
-            File model = new File(job.optString("modelPath"));
+            File model;
+            try {
+                model = store.resolveRuntimeFile(job);
+            } catch (Exception error) {
+                result.put("status", "unsupported").put("reason", safeError(error));
+                call.resolve(result);
+                return;
+            }
             String runtime = LocalModelFormat.runtimeForPath(model.getPath());
-            boolean formatHealthy = runtime != null && (!"llama.cpp".equals(runtime) || LocalModelFormat.hasValidGgufHeader(model));
+            boolean headerHealthy = !"llama.cpp".equals(runtime) || LocalModelFormat.hasValidGgufHeader(model);
+            boolean shardsHealthy = !"llama.cpp".equals(runtime) || LocalModelFormat.hasCompleteGgufShardSet(model);
+            boolean formatHealthy = runtime != null && headerHealthy && shardsHealthy;
             result.put("status", model.isFile() && formatHealthy ? "supported" : "unsupported");
             if (!model.isFile()) result.put("reason", "local_model_file_missing");
             else if (runtime == null) result.put("reason", "local_model_format_unsupported");
-            else if (!formatHealthy) result.put("reason", "local_model_header_invalid");
+            else if (!headerHealthy) result.put("reason", "local_model_header_invalid");
+            else if (!shardsHealthy) result.put("reason", "local_model_shard_missing");
             else result.put("runtime", runtime);
         }
         call.resolve(result);
@@ -175,22 +185,23 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         String modelId = call.getString("modelId", "");
         String requestId = call.getString("requestId", "");
         JSArray messages = call.getArray("messages", new JSArray());
+        JSObject tools = call.getObject("tools", new JSObject());
         int maxTokens = call.getInt("maxTokens", 2048);
         inferenceExecutor.execute(() -> {
             try {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
-                String modelPath = job.getString("modelPath");
+                String modelPath = store.resolveRuntimeFile(job).getPath();
+                JSONArray preparedMessages = LocalToolProtocol.prepareMessages(new JSONArray(messages.toString()), tools);
                 String text;
                 if (modelPath.toLowerCase().endsWith(".litertlm")) {
-                    text = LiteRtLmRunner.infer(modelPath, new JSONArray(messages.toString()), maxTokens);
+                    text = LiteRtLmRunner.infer(modelPath, preparedMessages, maxTokens);
                 } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
-                    text = GgufRunner.infer(modelPath, new JSONArray(messages.toString()), maxTokens, requestId);
+                    text = GgufRunner.infer(modelPath, preparedMessages, maxTokens, requestId);
                 } else {
                     throw new IllegalArgumentException("local_model_not_chat_model");
                 }
-                JSArray events = new JSArray();
-                events.put(new JSObject().put("type", "text").put("text", text));
+                JSArray events = LocalToolProtocol.parseEvents(text, tools, requestId);
                 JSObject result = new JSObject().put("events", events);
                 if (!requestId.isBlank()) result.put("requestId", requestId);
                 call.resolve(result);

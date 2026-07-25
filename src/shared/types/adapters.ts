@@ -34,11 +34,13 @@ export interface RequestAdapter {
 /** Optional native/local inference boundary. Shared models never import Capacitor. */
 export interface LocalInferenceAdapter {
   isAvailable(modelId: string): Promise<boolean>
+  checkAvailability?(modelId: string): Promise<{ available: boolean; reason?: string; runtime?: string }>
   stream(
     modelId: string,
     input: {
       messages: unknown[]
       tools?: unknown
+      maxTokens?: number
       signal?: AbortSignal
     }
   ): AsyncGenerator<

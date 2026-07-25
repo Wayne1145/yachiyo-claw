@@ -1,10 +1,11 @@
 import { Alert, Badge, Box, Button, Code, Divider, Flex, Group, Modal, Progress, Stack, Text, Textarea, Title } from '@mantine/core'
-import { IconPlayerPlay, IconRefresh, IconTerminal2, IconTrash } from '@tabler/icons-react'
+import { IconDownload, IconPlayerPlay, IconPlayerStop, IconRefresh, IconTerminal2, IconTrash } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Page from '@/components/layout/Page'
 import {
   type NativeSandboxProgress,
+  type NativeSandboxJob,
   type NativeSandboxStatus,
   yachiyoSandboxNative,
 } from '@/platform/native/yachiyo_sandbox'
@@ -16,15 +17,35 @@ export const Route = createFileRoute('/settings/developer-environment')({
 function DeveloperEnvironmentPage() {
   const [status, setStatus] = useState<NativeSandboxStatus | null>(null)
   const [progress, setProgress] = useState<NativeSandboxProgress | null>(null)
-  const [busy, setBusy] = useState<'install' | 'run' | 'reset' | null>(null)
+  const [busy, setBusy] = useState<'install' | 'android-toolchain' | 'run' | 'reset' | null>(null)
   const [command, setCommand] = useState('python3 --version && node --version && git --version')
   const [output, setOutput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [resetOpen, setResetOpen] = useState(false)
+  const [jobs, setJobs] = useState<NativeSandboxJob[]>([])
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+  const [jobOutput, setJobOutput] = useState<Record<string, string>>({})
+  const outputOffsets = useRef<Record<string, { stdout: number; stderr: number }>>({})
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await yachiyoSandboxNative.status())
+      const [nextStatus, queue] = await Promise.all([
+        yachiyoSandboxNative.status(),
+        yachiyoSandboxNative.listJobs().catch(() => ({ jobs: [] as NativeSandboxJob[] })),
+      ])
+      setStatus(nextStatus)
+      setJobs(queue.jobs)
+      for (const job of queue.jobs) {
+        const offsets = outputOffsets.current[job.id] || { stdout: 0, stderr: 0 }
+        const chunk = await yachiyoSandboxNative
+          .readJobOutput({ jobId: job.id, stdoutOffset: offsets.stdout, stderrOffset: offsets.stderr })
+          .catch(() => null)
+        if (!chunk) continue
+        outputOffsets.current[job.id] = { stdout: chunk.stdoutOffset, stderr: chunk.stderrOffset }
+        if (chunk.stdout || chunk.stderr) {
+          setJobOutput((current) => ({ ...current, [job.id]: `${current[job.id] || ''}${chunk.stdout}${chunk.stderr}` }))
+        }
+      }
     } catch (statusError) {
       setError(statusError instanceof Error ? statusError.message : String(statusError))
     }
@@ -40,6 +61,12 @@ function DeveloperEnvironmentPage() {
       void handle?.remove()
     }
   }, [refresh])
+
+  useEffect(() => {
+    if (!jobs.some((job) => job.state === 'queued' || job.state === 'running')) return
+    const timer = window.setInterval(() => void refresh(), 1_500)
+    return () => window.clearInterval(timer)
+  }, [jobs, refresh])
 
   const install = async () => {
     setBusy('install')
@@ -66,6 +93,32 @@ function DeveloperEnvironmentPage() {
       setError(runError instanceof Error ? runError.message : String(runError))
     } finally {
       setBusy(null)
+    }
+  }
+
+  const installAndroidToolchain = async () => {
+    setBusy('android-toolchain')
+    setError(null)
+    try {
+      await yachiyoSandboxNative.init({ workingDirectory: 'default' })
+      const result = await yachiyoSandboxNative.installAndroidToolchain()
+      if (!result.accepted) throw new Error(result.reason || 'android_toolchain_install_unavailable')
+      setSelectedJobId(result.jobId || null)
+      await refresh()
+    } catch (installError) {
+      setError(installError instanceof Error ? installError.message : String(installError))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const stopJob = async (jobId: string) => {
+    setError(null)
+    try {
+      await yachiyoSandboxNative.stopJob({ jobId })
+      await refresh()
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : String(stopError))
     }
   }
 
@@ -134,6 +187,40 @@ function DeveloperEnvironmentPage() {
             </Button>
           )}
 
+          {status?.toolchainReady && (
+            <Flex justify="space-between" align="center" gap="md" wrap="wrap">
+              <div>
+                <Group gap="xs">
+                  <Text fw={700}>Android SDK / Gradle</Text>
+                  <Badge color={status.androidToolchainReady ? 'green' : 'gray'} variant="light" radius="xl">
+                    {status.androidToolchainReady ? '已就绪' : '未安装'}
+                  </Badge>
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {status.androidToolchainVariant === 'arm64-patched-aapt2'
+                    ? 'ARM64 工具链，使用校验后的原生 AAPT2'
+                    : status.androidToolchainVariant === 'x86_64-official'
+                      ? 'Google 官方 x86_64 Android SDK 工具链'
+                      : '当前 CPU 架构不支持完整 Android 构建工具链'}
+                </Text>
+              </div>
+              {!status.androidToolchainReady && (
+                <Button
+                  size="xs"
+                  radius="xl"
+                  variant="light"
+                  color="pink"
+                  leftSection={<IconDownload size={16} />}
+                  loading={busy === 'android-toolchain'}
+                  disabled={!status.androidToolchainSupported || busy !== null}
+                  onClick={() => void installAndroidToolchain()}
+                >
+                  安装工具链
+                </Button>
+              )}
+            </Flex>
+          )}
+
           <Divider />
 
           <Stack gap="sm">
@@ -159,6 +246,50 @@ function DeveloperEnvironmentPage() {
               运行
             </Button>
             {output && <Code block mah={280} style={{ overflow: 'auto', whiteSpace: 'pre-wrap' }}>{output}</Code>}
+          </Stack>
+
+          <Divider />
+
+          <Stack gap="xs">
+            <Flex justify="space-between" align="center">
+              <Text fw={700}>后台任务</Text>
+              <Badge variant="light" color="gray" radius="xl">{jobs.length}</Badge>
+            </Flex>
+            {jobs.length === 0 && <Text size="sm" c="dimmed">暂无后台构建或开发服务。</Text>}
+            {jobs.slice(0, 12).map((job) => {
+              const active = job.state === 'queued' || job.state === 'running'
+              return (
+                <Box key={job.id} p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}>
+                  <Flex justify="space-between" align="center" gap="sm">
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={600} truncate>{job.id}</Text>
+                      <Text size="xs" c="dimmed">{job.state}{job.exitCode == null ? '' : ` · exit ${job.exitCode}`}</Text>
+                    </div>
+                    <Group gap={4} wrap="nowrap">
+                      <Button size="compact-xs" variant="subtle" color="gray" onClick={() => setSelectedJobId(job.id)}>
+                        日志
+                      </Button>
+                      {active && (
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          color="red"
+                          aria-label="停止后台任务"
+                          onClick={() => void stopJob(job.id)}
+                        >
+                          <IconPlayerStop size={15} />
+                        </Button>
+                      )}
+                    </Group>
+                  </Flex>
+                </Box>
+              )
+            })}
+            {selectedJobId && (
+              <Code block mah={220} style={{ overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                {jobOutput[selectedJobId] || '等待任务输出...'}
+              </Code>
+            )}
           </Stack>
 
           <Divider />

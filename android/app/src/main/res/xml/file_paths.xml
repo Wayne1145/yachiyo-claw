@@ -2,4 +2,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-files-path name="camera_images" path="Pictures/" />
     <cache-path name="verified_updates" path="verified-updates/" />
+    <cache-path name="workspace_exports" path="workspace-exports/" />
 </paths>

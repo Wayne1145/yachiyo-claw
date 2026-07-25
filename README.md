@@ -204,4 +204,14 @@ Yachiyo Claw 是独立的开源项目，与影片制作方、发行方、Netflix
 
 本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款。
 
+## v0.0.10
+
+- Local GGUF and LiteRT-LM chat models can request allowlisted Agent tools. Calls are schema-validated and continue through the shared Tool Broker; the native runtime never executes model-authored commands directly.
+- Interrupted Agent runs retain checkpoints, completed tool-step state, drafts, and pending approvals. Persistent sandbox commands are owned by a foreground service rather than the WebView lifecycle.
+- Vibe Coding includes SAF workspace import/export, write-back, ZIP sharing, localhost preview, explicit deployment commands, and a controlled WebView browser Skill. It is not a bundled Playwright Chromium binary.
+- The optional Android SDK/Gradle installation job uses Google command-line tools on x86_64 and a pinned, verified AAPT2 compatibility override on ARM64.
+- The interactive header has six responsive grid slots, preventing mode controls from being hidden at 1440x3200 portrait viewport sizes.
+
+Known constraints: GGUF remains CPU inference and the local tool protocol relies on models following the documented structured call format. A full Snapdragon/Dimensity performance matrix, GGUF multimodal projector support, and a bundled Android Playwright runtime remain future work.
+
 Copyright (c) NewDreamStudio and contributors.
