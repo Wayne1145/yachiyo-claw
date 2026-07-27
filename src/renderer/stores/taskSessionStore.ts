@@ -155,12 +155,16 @@ export async function updateTaskSession(id: string, updates: Partial<TaskSession
   const updated = await getStorage().update(id, { ...updates, updatedAt: Date.now() })
   if (!updated) {
     log.info('Task session not found for update:', id)
-  } else if (updated.linkedSessionId) {
-    try {
-      const { syncTaskSessionToChat } = await import('@/mobile/conversation-sync')
-      await syncTaskSessionToChat(updated)
-    } catch (error) {
-      log.error('Failed to sync linked chat session:', error)
+  } else {
+    queryClient.setQueryData([TASK_SESSION_QUERY_KEY, id], updated)
+    void queryClient.invalidateQueries({ queryKey: [TASK_SESSION_LIST_QUERY_KEY] })
+    if (updated.linkedSessionId) {
+      try {
+        const { syncTaskSessionToChat } = await import('@/mobile/conversation-sync')
+        await syncTaskSessionToChat(updated)
+      } catch (error) {
+        log.error('Failed to sync linked chat session:', error)
+      }
     }
   }
   return updated

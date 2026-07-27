@@ -28,7 +28,7 @@ export function listRunnableLocalModelArtifacts(artifacts: ModelArtifact[], maxB
 export function resolveLocalModelArtifactGroup(
   selected: ModelArtifact,
   allArtifacts: ModelArtifact[],
-  maxTotalBytes: number,
+  maxTotalBytes: number
 ): ModelArtifact[] {
   if (selected.format !== 'gguf') return [selected]
   const selectedName = selected.filename || selected.path
@@ -49,6 +49,25 @@ export function resolveLocalModelArtifactGroup(
   return group
 }
 
+export function preferredRunnableLocalModelArtifactGroup(
+  artifacts: ModelArtifact[],
+  maxTotalBytes: number
+): ModelArtifact[] {
+  const preferred = listRunnableLocalModelArtifacts(artifacts, maxTotalBytes)[0]
+  return preferred ? resolveLocalModelArtifactGroup(preferred, artifacts, maxTotalBytes) : []
+}
+
+/** Exact bytes for the artifact choice shown first in the model detail screen. */
+export function preferredRunnableLocalModelDownloadBytes(
+  artifacts: ModelArtifact[],
+  maxTotalBytes: number
+): number | undefined {
+  const group = preferredRunnableLocalModelArtifactGroup(artifacts, maxTotalBytes)
+  if (group.length === 0) return undefined
+  const bytes = group.reduce((total, artifact) => total + (artifact.sizeBytes || 0), 0)
+  return bytes > 0 ? bytes : undefined
+}
+
 export function localModelRuntimeForArtifact(artifact: ModelArtifact) {
   if (artifact.format === 'gguf') return 'llama.cpp' as const
   if (artifact.format === 'tflite') return 'mediapipe-text' as const
@@ -60,11 +79,7 @@ export function buildSelectedLocalModel(model: RemoteModel, artifacts: ModelArti
   const storageSizeBytes = artifacts.reduce((total, artifact) => total + (artifact.sizeBytes || 0), 0)
   const formats = [...new Set(artifacts.map((artifact) => artifact.format))]
   const runtimeCandidates = [
-    ...new Set(
-      artifacts
-        .map((artifact) => artifact.runtime || localModelRuntimeForArtifact(artifact))
-        .filter(Boolean),
-    ),
+    ...new Set(artifacts.map((artifact) => artifact.runtime || localModelRuntimeForArtifact(artifact)).filter(Boolean)),
   ]
   const ramMultiplier = artifacts.some((artifact) => artifact.format === 'gguf') ? 1.35 : 1.25
   return {

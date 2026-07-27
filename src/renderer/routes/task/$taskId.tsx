@@ -30,7 +30,6 @@ import WindowControls from '@/components/layout/WindowControls'
 import Markdown, { BlockCodeCollapsedStateProvider } from '@/components/Markdown'
 import DirectoryMenu from '@/components/task/DirectoryMenu'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
-import { getAgentBackend } from '@/mobile/agent-broker'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import useNeedRoomForWinControls from '@/hooks/useNeedRoomForWinControls'
 import { useProviders } from '@/hooks/useProviders'
@@ -357,7 +356,6 @@ function TaskMessageBubble({ message, sessionName }: { message: Message; session
 function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskSessionRecord>['data']> }) {
   const modelRegistryVersion = useModelRegistryVersion()
   const inAndroidAppShell = useInAndroidAppShell()
-  const mobileAgentBackend = getAgentBackend()
   const mobileAgentConfig = getAgentSessionConfig(session.id)
 
   const { t } = useTranslation()
@@ -435,7 +433,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
       }
       lastUsedModelStore.getState().setTaskModel(provider, modelId)
     },
-    [session.id, session.settings, queryClient],
+    [session.id, session.settings, queryClient]
   )
 
   const handleReasoningStrength = useCallback(
@@ -445,7 +443,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
       })
       if (updated) queryClient.setQueryData([TASK_SESSION_QUERY_KEY, session.id], updated)
     },
-    [session.id, session.settings, queryClient],
+    [session.id, session.settings, queryClient]
   )
 
   const handleSelectDirectory = useCallback(
@@ -460,7 +458,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
         queryClient.setQueryData([TASK_SESSION_QUERY_KEY, session.id], updated)
       }
     },
-    [session.id, session.workingDirectory, queryClient],
+    [session.id, session.workingDirectory, queryClient]
   )
 
   const handleSend = useCallback(
@@ -468,7 +466,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
       if (generating) return
       await submitTaskMessage(session.id, constructedMessage, { needGenerating, onUserMessageReady })
     },
-    [generating, session.id],
+    [generating, session.id]
   )
 
   const handleStop = useCallback(() => {
@@ -487,7 +485,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
     requestAnimationFrame(() => {
       if (scrollAreaRef.current) {
         const viewport = scrollAreaRef.current.querySelector(
-          '[data-radix-scroll-area-viewport], .mantine-ScrollArea-viewport',
+          '[data-radix-scroll-area-viewport], .mantine-ScrollArea-viewport'
         )
         if (viewport) {
           viewport.scrollTop = viewport.scrollHeight
@@ -604,60 +602,48 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
               onSubmit={handleSend}
               onStopGenerating={handleStop}
             />
-            <Flex align="center" justify="space-between">
-              {inAndroidAppShell ? (
-                <Text size="xs" c="dimmed">
-                  {!mobileAgentConfig.deviceControlEnabled
-                    ? t('内部工具 Agent')
-                    : mobileAgentBackend === 'accessibility'
-                      ? t('无障碍设备 Agent')
-                      : mobileAgentBackend === 'shizuku'
-                        ? t('Shizuku 设备 Agent')
-                        : t('Root 设备 Agent')}
-                </Text>
-              ) : (
+            {!inAndroidAppShell && (
+              <Flex align="center" justify="space-between">
                 <DirectoryMenu currentDirectory={session.workingDirectory} onSelect={handleSelectDirectory} />
-              )}
-              <Flex align="center" gap={4}>
-                <ReasoningStrengthControl settings={session.settings} onChange={handleReasoningStrength} compact />
-                <TokenCountMenu
-                  currentInputTokens={currentInputTokens}
-                  contextTokens={contextTokens}
-                  totalTokens={totalTokens}
-                  isCalculating={isCalculating}
-                  pendingTasks={pendingTasks}
-                  totalContextMessages={messageCount}
-                  contextWindow={contextWindow ?? undefined}
-                >
-                  <Flex
-                    align="center"
-                    gap="2"
-                    className={[
-                      'text-xs cursor-pointer hover:text-chatbox-tint-secondary',
-                      'transition-colors px-2 py-1 rounded-lg',
-                      'hover:bg-[var(--chatbox-background-tertiary)]',
-                      tokenPercentage && tokenPercentage > 80 ? 'text-red-500' : 'text-chatbox-tint-tertiary',
-                    ].join(' ')}
+                <Flex align="center" gap={4}>
+                  <ReasoningStrengthControl settings={session.settings} onChange={handleReasoningStrength} compact />
+                  <TokenCountMenu
+                    currentInputTokens={currentInputTokens}
+                    contextTokens={contextTokens}
+                    totalTokens={totalTokens}
+                    isCalculating={isCalculating}
+                    pendingTasks={pendingTasks}
+                    totalContextMessages={messageCount}
+                    contextWindow={contextWindow ?? undefined}
                   >
-                    <ScalableIcon icon={IconArrowUp} size={14} />
-                    {isCalculating && <Loader size={10} />}
-                    <Text span size="xs" className="whitespace-nowrap" c="inherit">
-                      {isCalculating ? '~' : ''}
-                      {formatNumber(totalTokens)}
-                      {contextWindow ? ` / ${formatNumber(contextWindow)}` : ''}
-                      {tokenPercentage !== null ? ` (${tokenPercentage}%)` : ''}
+                    <Flex
+                      align="center"
+                      gap="2"
+                      className={[
+                        'text-xs cursor-pointer hover:text-chatbox-tint-secondary',
+                        'transition-colors px-2 py-1 rounded-lg',
+                        'hover:bg-[var(--chatbox-background-tertiary)]',
+                        tokenPercentage && tokenPercentage > 80 ? 'text-red-500' : 'text-chatbox-tint-tertiary',
+                      ].join(' ')}
+                    >
+                      <ScalableIcon icon={IconArrowUp} size={14} />
+                      {isCalculating && <Loader size={10} />}
+                      <Text span size="xs" className="whitespace-nowrap" c="inherit">
+                        {isCalculating ? '~' : ''}
+                        {formatNumber(totalTokens)}
+                        {contextWindow ? ` / ${formatNumber(contextWindow)}` : ''}
+                        {tokenPercentage !== null ? ` (${tokenPercentage}%)` : ''}
+                      </Text>
+                    </Flex>
+                  </TokenCountMenu>
+                  {providerModelInfo && !providerModelInfo.capabilities?.includes('tool_use') && (
+                    <Text size="xs" c="dimmed">
+                      {`${t('Chat only')}: ${t('This model does not support Agent tools')}`}
                     </Text>
-                  </Flex>
-                </TokenCountMenu>
-                {providerModelInfo && !providerModelInfo.capabilities?.includes('tool_use') && (
-                  <Text size="xs" c="dimmed">
-                    {inAndroidAppShell
-                      ? t('仅聊天：当前模型未声明 Agent 工具调用能力')
-                      : `${t('Chat only')}: ${t('This model does not support Agent tools')}`}
-                  </Text>
-                )}
+                  )}
+                </Flex>
               </Flex>
-            </Flex>
+            )}
           </Stack>
         </Box>
       </Box>

@@ -41,6 +41,7 @@ import {
   buildSelectedLocalModel,
   listRunnableLocalModelArtifacts,
   localModelRuntimeForArtifact,
+  preferredRunnableLocalModelDownloadBytes,
   resolveLocalModelArtifactGroup,
 } from '@/mobile/local-model-artifacts'
 import { createMobileModelCatalogController, searchMobileModelCatalog } from '@/mobile/model-catalog-controller'
@@ -132,6 +133,7 @@ export function LocalModelCenter() {
   const [query, setQuery] = useState('gguf')
   const [source, setSource] = useState<SourceFilter>('all')
   const [models, setModels] = useState<RemoteModel[]>([])
+  const [downloadBytesByModel, setDownloadBytesByModel] = useState<Record<string, number | null>>({})
   const [selected, setSelected] = useState<RemoteModel>()
   const [detail, setDetail] = useState<RemoteModel>()
   const [profile, setProfile] = useState<DeviceCompatibilityProfile>()
@@ -152,6 +154,45 @@ export function LocalModelCenter() {
   const downloadSamplesRef = useRef<Record<string, DownloadSample>>({})
   const refreshRunIdRef = useRef(0)
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
+
+  const modelSizeKey = useCallback((model: RemoteModel) => `${model.source}:${model.id}`, [])
+
+  const hydrateDownloadSizes = useCallback(
+    async (found: RemoteModel[], signal: AbortSignal) => {
+      const initial = Object.fromEntries(
+        found.flatMap((model) => {
+          const bytes = preferredRunnableLocalModelDownloadBytes(model.artifacts, MAX_MODEL_BYTES)
+          return bytes ? [[modelSizeKey(model), bytes] as const] : []
+        })
+      )
+      setDownloadBytesByModel(initial)
+
+      let cursor = 0
+      const workers = Array.from({ length: Math.min(4, found.length) }, async () => {
+        while (!signal.aborted) {
+          const index = cursor++
+          const model = found[index]
+          if (!model) return
+          const key = modelSizeKey(model)
+          if (initial[key] !== undefined) continue
+          try {
+            const complete = await controller.getModel(model.source, model.repository, {
+              revision: model.revision,
+              includeArtifacts: true,
+              signal,
+            })
+            if (signal.aborted) return
+            const bytes = preferredRunnableLocalModelDownloadBytes(complete.artifacts, MAX_MODEL_BYTES) ?? null
+            setDownloadBytesByModel((current) => ({ ...current, [key]: bytes }))
+          } catch {
+            if (!signal.aborted) setDownloadBytesByModel((current) => ({ ...current, [key]: null }))
+          }
+        }
+      })
+      await Promise.all(workers)
+    },
+    [modelSizeKey]
+  )
 
   const refreshJobs = useCallback(async () => {
     if (!Capacitor.isNativePlatform()) return
@@ -198,7 +239,7 @@ export function LocalModelCenter() {
         })
       }
     },
-    [refreshJobs, t],
+    [refreshJobs, t]
   )
 
   useEffect(() => {
@@ -240,6 +281,7 @@ export function LocalModelCenter() {
       setLoading(true)
       setError('')
       setModels([])
+      setDownloadBytesByModel({})
       try {
         const sources: ModelCatalogSource[] =
           selectedSource === 'all' ? ['huggingface', 'modelscope'] : [selectedSource]
@@ -247,18 +289,20 @@ export function LocalModelCenter() {
           controller,
           sources,
           { query: query.trim() || 'litertlm', limit: 30 },
-          { signal: searchAbort.signal },
+          { signal: searchAbort.signal }
         )
         if (searchAbort.signal.aborted) return
         const found = result.models
-        setModels(found.sort((left, right) => (right.downloads || 0) - (left.downloads || 0)))
+        const sorted = found.sort((left, right) => (right.downloads || 0) - (left.downloads || 0))
+        setModels(sorted)
+        void hydrateDownloadSizes(sorted, searchAbort.signal)
         if (!found.length)
           setError(
             result.failures.length === sources.length
               ? sources.length === 1
                 ? t('{{source}} 当前无法访问，请稍后重试。', { source: sourceLabel(t, sources[0]) })
                 : t('两个模型平台当前都无法访问，请稍后重试。')
-              : t('没有找到匹配模型。'),
+              : t('没有找到匹配模型。')
           )
       } catch (cause) {
         if (searchAbort.signal.aborted) return
@@ -267,7 +311,7 @@ export function LocalModelCenter() {
         if (searchAbortRef.current === searchAbort) setLoading(false)
       }
     },
-    [query, source, t],
+    [hydrateDownloadSizes, query, source, t]
   )
 
   useEffect(() => () => searchAbortRef.current?.abort(), [])
@@ -301,24 +345,24 @@ export function LocalModelCenter() {
     : undefined
   const runnableArtifacts = useMemo(
     () => listRunnableLocalModelArtifacts(detail?.artifacts || [], MAX_MODEL_BYTES),
-    [detail],
+    [detail]
   )
   const artifact = useMemo(
     () => runnableArtifacts.find((item) => item.id === selectedArtifactId) || runnableArtifacts[0],
-    [runnableArtifacts, selectedArtifactId],
+    [runnableArtifacts, selectedArtifactId]
   )
   const artifactGroup = useMemo(
     () => (artifact && detail ? resolveLocalModelArtifactGroup(artifact, detail.artifacts, MAX_MODEL_BYTES) : []),
-    [artifact, detail],
+    [artifact, detail]
   )
   const artifactGroupBytes = artifactGroup.reduce((total, item) => total + (item.sizeBytes || 0), 0)
   const selectedLocalModel = useMemo(
     () => (detail && artifactGroup.length > 0 ? buildSelectedLocalModel(detail, artifactGroup) : undefined),
-    [artifactGroup, detail],
+    [artifactGroup, detail]
   )
   const report = useMemo(
     () => (selectedLocalModel && profile ? controller.checkCompatibility(selectedLocalModel, profile) : undefined),
-    [profile, selectedLocalModel],
+    [profile, selectedLocalModel]
   )
   const downloadJobs = useMemo(() => {
     const statusOrder: Record<DownloadJob['status'], number> = {
@@ -330,7 +374,7 @@ export function LocalModelCenter() {
       cancelled: 5,
     }
     return [...jobs].sort(
-      (left, right) => statusOrder[left.status] - statusOrder[right.status] || right.updatedAt - left.updatedAt,
+      (left, right) => statusOrder[left.status] - statusOrder[right.status] || right.updatedAt - left.updatedAt
     )
   }, [jobs])
   const activeDownloadCount = jobs.filter((job) => job.status === 'queued' || job.status === 'downloading').length
@@ -365,7 +409,7 @@ export function LocalModelCenter() {
             { loaded: false },
           ] as const
         }
-      }),
+      })
     ).then((entries) => {
       if (!active) return
       setHealthByModelId(Object.fromEntries(entries.map(([modelId, health]) => [modelId, health])))
@@ -381,7 +425,7 @@ export function LocalModelCenter() {
               percent: runtime.loaded ? 100 : 0,
               runtime: 'runtime' in runtime ? runtime.runtime : undefined,
             },
-          ]),
+          ])
         ),
       }))
     })
@@ -462,8 +506,8 @@ export function LocalModelCenter() {
         Object.entries(current).map(([id, state]) => [
           id,
           { ...state, loaded: false, loading: false, stage: 'idle', percent: 0 },
-        ]),
-      ),
+        ])
+      )
     )
   }
 
@@ -1109,6 +1153,7 @@ export function LocalModelCenter() {
       <div className="local-model-results" aria-busy={loading}>
         {models.map((model) => {
           const installed = jobs.some((job) => job.modelId === model.id && job.status === 'completed')
+          const downloadableBytes = downloadBytesByModel[modelSizeKey(model)]
           return (
             <button
               key={`${model.source}:${model.id}`}
@@ -1144,7 +1189,15 @@ export function LocalModelCenter() {
                 </span>
               </span>
               <span className="local-model-row-meta">
-                <strong>{formatBytes(t, model.storageSizeBytes)}</strong>
+                <strong>
+                  {downloadableBytes === undefined ? (
+                    <Loader size={13} color="gray" />
+                  ) : downloadableBytes === null ? (
+                    t('Unavailable')
+                  ) : (
+                    formatBytes(t, downloadableBytes)
+                  )}
+                </strong>
                 <small>
                   {model.downloads
                     ? t('{{count}} 次下载', { count: model.downloads.toLocaleString() })

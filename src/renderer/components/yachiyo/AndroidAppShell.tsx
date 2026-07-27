@@ -1,6 +1,6 @@
 import { App } from '@capacitor/app'
 import { ActionIcon } from '@mantine/core'
-import { IconChevronLeft, IconHistory, IconPuzzle } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronLeft, IconChevronUp, IconHistory, IconPuzzle } from '@tabler/icons-react'
 import { useLocation } from '@tanstack/react-router'
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -34,6 +34,7 @@ import { createEmpty, switchCurrentSession } from '@/stores/sessionActions'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
 import { getTaskSession, listAllTaskSessions, taskSessionStore, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AgentSessionControls } from './AgentSessionControls'
+import Toolbar from '@/components/layout/Toolbar'
 import { AndroidAppShellContext } from './AndroidAppShellContext'
 import { AndroidBottomNavigation } from './AndroidBottomNavigation'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
@@ -51,9 +52,10 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const lastConversationPathname = useRef(
     location.pathname === '/' || location.pathname.startsWith('/session/') || location.pathname.startsWith('/task/')
       ? location.pathname
-      : '/',
+      : '/'
   )
   const [historyOpened, setHistoryOpened] = useState(false)
+  const [conversationHeaderCollapsed, setConversationHeaderCollapsed] = useState(false)
   const customProviders = useSettingsStore((state) => state.customProviders)
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
   const licenseKey = useSettingsStore((state) => state.licenseKey)
@@ -63,7 +65,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const contributionPluginIds = usePluginStore((state) => state.contributionPluginIds)
   const settings = useMemo(
     () => ({ customProviders, defaultChatModel, licenseKey, providers }),
-    [customProviders, defaultChatModel, licenseKey, providers],
+    [customProviders, defaultChatModel, licenseKey, providers]
   )
   const hasProvider = useMemo(() => hasConfiguredModelProvider(settings), [settings])
   const enabledFeatureIds = useMemo(() => getEnabledFeatureIds('android', featureOverrides), [featureOverrides])
@@ -92,11 +94,11 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const activePlugin = installedPlugins.find(
     (record) =>
       location.pathname === `/plugin/${record.manifest.id}` ||
-      location.pathname.startsWith(`/plugin/${record.manifest.id}/`),
+      location.pathname.startsWith(`/plugin/${record.manifest.id}/`)
   )
   const activeTab = activePlugin ? `plugin-${activePlugin.manifest.id}` : resolveAndroidShellTab(location.pathname)
   const activeTabLabel = t(
-    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天',
+    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天'
   )
   const workspaceView = resolveAndroidShellWorkspaceView(location.pathname)
   const isAllowedPath = isAllowedAndroidShellPath(location.pathname)
@@ -123,7 +125,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       startPendingThemeImportRecovery(() => {
         void router.navigate({ to: '/settings/themes' })
       }),
-    [],
+    []
   )
 
   useEffect(() => {
@@ -137,7 +139,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       try {
         const tasks = await listAllTaskSessions()
         const protectedIds = new Set(
-          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
         )
         await pruneAbandonedEmptySessions(60_000, protectedIds)
       } catch {
@@ -296,6 +298,8 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const { session: headerChatSession } = useSession(chatMatch?.[1] || null)
   const { data: headerTaskSession } = useTaskSessionRecord(taskMatch?.[1] || null)
   const conversationTitle = headerTaskSession?.name || headerChatSession?.name
+  const toolbarSessionId = chatMatch?.[1] || headerTaskSession?.linkedSessionId
+  const showConversationTools = activeTab === 'chat'
 
   const handleAgentToggle = async (enabled: boolean) => {
     if (enabled) {
@@ -365,47 +369,81 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
           onClose={() => setHistoryOpened(false)}
         />
         {!isInteractive && (
-          <header className="yachiyo-mobile-header">
-            {isSettingsDetail ? (
+          <div
+            className="yachiyo-mobile-header-drawer"
+            data-collapsed={activeTab === 'chat' && conversationHeaderCollapsed ? 'true' : 'false'}
+          >
+            <div className="yachiyo-mobile-header-drawer-inner">
+              <header className="yachiyo-mobile-header">
+                {isSettingsDetail ? (
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size={36}
+                    aria-label={String(t('返回设置'))}
+                    onClick={() => router.navigate({ to: '/settings' })}
+                  >
+                    <IconChevronLeft size={22} />
+                  </ActionIcon>
+                ) : (
+                  <YachiyoMark size={36} />
+                )}
+                <div className="yachiyo-mobile-title">
+                  <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
+                  <span>{isAgentTaskPath ? t('Agent 对话') : activeTabLabel}</span>
+                </div>
+                {showConversationTools && (
+                  <div className="yachiyo-mobile-conversation-tools">
+                    <Toolbar sessionId={toolbarSessionId} androidShell />
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size={36}
+                      aria-label={String(t('会话记录'))}
+                      onClick={() => setHistoryOpened(true)}
+                    >
+                      <IconHistory size={21} />
+                    </ActionIcon>
+                  </div>
+                )}
+                <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
+                  <span aria-hidden="true" />
+                  {hasProvider ? t('已连接') : t('未连接')}
+                </div>
+                {activeTab === 'chat' && (
+                  <AgentSessionControls
+                    sessionId={conversationConfigId}
+                    enabled={isAgentTaskPath}
+                    onToggle={handleAgentToggle}
+                  />
+                )}
+                {activeTab === 'chat' && (
+                  <ActionIcon
+                    className="yachiyo-mobile-header-collapse"
+                    variant="subtle"
+                    color="gray"
+                    size={30}
+                    aria-label={String(t('收起顶部'))}
+                    onClick={() => setConversationHeaderCollapsed(true)}
+                  >
+                    <IconChevronUp size={18} />
+                  </ActionIcon>
+                )}
+              </header>
+            </div>
+            {activeTab === 'chat' && conversationHeaderCollapsed && (
               <ActionIcon
+                className="yachiyo-mobile-header-expand"
                 variant="subtle"
                 color="gray"
-                size={36}
-                aria-label={String(t('返回设置'))}
-                onClick={() => router.navigate({ to: '/settings' })}
+                size={34}
+                aria-label={String(t('展开顶部'))}
+                onClick={() => setConversationHeaderCollapsed(false)}
               >
-                <IconChevronLeft size={22} />
-              </ActionIcon>
-            ) : (
-              <YachiyoMark size={36} />
-            )}
-            <div className="yachiyo-mobile-title">
-              <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
-              <span>{isAgentTaskPath ? t('Agent 对话') : activeTabLabel}</span>
-            </div>
-            {activeTab === 'chat' && (
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size={36}
-                aria-label={String(t('会话记录'))}
-                onClick={() => setHistoryOpened(true)}
-              >
-                <IconHistory size={21} />
+                <IconChevronDown size={19} />
               </ActionIcon>
             )}
-            <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
-              <span aria-hidden="true" />
-              {hasProvider ? t('已连接') : t('未连接')}
-            </div>
-            {activeTab === 'chat' && (
-              <AgentSessionControls
-                sessionId={conversationConfigId}
-                enabled={isAgentTaskPath}
-                onToggle={handleAgentToggle}
-              />
-            )}
-          </header>
+          </div>
         )}
 
         <div key={location.pathname} className="yachiyo-mobile-content">

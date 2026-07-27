@@ -50,6 +50,15 @@ function renderCenter() {
 }
 
 describe('ThemeCenter', () => {
+  it('offers the built-in liquid-glass theme without adding it to removable installs', () => {
+    renderCenter()
+    fireEvent.click(screen.getByRole('button', { name: '使用' }))
+
+    expect(screen.getByText('Yachiyo 液态玻璃')).toBeTruthy()
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('liquid-glass')
+    expect(useThemeStore.getState().installed).toHaveLength(0)
+  })
+
   it('previews safely without persisting, then installs and activates explicitly', () => {
     renderCenter()
     fireEvent.change(screen.getByLabelText('主题 JSON'), { target: { value: validTheme } })

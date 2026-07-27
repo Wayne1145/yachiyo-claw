@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { parseThemeManifest, resolveThemeVariables, type ThemeManifest } from '@shared/themes/theme'
+import { parseThemeManifest, resolveThemeVariables, ThemeManifestError, type ThemeManifest } from '@shared/themes/theme'
 import { uiStore } from './uiStore'
 
 /**
@@ -12,6 +12,39 @@ import { uiStore } from './uiStore'
 
 const STORAGE_INSTALLED = 'yachiyo:themes:installed:v1'
 const STORAGE_ACTIVE = 'yachiyo:themes:active:v1'
+export const BUILT_IN_LIQUID_GLASS_THEME_ID = 'yachiyo-liquid-glass'
+
+export const BUILT_IN_LIQUID_GLASS_THEME: ThemeManifest = parseThemeManifest({
+  schemaVersion: 1,
+  id: BUILT_IN_LIQUID_GLASS_THEME_ID,
+  name: 'Yachiyo Liquid Glass',
+  version: '1.0.0',
+  author: { name: 'NewDreamStudio' },
+  mode: 'both',
+  tokens: {
+    'tint-primary': '#17181b',
+    'tint-secondary': '#4f555c',
+    'tint-tertiary': '#747b84',
+    'tint-brand': '#d87597',
+    'border-primary': '#dfe3e8',
+    'border-secondary': '#ebedf0',
+    'border-brand': '#e68eaa',
+    'background-primary': '#ffffff',
+    'background-primary-hover': '#f8f9fb',
+    'background-secondary': 'rgba(246, 247, 249, 0.78)',
+    'background-secondary-hover': 'rgba(238, 240, 244, 0.86)',
+    'background-tertiary': 'rgba(232, 235, 240, 0.68)',
+    'background-tertiary-hover': 'rgba(225, 229, 235, 0.78)',
+    'background-brand-primary': '#e68eaa',
+    'background-brand-primary-hover': '#d87597',
+    'background-brand-secondary': 'rgba(230, 142, 170, 0.14)',
+    'background-brand-secondary-hover': 'rgba(230, 142, 170, 0.22)',
+  },
+})
+
+function isBuiltInThemeId(id: string | null | undefined): id is typeof BUILT_IN_LIQUID_GLASS_THEME_ID {
+  return id === BUILT_IN_LIQUID_GLASS_THEME_ID
+}
 
 // Android's built-in palette is the base layer. Third-party themes override only the tokens they
 // declare, so a small accent-only theme never falls back to Chatbox's blue defaults.
@@ -41,7 +74,8 @@ function loadInstalled(): ThemeManifest[] {
     const valid: ThemeManifest[] = []
     for (const item of list) {
       try {
-        valid.push(parseThemeManifest(item))
+        const theme = parseThemeManifest(item)
+        if (!isBuiltInThemeId(theme.id)) valid.push(theme)
       } catch {
         // Drop anything that no longer validates rather than trusting persisted bytes.
       }
@@ -100,9 +134,10 @@ interface ThemeStoreState {
 
 const initialInstalled = loadInstalled()
 const storedActiveThemeId = loadActive()
-const initialActiveThemeId = initialInstalled.some((theme) => theme.id === storedActiveThemeId)
-  ? storedActiveThemeId
-  : null
+const initialActiveThemeId =
+  isBuiltInThemeId(storedActiveThemeId) || initialInstalled.some((theme) => theme.id === storedActiveThemeId)
+    ? storedActiveThemeId
+    : null
 if (storedActiveThemeId && !initialActiveThemeId) persistActive(null)
 
 export const useThemeStore = create<ThemeStoreState>((set, get) => ({
@@ -111,6 +146,8 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   previewingTheme: null,
   install(json) {
     const theme = parseThemeManifest(json)
+    if (isBuiltInThemeId(theme.id))
+      throw new ThemeManifestError('Invalid theme: this id is reserved for a built-in theme.')
     const installed = [...get().installed.filter((existing) => existing.id !== theme.id), theme]
     persistInstalled(installed)
     set({ installed })
@@ -118,6 +155,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     return theme
   },
   remove(id) {
+    if (isBuiltInThemeId(id)) return
     const installed = get().installed.filter((existing) => existing.id !== id)
     persistInstalled(installed)
     const activeThemeId = get().activeThemeId === id ? null : get().activeThemeId
@@ -127,7 +165,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     applyActiveTheme()
   },
   setActive(id) {
-    if (id && !get().installed.some((existing) => existing.id === id)) return
+    if (id && !isBuiltInThemeId(id) && !get().installed.some((existing) => existing.id === id)) return
     persistActive(id)
     set({ activeThemeId: id, previewingTheme: null })
     applyActiveTheme()
@@ -181,11 +219,18 @@ function resolveAndroidThemeVariables(theme: ThemeManifest): Record<string, stri
 /** Applies the active theme's variables for the current light/dark scheme, or clears them. */
 export function applyActiveTheme(): void {
   const { activeThemeId, installed, previewingTheme } = useThemeStore.getState()
-  const theme = activeThemeId ? installed.find((existing) => existing.id === activeThemeId) : undefined
+  const theme = isBuiltInThemeId(activeThemeId)
+    ? BUILT_IN_LIQUID_GLASS_THEME
+    : activeThemeId
+      ? installed.find((existing) => existing.id === activeThemeId)
+      : undefined
   const selectedTheme = previewingTheme ?? theme
   const scheme = currentScheme()
-  const themeSupportsScheme =
-    selectedTheme?.mode === 'both' || selectedTheme?.mode === scheme
+  const themeSupportsScheme = selectedTheme?.mode === 'both' || selectedTheme?.mode === scheme
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.yachiyoAppearance =
+      selectedTheme?.id === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'liquid-glass' : 'default'
+  }
   applyVariables({
     ...BUILT_IN_ANDROID_BRAND_VARIABLES,
     ...(scheme === 'light' ? BUILT_IN_ANDROID_LIGHT_VARIABLES : {}),

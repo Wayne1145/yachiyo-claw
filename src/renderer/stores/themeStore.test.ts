@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { applyActiveTheme, useThemeStore } from './themeStore'
+import { applyActiveTheme, BUILT_IN_LIQUID_GLASS_THEME_ID, useThemeStore } from './themeStore'
 import { uiStore } from './uiStore'
 
 function theme(id: string, color: string) {
@@ -32,7 +32,7 @@ describe('themeStore', () => {
     expect(document.documentElement.style.getPropertyValue('--chatbox-tint-brand')).toBe('#c45f82')
     expect(document.documentElement.style.getPropertyValue('--chatbox-background-brand-primary')).toBe('#c45f82')
     expect(document.documentElement.style.getPropertyValue('--chatbox-background-brand-secondary')).toBe(
-      'rgba(196, 95, 130, 0.14)',
+      'rgba(196, 95, 130, 0.14)'
     )
   })
 
@@ -61,6 +61,21 @@ describe('themeStore', () => {
     useThemeStore.getState().setActive('missing')
     expect(useThemeStore.getState().activeThemeId).toBeNull()
     expect(localStorage.getItem('yachiyo:themes:active:v1')).toBeNull()
+  })
+
+  it('activates the non-removable built-in liquid-glass appearance', () => {
+    useThemeStore.getState().setActive(BUILT_IN_LIQUID_GLASS_THEME_ID)
+
+    expect(useThemeStore.getState().activeThemeId).toBe(BUILT_IN_LIQUID_GLASS_THEME_ID)
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('liquid-glass')
+    expect(document.documentElement.style.getPropertyValue('--chatbox-background-primary')).toBe('#ffffff')
+
+    useThemeStore.getState().remove(BUILT_IN_LIQUID_GLASS_THEME_ID)
+    expect(useThemeStore.getState().activeThemeId).toBe(BUILT_IN_LIQUID_GLASS_THEME_ID)
+  })
+
+  it('prevents third-party manifests from replacing a built-in theme', () => {
+    expect(() => useThemeStore.getState().install(theme(BUILT_IN_LIQUID_GLASS_THEME_ID, '#000000'))).toThrow(/reserved/)
   })
 
   it('does not force light surfaces or a light-only theme into dark mode', () => {
