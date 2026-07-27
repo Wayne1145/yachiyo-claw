@@ -17,7 +17,7 @@
 Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模型对话基础上加入了直接运行于 Android 应用中的设备 Agent、Live2D 交互式对话、语音与摄像头输入、角色人格、端侧模型与知识库、Skills、MCP、共享会话和定时任务。
 
 项目面向希望“粘贴 API Key 后直接使用”的用户，同时为熟悉 Android 的用户提供无障碍、Shizuku 和 root 三种设备执行后端。
-
+本仓库由Codex辅助管理，由gpt 5.6 sol和claude fable5辅助编写
 > [!IMPORTANT]
 > 项目仍处于早期预览阶段，[GitHub Releases](https://github.com/Wayne1145/yachiyo-claw/releases) 提供使用 NewDreamStudio 开发密钥签名的预览 APK，并非应用商店正式签名版本。Agent 能够操作真实设备，请先在备用机或模拟器中测试，并根据任务选择合适的审批模式。
 
