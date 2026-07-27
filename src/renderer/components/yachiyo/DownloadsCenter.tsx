@@ -20,7 +20,9 @@ import {
   IconTrash,
   IconX,
 } from '@tabler/icons-react'
+import type { TFunction } from 'i18next'
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { router } from '@/router'
 import { yachiyoModelManagerNative } from '@/platform/native/yachiyo_model_manager'
 import { type NativeDownloadTask, yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
@@ -36,17 +38,26 @@ function bytes(value: number) {
   return `${(value / 1024 ** power).toFixed(power > 1 ? 1 : 0)} ${units[power]}`
 }
 
-function etaLabel(remaining: number, bytesPerSecond: number) {
+function etaLabel(remaining: number, bytesPerSecond: number, t: TFunction) {
   if (bytesPerSecond <= 0 || remaining <= 0) return ''
   const seconds = Math.round(remaining / bytesPerSecond)
-  if (seconds < 60) return `剩余约 ${seconds} 秒`
+  if (seconds < 60) return t('剩余约 {{seconds}} 秒', { seconds })
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `剩余约 ${minutes} 分 ${seconds % 60} 秒`
+  if (minutes < 60) return t('剩余约 {{minutes}} 分 {{seconds}} 秒', { minutes, seconds: seconds % 60 })
   const hours = Math.floor(minutes / 60)
-  return `剩余约 ${hours} 小时 ${minutes % 60} 分`
+  return t('剩余约 {{hours}} 小时 {{minutes}} 分', { hours, minutes: minutes % 60 })
 }
 
-const labels: Record<NativeDownloadTask['status'], string> = {
+function translatedDownloadError(error: string | undefined, t: TFunction): string {
+  const message = humanizeDownloadError(error)
+  const http = message.match(/^下载服务器返回错误（HTTP (\d{3})）$/)
+  if (http) return t('下载服务器返回错误（HTTP {{status}}）', { status: http[1] })
+  const detail = message.match(/^下载失败（(.+)）$/)
+  if (detail) return t('下载失败（{{detail}}）', { detail: detail[1] })
+  return t(message)
+}
+
+const labelKeys: Record<NativeDownloadTask['status'], string> = {
   queued: '等待下载',
   downloading: '正在下载',
   paused: '已暂停',
@@ -54,7 +65,7 @@ const labels: Record<NativeDownloadTask['status'], string> = {
   failed: '下载失败',
   cancelled: '已取消',
 }
-const kindLabels: Record<string, string> = {
+const kindLabelKeys: Record<string, string> = {
   update: '软件更新',
   sandbox: 'Linux 沙箱',
   model: '本地模型',
@@ -66,6 +77,7 @@ const kindLabels: Record<string, string> = {
 const isTerminal = (status: string) => status === 'completed' || status === 'failed' || status === 'cancelled'
 
 export function DownloadsCenter() {
+  const { t } = useTranslation()
   const inAndroidAppShell = useInAndroidAppShell()
   const [nativeTasks, setNativeTasks] = useState<NativeDownloadTask[]>([])
   const [loading, setLoading] = useState(false)
@@ -76,18 +88,21 @@ export function DownloadsCenter() {
   const [retryCount, setRetryCount] = useState(3)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = useCallback(async (clearExistingError = false) => {
-    setLoading(true)
-    try {
-      const downloads = await yachiyoDownloadsNative.list()
-      setNativeTasks(Array.isArray(downloads.tasks) ? downloads.tasks : [])
-      if (clearExistingError) setError(null)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '下载任务读取失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const refresh = useCallback(
+    async (clearExistingError = false) => {
+      setLoading(true)
+      try {
+        const downloads = await yachiyoDownloadsNative.list()
+        setNativeTasks(Array.isArray(downloads.tasks) ? downloads.tasks : [])
+        if (clearExistingError) setError(null)
+      } catch (cause) {
+        setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载任务读取失败'))
+      } finally {
+        setLoading(false)
+      }
+    },
+    [t]
+  )
 
   useEffect(() => {
     void refresh(true)
@@ -104,8 +119,10 @@ export function DownloadsCenter() {
         setWifiOnly(value.wifiOnly)
         setRetryCount(value.retryCount)
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : '下载设置读取失败'))
-  }, [])
+      .catch((cause) =>
+        setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载设置读取失败'))
+      )
+  }, [t])
 
   const controlModel = async (task: NativeDownloadTask, type: 'pause' | 'resume' | 'cancel') => {
     try {
@@ -113,7 +130,7 @@ export function DownloadsCenter() {
       requireAcceptedDownloadAction(result)
       await refresh(true)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '本地模型下载操作失败')
+      setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('本地模型下载操作失败'))
     }
   }
 
@@ -129,7 +146,7 @@ export function DownloadsCenter() {
       requireAcceptedDownloadAction(result)
       await refresh(true)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '更新下载操作失败')
+      setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('更新下载操作失败'))
     }
   }
 
@@ -144,7 +161,7 @@ export function DownloadsCenter() {
       requireAcceptedDownloadAction(result)
       await refresh(true)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Linux 环境下载操作失败')
+      setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('Linux 环境下载操作失败'))
     }
   }
 
@@ -154,7 +171,7 @@ export function DownloadsCenter() {
       requireAcceptedDownloadAction(result)
       await refresh(true)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '下载操作失败')
+      setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载操作失败'))
     }
   }
 
@@ -168,7 +185,7 @@ export function DownloadsCenter() {
       const result = await yachiyoDownloadsNative.remove({ id: task.id })
       setNativeTasks(result.tasks)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '下载记录移除失败')
+      setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载记录移除失败'))
     }
   }
 
@@ -182,7 +199,7 @@ export function DownloadsCenter() {
       setSettingsOpen(false)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '下载设置保存失败')
+      setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载设置保存失败'))
     }
   }
 
@@ -193,24 +210,29 @@ export function DownloadsCenter() {
           {!inAndroidAppShell && (
             <ActionIcon
               variant="subtle"
-              aria-label="返回设置"
+              aria-label={t('返回设置')}
               onClick={() => void router.navigate({ to: '/settings' })}
             >
               <IconArrowLeft />
             </ActionIcon>
           )}
           <div>
-            <Title order={2}>下载管理</Title>
+            <Title order={2}>{t('下载管理')}</Title>
             <Text size="sm" c="dimmed">
-              下载任务会在应用重启后继续调度
+              {t('下载任务会在应用重启后继续调度')}
             </Text>
           </div>
         </Group>
         <Group gap="xs">
-          <ActionIcon variant="default" aria-label="下载器设置" onClick={() => setSettingsOpen((value) => !value)}>
+          <ActionIcon variant="default" aria-label={t('下载器设置')} onClick={() => setSettingsOpen((value) => !value)}>
             <IconSettings />
           </ActionIcon>
-          <ActionIcon variant="default" aria-label="刷新下载列表" loading={loading} onClick={() => void refresh(true)}>
+          <ActionIcon
+            variant="default"
+            aria-label={t('刷新下载列表')}
+            loading={loading}
+            onClick={() => void refresh(true)}
+          >
             <IconRefresh />
           </ActionIcon>
         </Group>
@@ -223,7 +245,7 @@ export function DownloadsCenter() {
               {error}
             </Text>
             <Button size="compact-sm" variant="default" onClick={() => void refresh(true)}>
-              重试
+              {t('重试')}
             </Button>
           </Group>
         </section>
@@ -232,11 +254,11 @@ export function DownloadsCenter() {
       {settingsOpen && (
         <section className="local-model-queue-row">
           <Stack gap="xs">
-            <Text fw={650}>下载器设置</Text>
+            <Text fw={650}>{t('下载器设置')}</Text>
             <TextInput
               value={proxy}
               onChange={(event) => setProxy(event.currentTarget.value)}
-              label="HTTP 代理服务器"
+              label={t('HTTP 代理服务器')}
               placeholder="http://127.0.0.1:7890"
             />
             <NumberInput
@@ -244,23 +266,23 @@ export function DownloadsCenter() {
               onChange={(value) => setThreads(typeof value === 'number' ? value : 8)}
               min={1}
               max={64}
-              label="并发线程数"
-              description="默认 8，最高 64；服务端不支持分段下载时会自动回退。"
+              label={t('并发线程数')}
+              description={t('默认 8，最高 64；服务端不支持分段下载时会自动回退。')}
             />
             <NumberInput
               value={retryCount}
               onChange={(value) => setRetryCount(typeof value === 'number' ? value : 3)}
               min={0}
               max={16}
-              label="失败重试次数"
-              description="下载失败后自动重试的次数，默认 3 次。"
+              label={t('失败重试次数')}
+              description={t('下载失败后自动重试的次数，默认 3 次。')}
             />
             <Switch
               checked={wifiOnly}
               onChange={(event) => setWifiOnly(event.currentTarget.checked)}
-              label="仅在 Wi-Fi 下下载"
+              label={t('仅在 Wi-Fi 下下载')}
             />
-            <Button onClick={() => void saveSettings()}>保存下载设置</Button>
+            <Button onClick={() => void saveSettings()}>{t('保存下载设置')}</Button>
           </Stack>
         </section>
       )}
@@ -268,14 +290,16 @@ export function DownloadsCenter() {
       <Stack gap="sm">
         {nativeTasks.length === 0 && (
           <Text c="dimmed" ta="center" py="xl">
-            暂无下载任务
+            {t('暂无下载任务')}
           </Text>
         )}
 
         {nativeTasks.map((task) => {
           const progress = downloadProgress(task.bytesDownloaded, task.bytesTotal)
           const eta =
-            task.status === 'downloading' ? etaLabel(task.bytesTotal - task.bytesDownloaded, task.bytesPerSecond) : ''
+            task.status === 'downloading'
+              ? etaLabel(task.bytesTotal - task.bytesDownloaded, task.bytesPerSecond, t)
+              : ''
           const canControl = true
           const control = (type: 'pause' | 'resume' | 'cancel') =>
             task.kind === 'sandbox'
@@ -289,15 +313,15 @@ export function DownloadsCenter() {
             <section key={task.id} className="local-model-queue-row">
               <Group justify="space-between">
                 <div>
-                  <Text fw={650}>{task.title}</Text>
+                  <Text fw={650}>{t(task.title)}</Text>
                   <Text size="xs" c="dimmed">
-                    {kindLabels[task.kind] || '应用下载'}
+                    {t(kindLabelKeys[task.kind] || '应用下载')}
                   </Text>
                 </div>
                 <Badge
                   color={task.status === 'failed' ? 'red' : task.status === 'downloading' ? 'chatbox-brand' : 'gray'}
                 >
-                  {labels[task.status]}
+                  {t(labelKeys[task.status])}
                 </Badge>
               </Group>
               <Progress value={progress} animated={task.status === 'downloading'} color="chatbox-brand" radius="xl" />
@@ -311,7 +335,7 @@ export function DownloadsCenter() {
               </Group>
               {task.error && (
                 <Text size="xs" c="red">
-                  {humanizeDownloadError(task.error)}
+                  {translatedDownloadError(task.error, t)}
                 </Text>
               )}
               <Group justify="flex-end">
@@ -322,7 +346,7 @@ export function DownloadsCenter() {
                     leftSection={<IconPlayerPause size={15} />}
                     onClick={() => void control('pause')}
                   >
-                    暂停
+                    {t('暂停')}
                   </Button>
                 )}
                 {canControl && (task.status === 'paused' || task.status === 'failed') && (
@@ -332,16 +356,21 @@ export function DownloadsCenter() {
                     leftSection={<IconPlayerPlay size={15} />}
                     onClick={() => void control('resume')}
                   >
-                    继续
+                    {t('继续')}
                   </Button>
                 )}
                 {canControl && !isTerminal(task.status) && (
-                  <ActionIcon color="red" variant="subtle" aria-label="取消下载" onClick={() => void control('cancel')}>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    aria-label={t('取消下载')}
+                    onClick={() => void control('cancel')}
+                  >
                     <IconX size={17} />
                   </ActionIcon>
                 )}
                 {isTerminal(task.status) && (
-                  <ActionIcon variant="subtle" aria-label="移除记录" onClick={() => void removeTask(task)}>
+                  <ActionIcon variant="subtle" aria-label={t('移除记录')} onClick={() => void removeTask(task)}>
                     <IconTrash size={16} />
                   </ActionIcon>
                 )}

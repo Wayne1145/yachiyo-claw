@@ -21,6 +21,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   createScheduledAgentTask,
   deleteScheduledAgentTask,
@@ -37,8 +38,8 @@ function toLocalDateTimeInput(timestamp: number): string {
   return new Date(timestamp - offset).toISOString().slice(0, 16)
 }
 
-function formatRunTime(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
+function formatRunTime(timestamp: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
@@ -58,6 +59,7 @@ export function AndroidScheduledTaskRunner() {
 }
 
 export function AndroidScheduledTasks() {
+  const { t, i18n } = useTranslation()
   const tasks = useScheduledAgentTasks()
   const [opened, setOpened] = useState(false)
   const [title, setTitle] = useState('')
@@ -74,7 +76,7 @@ export function AndroidScheduledTasks() {
       waiting: tasks.filter((task) => task.enabled && task.status !== 'running').length,
       scheduled: tasks.length,
     }),
-    [tasks]
+    [tasks],
   )
 
   const resetForm = () => {
@@ -90,12 +92,18 @@ export function AndroidScheduledTasks() {
     setError('')
     try {
       const timestamp = new Date(runAt).getTime()
-      if (!Number.isFinite(timestamp) || timestamp <= Date.now()) throw new Error('执行时间必须晚于当前时间')
+      if (!Number.isFinite(timestamp) || timestamp <= Date.now()) throw new Error('schedule_time_in_past')
       createScheduledAgentTask({ title, prompt, runAt: timestamp, repeat })
       setOpened(false)
       resetForm()
     } catch (reason) {
-      setError(reason instanceof Error && reason.message === 'task_prompt_required' ? '请输入任务指令' : String(reason))
+      setError(
+        reason instanceof Error && reason.message === 'task_prompt_required'
+          ? String(t('请输入任务指令'))
+          : reason instanceof Error && reason.message === 'schedule_time_in_past'
+            ? String(t('执行时间必须晚于当前时间'))
+            : String(reason),
+      )
     } finally {
       setSaving(false)
     }
@@ -107,7 +115,11 @@ export function AndroidScheduledTasks() {
     try {
       await executeScheduledAgentTask(id, { navigateToConversation: true, consumeSchedule: false })
     } catch (reason) {
-      setError(reason instanceof Error && reason.message === 'agent_busy' ? '已有 Agent 任务正在执行' : String(reason))
+      setError(
+        reason instanceof Error && reason.message === 'agent_busy'
+          ? String(t('已有 Agent 任务正在执行'))
+          : String(reason),
+      )
     } finally {
       setRunningId(null)
     }
@@ -115,11 +127,11 @@ export function AndroidScheduledTasks() {
 
   return (
     <>
-      <section className="yachiyo-task-toolbar" aria-label="任务操作">
+      <section className="yachiyo-task-toolbar" aria-label={String(t('任务操作'))}>
         <div>
-          <Title order={2}>自动执行</Title>
+          <Title order={2}>{t('自动执行')}</Title>
           <Text c="dimmed" size="sm">
-            到达设定时间后使用当前 Agent 配置运行任务。
+            {t('到达设定时间后使用当前 Agent 配置运行任务。')}
           </Text>
         </div>
         <Button
@@ -127,21 +139,21 @@ export function AndroidScheduledTasks() {
           leftSection={<IconCalendarPlus size={18} />}
           onClick={() => setOpened(true)}
         >
-          新建定时任务
+          {t('新建定时任务')}
         </Button>
       </section>
 
-      <section className="yachiyo-status-panel" aria-label="任务概览">
+      <section className="yachiyo-status-panel" aria-label={String(t('任务概览'))}>
         <div className="yachiyo-status-row">
-          <span>运行中</span>
+          <span>{t('运行中')}</span>
           <strong>{counts.running}</strong>
         </div>
         <div className="yachiyo-status-row">
-          <span>等待中</span>
+          <span>{t('等待中')}</span>
           <strong>{counts.waiting}</strong>
         </div>
         <div className="yachiyo-status-row">
-          <span>全部任务</span>
+          <span>{t('全部任务')}</span>
           <strong>{counts.scheduled}</strong>
         </div>
       </section>
@@ -155,11 +167,11 @@ export function AndroidScheduledTasks() {
       {tasks.length === 0 ? (
         <section className="yachiyo-empty-panel">
           <IconClock size={32} aria-hidden="true" />
-          <Title order={2}>暂无定时任务</Title>
-          <Text c="dimmed">点击“新建定时任务”添加第一项计划。</Text>
+          <Title order={2}>{t('暂无定时任务')}</Title>
+          <Text c="dimmed">{t('点击“新建定时任务”添加第一项计划。')}</Text>
         </section>
       ) : (
-        <section className="yachiyo-scheduled-task-list" aria-label="定时任务列表">
+        <section className="yachiyo-scheduled-task-list" aria-label={String(t('定时任务列表'))}>
           {tasks.map((task) => (
             <article key={task.id} className="yachiyo-scheduled-task-row">
               <div className="yachiyo-scheduled-task-time" aria-hidden="true">
@@ -168,7 +180,7 @@ export function AndroidScheduledTasks() {
               <div className="yachiyo-scheduled-task-copy">
                 <strong>{task.title}</strong>
                 <span>
-                  {formatRunTime(task.runAt)} · {repeatLabel[task.repeat]}
+                  {formatRunTime(task.runAt, i18n.resolvedLanguage || i18n.language)} · {t(repeatLabel[task.repeat])}
                 </span>
                 {task.lastError && <small>{task.lastError}</small>}
               </div>
@@ -176,7 +188,7 @@ export function AndroidScheduledTasks() {
                 <Switch
                   size="sm"
                   checked={task.enabled}
-                  aria-label={`${task.title}启用状态`}
+                  aria-label={`${task.title} ${t('启用状态')}`}
                   onChange={(event) =>
                     updateScheduledAgentTask(task.id, {
                       enabled: event.currentTarget.checked,
@@ -184,22 +196,22 @@ export function AndroidScheduledTasks() {
                     })
                   }
                 />
-                <Tooltip label="立即运行">
+                <Tooltip label={t('立即运行')}>
                   <ActionIcon
                     variant="subtle"
                     color="chatbox-brand"
                     loading={runningId === task.id}
-                    aria-label={`立即运行${task.title}`}
+                    aria-label={`${t('立即运行')} ${task.title}`}
                     onClick={() => void handleRun(task.id)}
                   >
                     <IconPlayerPlay size={18} />
                   </ActionIcon>
                 </Tooltip>
-                <Tooltip label="删除">
+                <Tooltip label={t('删除')}>
                   <ActionIcon
                     variant="subtle"
                     color="gray"
-                    aria-label={`删除${task.title}`}
+                    aria-label={`${t('删除')} ${task.title}`}
                     onClick={() => deleteScheduledAgentTask(task.id)}
                   >
                     <IconTrash size={18} />
@@ -217,19 +229,19 @@ export function AndroidScheduledTasks() {
           setOpened(false)
           resetForm()
         }}
-        title="新建定时任务"
+        title={t('新建定时任务')}
         centered
       >
         <div className="yachiyo-scheduled-task-form">
           <TextInput
-            label="名称"
-            placeholder="例如：每日整理通知"
+            label={t('名称')}
+            placeholder={String(t('例如：每日整理通知'))}
             value={title}
             onChange={(event) => setTitle(event.currentTarget.value)}
           />
           <Textarea
-            label="Agent 指令"
-            placeholder="描述需要 Agent 完成的操作"
+            label={t('Agent 指令')}
+            placeholder={String(t('描述需要 Agent 完成的操作'))}
             minRows={4}
             autosize
             value={prompt}
@@ -237,30 +249,30 @@ export function AndroidScheduledTasks() {
           />
           <TextInput
             type="datetime-local"
-            label="执行时间"
+            label={t('执行时间')}
             leftSection={<IconClock size={17} />}
             min={toLocalDateTimeInput(Date.now() + 60_000)}
             value={runAt}
             onChange={(event) => setRunAt(event.currentTarget.value)}
           />
           <Select
-            label="重复"
+            label={t('重复')}
             leftSection={<IconRepeat size={17} />}
             value={repeat}
             data={[
-              { value: 'once', label: '仅一次' },
-              { value: 'daily', label: '每天' },
-              { value: 'weekly', label: '每周' },
+              { value: 'once', label: String(t('仅一次')) },
+              { value: 'daily', label: String(t('每天')) },
+              { value: 'weekly', label: String(t('每周')) },
             ]}
             onChange={(value) => setRepeat((value as ScheduledTaskRepeat) || 'once')}
           />
           {error && <Alert color="red">{error}</Alert>}
           <Group justify="flex-end">
             <Button variant="subtle" color="gray" onClick={() => setOpened(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button className="yachiyo-primary-button" loading={saving} onClick={handleCreate}>
-              保存任务
+              {t('保存任务')}
             </Button>
           </Group>
         </div>

@@ -73,6 +73,17 @@ class MemoryFileStore implements PluginFileStore {
   async exists(path: string): Promise<boolean> {
     return [...this.files.keys()].some((key) => key.startsWith(`${path}/`))
   }
+  async listDirectories(path: string): Promise<string[]> {
+    const prefix = `${path}/`
+    return [
+      ...new Set(
+        [...this.files.keys()]
+          .filter((key) => key.startsWith(prefix))
+          .map((key) => key.slice(prefix.length).split('/')[0])
+          .filter(Boolean),
+      ),
+    ].sort()
+  }
   paths(): string[] {
     return [...this.files.keys()].sort()
   }
@@ -397,6 +408,22 @@ describe('PluginInstaller', () => {
     }
     expect(current?.previousVersions).toHaveLength(3)
     expect(fileStore.paths()).toHaveLength(8) // active plus three retained versions, two files each
+  })
+
+  it('reconciles staging and unreferenced immutable versions after an interrupted install', async () => {
+    const { installer, fileStore } = makeInstaller()
+    const { bytes } = await buildZip()
+    const active = await installer.install({ packageBytes: bytes, source: 'https', now: 1 })
+    const stage = `${PLUGIN_VERSIONS_DIR}/demo/.staging-${'b'.repeat(16)}-2`
+    const orphan = `${PLUGIN_VERSIONS_DIR}/demo/${'c'.repeat(16)}-3`
+    fileStore.files.set(`${stage}/main.js`, text('staging'))
+    fileStore.files.set(`${orphan}/main.js`, text('orphan'))
+
+    await installer.cleanupAbandonedCode()
+
+    expect(await fileStore.exists(pluginInstallDir(active))).toBe(true)
+    expect(await fileStore.exists(stage)).toBe(false)
+    expect(await fileStore.exists(orphan)).toBe(false)
   })
 
   it('uninstalls record-first so no invisible orphan blocks reinstall', async () => {

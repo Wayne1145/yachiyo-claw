@@ -47,7 +47,7 @@ describe('Android app shell state', () => {
     expect(isAllowedAndroidShellPath('/task/agent-1')).toBe(true)
     expect(isAllowedAndroidShellPath('/tasks')).toBe(true)
     expect(isAllowedAndroidShellPath('/interactive')).toBe(true)
-    expect(isAllowedAndroidShellPath('/plugin/weather')).toBe(false)
+    expect(isAllowedAndroidShellPath('/plugin/weather')).toBe(true)
     expect(isAllowedAndroidShellPath('/copilots/featured')).toBe(false)
     expect(isAllowedAndroidShellPath('/image-creator')).toBe(false)
   })

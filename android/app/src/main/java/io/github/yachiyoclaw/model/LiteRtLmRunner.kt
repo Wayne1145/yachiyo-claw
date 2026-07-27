@@ -34,6 +34,13 @@ object LiteRtLmRunner {
 
   @JvmStatic
   @Synchronized
+  fun load(modelPath: String) {
+    require(File(modelPath).isFile) { "local_model_file_missing" }
+    ensureEngine(modelPath, 2048)
+  }
+
+  @JvmStatic
+  @Synchronized
   fun infer(
     modelPath: String,
     messages: JSONArray,

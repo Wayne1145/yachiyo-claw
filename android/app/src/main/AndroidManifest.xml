@@ -106,8 +106,13 @@
         <service
             android:name=".model.LocalInferenceService"
             android:exported="false"
+            android:foregroundServiceType="specialUse"
             android:process=":local_model"
-            android:stopWithTask="false" />
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-requested on-device model loading and inference" />
+        </service>
 
         <meta-data
             android:name="io.github.yachiyoclaw.AUTHOR"

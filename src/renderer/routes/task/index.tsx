@@ -251,7 +251,7 @@ function DirectorySelector() {
           messages: [],
         })
         taskSessionStore.getState().setCurrentTaskId(session.id)
-        navigate({ to: '/task/$taskId', params: { taskId: session.id } })
+        await navigate({ to: '/task/$taskId', params: { taskId: session.id } })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {

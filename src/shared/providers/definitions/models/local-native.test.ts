@@ -39,7 +39,10 @@ describe('LocalNativeModel', () => {
       },
     }
     const execute = vi.fn(async () => ({ model: 'Pixel' }))
-    const model = new LocalNativeModel({ modelId: 'gemma-4-e4b' } as never, dependencies(adapter))
+    const model = new LocalNativeModel(
+      { modelId: 'gemma-4-e4b', capabilities: ['tool_use'] } as never,
+      dependencies(adapter),
+    )
     const events = []
 
     for await (const event of model.chatStream([], {
@@ -56,5 +59,92 @@ describe('LocalNativeModel', () => {
       expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }),
     )
     expect(events.map((event) => event.type)).toEqual(['tool-call', 'tool-result', 'text-delta', 'finish'])
+  })
+
+  it('does not expose tools to a chat-only local model', async () => {
+    const adapter: LocalInferenceAdapter = {
+      isAvailable: vi.fn(async () => true),
+      checkAvailability: vi.fn(async () => ({ available: true, runtime: 'llama.cpp' })),
+      async *stream(_modelId, input) {
+        expect(input.tools).toBeUndefined()
+        yield { type: 'text', text: 'chat only' }
+      },
+    }
+    const model = new LocalNativeModel({ modelId: 'gemma-3-270m-it', capabilities: [] } as never, dependencies(adapter))
+
+    expect(model.isSupportToolUse()).toBe(false)
+    for await (const _event of model.chatStream([], {
+      tools: {
+        device_info: tool({ description: 'Device info', inputSchema: z.object({}), execute: async () => ({}) }),
+      },
+    })) {
+      // Exhaust the stream so the adapter assertions run.
+    }
+  })
+
+  it('uses a compact system prompt for sub-1B chat-only models', async () => {
+    const adapter: LocalInferenceAdapter = {
+      isAvailable: vi.fn(async () => true),
+      checkAvailability: vi.fn(async () => ({ available: true, runtime: 'llama.cpp' })),
+      async *stream(_modelId, input) {
+        const system = input.messages[0] as { role: string; content: string }
+        expect(system.role).toBe('system')
+        expect(system.content).toContain('You are 月见八千代')
+        expect(system.content).toContain('Always return visible plain text')
+        expect(system.content).not.toContain('very long persona detail')
+        yield { type: 'text', text: 'visible response' }
+      },
+    }
+    const model = new LocalNativeModel(
+      { modelId: 'gemma-3-270m-it-GGUF', capabilities: [] } as never,
+      dependencies(adapter),
+    )
+
+    for await (const _event of model.chatStream(
+      [
+        {
+          role: 'system',
+          content: '_你不是机器人。你是月见八千代。_\nvery long persona detail'.repeat(100),
+        },
+        { role: 'user', content: 'hello' },
+      ],
+      {},
+    )) {
+      // Exhaust the stream so the adapter assertions run.
+    }
+  })
+
+  it('keeps explicitly requested tools inside the small-model tool window', async () => {
+    const adapter: LocalInferenceAdapter = {
+      isAvailable: vi.fn(async () => true),
+      checkAvailability: vi.fn(async () => ({ available: true, runtime: 'litert-lm' })),
+      async *stream(_modelId, input) {
+        const system = input.messages[0] as { role: string; content: string }
+        expect(system.content).toContain('tool-using on-device agent')
+        expect(system.content.length).toBeLessThan(400)
+        expect(Object.keys(input.tools as object)).toHaveLength(1)
+        expect(input.tools).toHaveProperty('hello-yachiyo_echo')
+        yield { type: 'text', text: 'tool window ready' }
+      },
+    }
+    const tools = Object.fromEntries(
+      ['sandbox_exec', 'workspace_read', 'memory_search', 'web_search', 'camera_capture', 'hello-yachiyo_echo'].map(
+        (name) => [name, tool({ description: `${name} description`, inputSchema: z.object({}), execute: async () => ({}) })],
+      ),
+    )
+    const model = new LocalNativeModel(
+      { modelId: 'functiongemma-270m', capabilities: ['tool_use'] } as never,
+      dependencies(adapter),
+    )
+
+    for await (const _event of model.chatStream(
+      [
+        { role: 'system', content: '_你不是机器人。你是月见八千代。_\nfull agent policy'.repeat(100) },
+        { role: 'user', content: 'Use hello-yachiyo_echo now.' },
+      ],
+      { agentMode: true, tools },
+    )) {
+      // Exhaust the stream so the adapter assertions run.
+    }
   })
 })

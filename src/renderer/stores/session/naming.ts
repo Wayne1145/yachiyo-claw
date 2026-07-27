@@ -8,6 +8,7 @@ import * as promptFormat from '@/packages/prompts'
 import * as chatStore from '../chatStore'
 import { settingsStore } from '../settingsStore'
 import { activeNameGenerations, pendingNameGenerations } from './state'
+import { fallbackSessionName, normalizeGeneratedSessionName } from '../session-name'
 
 /**
  * Modify session name and thread name
@@ -61,7 +62,7 @@ async function _generateName(sessionId: string, modifyName: (sessionId: string, 
         ?.filter((c) => c.type === 'text')
         .map((c) => c.text)
         .join('') || ''
-    name = name.replace(/['""\u201C\u201D]/g, '').replace(/<think>.*?<\/think>/g, '')
+    name = normalizeGeneratedSessionName(name, fallbackSessionName(session.messages))
     await modifyName(sessionId, name)
   } catch (e: unknown) {
     if (!(e instanceof ApiError || e instanceof NetworkError)) {

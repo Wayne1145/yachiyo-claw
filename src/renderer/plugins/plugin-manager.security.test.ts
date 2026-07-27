@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { settingsStore } from '@/stores/settingsStore'
 import type { InstalledPluginRecord } from './installer'
 import type { HostApi, HostCallAuthorizer, PluginHostCallContext, PluginRuntimeOptions } from './plugin-runtime'
+import type { AgentApprovalAuthorization } from '@/mobile/agent-approval'
 
 const SHA = 'a'.repeat(64)
 
 const mocks = vi.hoisted(() => ({
   currentRecord: null as unknown,
+  rollbackRecord: null as unknown,
   grants: new Map<string, PluginGrant>(),
   health: new Map<string, import('@shared/plugins/lifecycle').PluginHealth>(),
   runtimeOptions: null as unknown,
@@ -17,7 +19,9 @@ const mocks = vi.hoisted(() => ({
   runtimeCreate: vi.fn(),
   toolsetSources: null as unknown,
   runtimeDispose: vi.fn(),
+  installerInspect: vi.fn(),
   installerInstall: vi.fn(),
+  grantPutFailureCapability: null as string | null,
   registryPut: vi.fn(),
   auditEntries: [] as unknown[],
   executionRequests: [] as unknown[],
@@ -27,7 +31,11 @@ const mocks = vi.hoisted(() => ({
     allowDangerousForConversation: true,
   },
   fullAccess: true,
-  approval: vi.fn(async () => ({ decision: 'once' as const, approvalNonce: 'nonce', expiresAt: Date.now() + 30_000 })),
+  approval: vi.fn<() => Promise<AgentApprovalAuthorization>>(async () => ({
+    decision: 'once',
+    approvalNonce: 'nonce',
+    expiresAt: Date.now() + 30_000,
+  })),
   cancelPluginApprovals: vi.fn(),
   startPluginJob: vi.fn(async () => ({ accepted: true, jobId: 'job-1' })),
   queryJob: vi.fn(async () => ({ state: 'succeeded', exitCode: 0 })),
@@ -38,6 +46,8 @@ const mocks = vi.hoisted(() => ({
   cleanupPlugin: vi.fn(async () => ({ success: true, stoppedJobs: 1, removedWorkspace: true })),
   accessibilityAction: vi.fn(async () => ({ success: true })),
   launchAppBound: vi.fn(async () => ({ success: true })),
+  networkFetch: vi.fn(async () => ({ status: 200, contentType: 'application/json', body: '{}', truncated: false, finalUrl: 'https://api.example.com/' })),
+  networkCancel: vi.fn(async () => undefined),
 }))
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }))
@@ -73,7 +83,7 @@ vi.mock('@/platform/native/yachiyo_device_access', () => ({
   },
 }))
 vi.mock('@/platform/native/yachiyo_plugin_network', () => ({
-  yachiyoPluginNetworkNative: { fetch: vi.fn(), cancel: vi.fn(async () => undefined) },
+  yachiyoPluginNetworkNative: { fetch: mocks.networkFetch, cancel: mocks.networkCancel },
 }))
 vi.mock('@/platform/native/yachiyo_sandbox', () => ({
   yachiyoSandboxNative: {
@@ -110,11 +120,12 @@ vi.mock('./blob-worker-runtime', () => ({
 vi.mock('./installer', () => ({
   assertPluginUpdateProvenance: vi.fn(),
   PluginInstaller: class {
-    inspect = vi.fn()
+    inspect = mocks.installerInspect
     install = mocks.installerInstall
     uninstall = vi.fn(async () => undefined)
-    rollback = vi.fn(async () => mocks.currentRecord)
+    rollback = vi.fn(async () => mocks.rollbackRecord ?? mocks.currentRecord)
     restoreAfterFailedUpdate = vi.fn(async () => undefined)
+    cleanupAbandonedCode = vi.fn(async () => undefined)
   },
   pluginInstallDir: (record: { installDir?: string; manifest: { id: string } }) =>
     record.installDir ?? `yachiyo-plugins/${record.manifest.id}`,
@@ -132,6 +143,7 @@ vi.mock('./capacitor-stores', () => ({
   pluginGrantStore: {
     get: async (pluginId: string, capability: string) => mocks.grants.get(`${pluginId}:${capability}`) ?? null,
     put: async (grant: PluginGrant) => {
+      if (mocks.grantPutFailureCapability === grant.capability) throw new Error('grant_write_failed')
       mocks.grants.set(`${grant.pluginId}:${grant.capability}`, structuredClone(grant))
     },
     remove: async (pluginId: string, capability: string) => mocks.grants.delete(`${pluginId}:${capability}`),
@@ -169,7 +181,7 @@ import {
 
 function makeRecord(
   id: string,
-  options: { trusted?: boolean; capabilities?: Array<'storage' | 'sandbox' | 'device'> } = {}
+  options: { trusted?: boolean; capabilities?: PluginGrant['capability'][] } = {}
 ): InstalledPluginRecord {
   const capabilities = options.capabilities ?? ['storage', 'sandbox', 'device']
   return {
@@ -180,7 +192,11 @@ function makeRecord(
       displayName: 'Security Test Plugin',
       description: 'Exercises plugin host security boundaries.',
       entry: 'main.js',
-      capabilities: capabilities.map((name) => ({ name, reason: `Needs ${name} for this security test.` })),
+      capabilities: capabilities.map((name) => ({
+        name,
+        reason: `Needs ${name} for this security test.`,
+        ...(name === 'network' ? { domains: ['api.example.com'] } : {}),
+      })),
       contributions: {},
       files: [{ path: 'main.js', size: 5, sha256: SHA }],
     },
@@ -207,6 +223,7 @@ function grant(
     boundEntrySha256: record.manifest.entrySha256 ?? record.packageSha256,
     decidedAt: 1,
     expiresAt: null,
+    ...(capability === 'network' ? { domains: ['api.example.com'] } : {}),
   })
 }
 
@@ -240,6 +257,7 @@ async function loadBoundary(record: InstalledPluginRecord): Promise<{
 describe('plugin manager security integration', () => {
   beforeEach(() => {
     mocks.currentRecord = null
+    mocks.rollbackRecord = null
     mocks.grants.clear()
     mocks.health.clear()
     mocks.runtimeOptions = null
@@ -247,7 +265,9 @@ describe('plugin manager security integration', () => {
     mocks.runtimeLoad.mockClear()
     mocks.runtimeCreate.mockClear()
     mocks.runtimeDispose.mockClear()
+    mocks.installerInspect.mockReset()
     mocks.installerInstall.mockReset()
+    mocks.grantPutFailureCapability = null
     mocks.registryPut.mockReset()
     mocks.auditEntries.length = 0
     mocks.executionRequests.length = 0
@@ -268,6 +288,8 @@ describe('plugin manager security integration', () => {
     mocks.cleanupPlugin.mockClear()
     mocks.accessibilityAction.mockClear()
     mocks.launchAppBound.mockClear()
+    mocks.networkFetch.mockClear()
+    mocks.networkCancel.mockClear()
     usePluginStore.setState({ installed: [], pendingConsent: null })
     const values = new Map<string, string>()
     vi.stubGlobal('localStorage', {
@@ -302,6 +324,83 @@ describe('plugin manager security integration', () => {
 
     expect(mocks.grants.get('install-security:storage')?.state).toBe('granted')
     expect(mocks.grants.get('install-security:device')?.state).toBe('denied')
+  })
+
+  it('restores only the previous manifest grants when update authorization persistence fails', async () => {
+    const previous = makeRecord('grant-compensation', { capabilities: ['storage'] })
+    const updated = makeRecord('grant-compensation', { capabilities: ['storage', 'network'] })
+    updated.manifest.version = '1.1.0'
+    updated.packageSha256 = 'b'.repeat(64)
+    mocks.currentRecord = previous
+    mocks.installerInstall.mockResolvedValue(updated)
+    grant(previous, 'storage')
+    mocks.grantPutFailureCapability = 'network'
+    usePluginStore.setState({
+      pendingConsent: {
+        verified: {
+          manifest: updated.manifest,
+          files: new Map(),
+          packageSha256: updated.packageSha256,
+          signatureVerified: true,
+          deviceGrantAllowed: true,
+          signerKeyId: updated.signerKeyId,
+          source: 'https',
+          unpackedBytes: 5,
+        },
+        bytes: new Uint8Array([1]),
+        preservedCapabilities: ['storage'],
+      },
+    })
+
+    await expect(usePluginStore.getState().confirmInstall(['storage', 'network'])).rejects.toThrow(
+      'grant_write_failed',
+    )
+
+    expect(mocks.grants.has('grant-compensation:network')).toBe(false)
+    expect(mocks.grants.get('grant-compensation:storage')).toMatchObject({
+      state: 'granted',
+      boundEntrySha256: previous.packageSha256,
+    })
+  })
+
+  it('rejects an update package whose verified plugin identity does not match the selected plugin', async () => {
+    const other = makeRecord('different-plugin', { capabilities: ['storage'] })
+    mocks.installerInspect.mockResolvedValueOnce({
+      manifest: other.manifest,
+      files: new Map(),
+      packageSha256: other.packageSha256,
+      signatureVerified: true,
+      deviceGrantAllowed: true,
+      signerKeyId: other.signerKeyId,
+      source: 'https',
+      unpackedBytes: 5,
+    })
+
+    await expect(
+      usePluginStore.getState().requestInstall(new Uint8Array([1]), 'https', {
+        expectedPlugin: { id: 'selected-plugin' },
+      }),
+    ).rejects.toThrow('plugin_update_identity_mismatch')
+    expect(usePluginStore.getState().pendingConsent).toBeNull()
+  })
+
+  it('removes grants that are not declared by a rolled-back version', async () => {
+    const current = makeRecord('rollback-grants', { capabilities: ['storage', 'network'] })
+    const target = makeRecord('rollback-grants', { capabilities: ['storage'] })
+    target.manifest.version = '0.9.0'
+    target.packageSha256 = 'b'.repeat(64)
+    mocks.currentRecord = current
+    mocks.rollbackRecord = target
+    grant(current, 'storage')
+    grant(current, 'network')
+
+    await usePluginStore.getState().rollback(current.manifest.id)
+
+    expect(mocks.grants.has('rollback-grants:network')).toBe(false)
+    expect(mocks.grants.get('rollback-grants:storage')).toMatchObject({
+      state: 'revoked',
+      boundEntrySha256: target.packageSha256,
+    })
   })
 
   it('does not boot or invoke a plugin while the global feature is disabled', async () => {
@@ -394,6 +493,69 @@ describe('plugin manager security integration', () => {
     })
     expect(mocks.sessionConfig.allowDangerousForConversation).toBe(true)
     expect(mocks.accessibilityAction).not.toHaveBeenCalled()
+  })
+
+  it('rejects a stored grant for a capability the current manifest no longer declares', async () => {
+    const record = makeRecord('manifest-bound', { capabilities: ['storage'] })
+    grant(record, 'network')
+    const boundary = await loadBoundary(record)
+
+    await expect(boundary.authorize('network.fetch', { url: 'https://api.example.com/' }, boundary.context)).resolves.toEqual({
+      allowed: false,
+      reason: 'capability_not_declared',
+    })
+  })
+
+  it('requires explicit approval for mutating network requests regardless of tool risk metadata', async () => {
+    const record = makeRecord('network-approval', { capabilities: ['network'] })
+    grant(record, 'network')
+    const boundary = await loadBoundary(record)
+    mocks.approval.mockResolvedValueOnce({ decision: 'deny' })
+
+    await expect(
+      boundary.hostApi['network.fetch'](
+        { url: 'https://api.example.com/follow', method: 'POST', body: '{}' },
+        boundary.context,
+      ),
+    ).rejects.toThrow('plugin_network_user_denied')
+    expect(mocks.networkFetch).not.toHaveBeenCalled()
+
+    mocks.approval.mockResolvedValueOnce({ decision: 'once' })
+    await expect(
+      boundary.hostApi['network.fetch'](
+        { url: 'https://api.example.com/follow', method: 'POST', body: '{}' },
+        boundary.context,
+      ),
+    ).resolves.toMatchObject({ status: 200 })
+    expect(mocks.approval).toHaveBeenLastCalledWith(
+      expect.objectContaining({ risk: 'dangerous', bindingDigest: 'd'.repeat(64) }),
+    )
+    expect(mocks.networkFetch).toHaveBeenCalledOnce()
+    expect(mocks.executionRequests.at(-1)).toEqual(
+      expect.objectContaining({
+        principal: boundary.context.principal,
+        toolId: 'plugin.network.fetch',
+        backend: 'standard',
+        sideEffect: true,
+        approvalDecision: 'once',
+        parameters: expect.objectContaining({
+          url: 'https://api.example.com/follow',
+          method: 'POST',
+          bodyBytes: 2,
+          bodyDigest: 'd'.repeat(64),
+        }),
+      }),
+    )
+    expect(mocks.auditEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolId: 'plugin.network.fetch',
+          backend: 'standard',
+          approvalDecision: 'deny',
+          status: 'denied',
+        }),
+      ]),
+    )
   })
 
   it('rejects every sandbox and device host call without an Agent session', async () => {

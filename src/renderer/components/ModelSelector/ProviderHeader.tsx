@@ -1,6 +1,7 @@
 import { Flex, Text } from '@mantine/core'
 import { IconChevronDown, IconServer, IconStarFilled } from '@tabler/icons-react'
 import clsx from 'clsx'
+import { useTranslation } from 'react-i18next'
 import Divider from '../common/Divider'
 import ProviderIcon from '../icons/ProviderIcon'
 import { ScalableIcon } from '../common/ScalableIcon'
@@ -32,6 +33,7 @@ export const ProviderHeader = ({
   className = '',
   style,
 }: ProviderHeaderProps) => {
+  const { t } = useTranslation()
   const isClickable = !!onClick
   const isFavorite = variant === 'favorite' || variant === 'mobile-favorite'
   const isMobile = variant === 'mobile' || variant === 'mobile-favorite'
@@ -116,7 +118,7 @@ export const ProviderHeader = ({
           <ProviderIcon size={iconSize} provider={provider.id} className={iconClass} />
         )}
         <Text span c={textColor} size="sm" fw={textWeight}>
-          {provider.name}
+          {t(provider.name)}
         </Text>
         {(showModelCount || isMobile) && modelCount !== undefined && (
           <Text span c="dimmed" size="xs" ml="auto">

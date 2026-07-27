@@ -34,8 +34,9 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { type DownloadSample, updateDownloadEstimate } from '@/mobile/model-download-metrics'
-import { reconcileInstalledLocalModels } from '@/mobile/local-model-provider-sync'
+import { syncInstalledLocalModelsIntoSettings } from '@/mobile/local-model-provider-sync'
 import {
   buildSelectedLocalModel,
   listRunnableLocalModelArtifacts,
@@ -46,7 +47,11 @@ import { createMobileModelCatalogController, searchMobileModelCatalog } from '@/
 import {
   deleteNativeModel,
   getNativeModelDeviceProfile,
+  getNativeModelRuntimeState,
+  loadNativeModel,
   listNativeModelJobs,
+  type NativeModelLoadProgressEvent,
+  subscribeNativeModelLoadProgress,
   yachiyoModelManagerNative,
 } from '@/platform/native/yachiyo_model_manager'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
@@ -56,53 +61,73 @@ import './local-model-center.css'
 type SourceFilter = 'all' | ModelCatalogSource
 type ModelCenterView = 'community' | 'installed'
 type ModelHealth = { status: 'supported' | 'warning' | 'unsupported' | 'unknown'; reason?: string }
+type ModelRuntimeState = {
+  loaded: boolean
+  loading: boolean
+  stage?: string
+  percent: number
+  runtime?: string
+  error?: string
+}
+type Translate = (key: string, options?: Record<string, unknown>) => string
 const controller = createMobileModelCatalogController()
 const MAX_MODEL_BYTES = 15 * 1024 ** 3
 
-function formatBytes(value?: number): string {
-  if (value === undefined || !Number.isFinite(value)) return '未知'
+function formatBytes(t: Translate, value?: number): string {
+  if (value === undefined || !Number.isFinite(value)) return t('未知')
   if (value <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
   return `${(value / 1024 ** exponent).toFixed(exponent >= 3 ? 1 : 0)} ${units[exponent]}`
 }
 
-function formatDuration(value?: number): string {
-  if (value === undefined || !Number.isFinite(value) || value < 0) return '正在估算'
+function formatDuration(t: Translate, value?: number): string {
+  if (value === undefined || !Number.isFinite(value) || value < 0) return t('正在估算')
   const seconds = Math.ceil(value)
-  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 60) return t('{{seconds}} 秒', { seconds })
   const minutes = Math.ceil(seconds / 60)
-  if (minutes < 60) return `${minutes} 分钟`
+  if (minutes < 60) return t('{{minutes}} 分钟', { minutes })
   const hours = Math.floor(minutes / 60)
-  return `${hours} 小时 ${minutes % 60} 分钟`
+  return t('{{hours}} 小时 {{minutes}} 分钟', { hours, minutes: minutes % 60 })
 }
 
-function downloadStatusLabel(status: DownloadJob['status']): string {
-  if (status === 'queued') return '等待下载'
-  if (status === 'downloading') return '正在下载'
-  if (status === 'paused') return '已暂停'
-  if (status === 'completed') return '已完成'
-  if (status === 'failed') return '下载失败'
-  return '已取消'
+function downloadStatusLabel(t: Translate, status: DownloadJob['status']): string {
+  if (status === 'queued') return t('等待下载')
+  if (status === 'downloading') return t('正在下载')
+  if (status === 'paused') return t('已暂停')
+  if (status === 'completed') return t('已完成')
+  if (status === 'failed') return t('下载失败')
+  return t('已取消')
 }
 
-function formatParameters(value?: number): string {
-  if (!value) return '未知'
+function formatParameters(t: Translate, value?: number): string {
+  if (!value) return t('未知')
   return value >= 1_000_000_000 ? `${(value / 1_000_000_000).toFixed(1)}B` : `${Math.round(value / 1_000_000)}M`
 }
 
-function sourceLabel(source: ModelCatalogSource): string {
-  return source === 'huggingface' ? 'Hugging Face' : '魔搭社区'
+function sourceLabel(t: Translate, source: ModelCatalogSource): string {
+  return source === 'huggingface' ? 'Hugging Face' : t('魔搭社区')
 }
 
-function reportLabel(report?: CompatibilityReport) {
-  if (report?.status === 'supported') return { label: '预计可流畅运行', color: 'green' }
-  if (report?.status === 'warning') return { label: '预计可以运行', color: 'yellow' }
-  if (report?.status === 'unsupported') return { label: '当前设备不建议运行', color: 'red' }
-  return { label: '等待设备评估', color: 'gray' }
+function reportLabel(t: Translate, report?: CompatibilityReport) {
+  if (report?.status === 'supported') return { label: t('预计可流畅运行'), color: 'green' }
+  if (report?.status === 'warning') return { label: t('预计可以运行'), color: 'yellow' }
+  if (report?.status === 'unsupported') return { label: t('当前设备不建议运行'), color: 'red' }
+  return { label: t('等待设备评估'), color: 'gray' }
+}
+
+function runtimeStageLabel(t: Translate, stage?: string): string {
+  if (stage === 'starting') return t('正在启动独立推理进程')
+  if (stage === 'loading') return t('正在将模型加载到内存')
+  if (stage === 'generating') return t('模型正在生成')
+  if (stage === 'embedding') return t('正在初始化嵌入模型')
+  if (stage === 'ready') return t('模型已加载到内存')
+  return t('正在准备本地推理运行时')
 }
 
 export function LocalModelCenter() {
+  const { t: i18nT } = useTranslation()
+  const t = i18nT as Translate
   const [view, setView] = useState<ModelCenterView>('community')
   const [query, setQuery] = useState('gguf')
   const [source, setSource] = useState<SourceFilter>('all')
@@ -121,13 +146,12 @@ export function LocalModelCenter() {
   const [queueError, setQueueError] = useState('')
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set())
   const [healthByModelId, setHealthByModelId] = useState<Record<string, ModelHealth>>({})
+  const [runtimeByModelId, setRuntimeByModelId] = useState<Record<string, ModelRuntimeState>>({})
   const [selectedArtifactId, setSelectedArtifactId] = useState<string>()
   const searchAbortRef = useRef<AbortController>()
   const downloadSamplesRef = useRef<Record<string, DownloadSample>>({})
   const refreshRunIdRef = useRef(0)
-  const providers = useSettingsStore((state) => state.providers)
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
-  const localModels = providers?.[ModelProviderEnum.Local]?.models || []
 
   const refreshJobs = useCallback(async () => {
     if (!Capacitor.isNativePlatform()) return
@@ -147,14 +171,15 @@ export function LocalModelCenter() {
         }
       }
       downloadSamplesRef.current = nextSamples
+      await syncInstalledLocalModelsIntoSettings(nextJobs)
       setDownloadMetrics(nextMetrics)
       setJobs(nextJobs)
     } catch (cause) {
       if (runId === refreshRunIdRef.current) {
-        setQueueError(cause instanceof Error ? cause.message : '无法刷新下载队列')
+        setQueueError(cause instanceof Error ? cause.message : t('无法刷新下载队列'))
       }
     }
-  }, [])
+  }, [t])
 
   const runJobAction = useCallback(
     async (jobId: string, action: () => Promise<unknown>) => {
@@ -164,7 +189,7 @@ export function LocalModelCenter() {
         await action()
         await refreshJobs()
       } catch (cause) {
-        setQueueError(cause instanceof Error ? cause.message : '下载操作失败')
+        setQueueError(cause instanceof Error ? cause.message : t('下载操作失败'))
       } finally {
         setPendingJobIds((current) => {
           const next = new Set(current)
@@ -173,7 +198,7 @@ export function LocalModelCenter() {
         })
       }
     },
-    [refreshJobs],
+    [refreshJobs, t],
   )
 
   useEffect(() => {
@@ -187,19 +212,25 @@ export function LocalModelCenter() {
   }, [refreshJobs])
 
   useEffect(() => {
-    const current = providers?.[ModelProviderEnum.Local]?.models || []
-    const reconciled = reconcileInstalledLocalModels(current, jobs)
-    if (JSON.stringify(reconciled) === JSON.stringify(current)) return
-    void persistSettingsPatch({
-      providers: {
-        ...(providers || {}),
-        [ModelProviderEnum.Local]: {
-          ...(providers?.[ModelProviderEnum.Local] || {}),
-          models: reconciled,
+    if (!Capacitor.isNativePlatform()) return
+    let handle: { remove: () => Promise<void> } | undefined
+    void subscribeNativeModelLoadProgress((event: NativeModelLoadProgressEvent) => {
+      setRuntimeByModelId((current) => ({
+        ...current,
+        [event.modelId]: {
+          ...(current[event.modelId] || { loaded: false, loading: true, percent: 0 }),
+          loading: event.stage !== 'ready' && event.stage !== 'idle',
+          loaded: event.stage === 'ready' || current[event.modelId]?.loaded === true,
+          stage: event.stage,
+          percent: Math.max(0, Math.min(100, event.percent)),
+          error: undefined,
         },
-      },
+      }))
+    }).then((listener) => {
+      handle = listener
     })
-  }, [jobs, providers])
+    return () => void handle?.remove()
+  }, [])
 
   const search = useCallback(
     async (selectedSource: SourceFilter = source) => {
@@ -225,18 +256,18 @@ export function LocalModelCenter() {
           setError(
             result.failures.length === sources.length
               ? sources.length === 1
-                ? `${sourceLabel(sources[0])} 当前无法访问，请稍后重试。`
-                : '两个模型平台当前都无法访问，请稍后重试。'
-              : '没有找到匹配模型。',
+                ? t('{{source}} 当前无法访问，请稍后重试。', { source: sourceLabel(t, sources[0]) })
+                : t('两个模型平台当前都无法访问，请稍后重试。')
+              : t('没有找到匹配模型。'),
           )
       } catch (cause) {
         if (searchAbort.signal.aborted) return
-        setError(cause instanceof Error ? cause.message : '模型搜索失败')
+        setError(cause instanceof Error ? cause.message : t('模型搜索失败'))
       } finally {
         if (searchAbortRef.current === searchAbort) setLoading(false)
       }
     },
-    [query, source],
+    [query, source, t],
   )
 
   useEffect(() => () => searchAbortRef.current?.abort(), [])
@@ -258,7 +289,7 @@ export function LocalModelCenter() {
       setDetail(complete)
       setSelectedArtifactId(undefined)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '模型详情加载失败')
+      setError(cause instanceof Error ? cause.message : t('模型详情加载失败'))
     } finally {
       setDetailLoading(false)
     }
@@ -319,21 +350,45 @@ export function LocalModelCenter() {
     void Promise.all(
       installedJobs.map(async (job) => {
         try {
-          return [job.modelId, await yachiyoModelManagerNative.healthCheck({ modelId: job.modelId })] as const
+          const [health, runtime] = await Promise.all([
+            yachiyoModelManagerNative.healthCheck({ modelId: job.modelId }),
+            getNativeModelRuntimeState(job.modelId),
+          ])
+          return [job.modelId, health, runtime] as const
         } catch (cause) {
           return [
             job.modelId,
-            { status: 'unknown', reason: cause instanceof Error ? cause.message : '运行时检查失败' } satisfies ModelHealth,
+            {
+              status: 'unknown',
+              reason: cause instanceof Error ? cause.message : t('运行时检查失败'),
+            } satisfies ModelHealth,
+            { loaded: false },
           ] as const
         }
       }),
     ).then((entries) => {
-      if (active) setHealthByModelId(Object.fromEntries(entries))
+      if (!active) return
+      setHealthByModelId(Object.fromEntries(entries.map(([modelId, health]) => [modelId, health])))
+      setRuntimeByModelId((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          entries.map(([modelId, , runtime]) => [
+            modelId,
+            {
+              loaded: runtime.loaded,
+              loading: false,
+              stage: runtime.loaded ? 'ready' : 'idle',
+              percent: runtime.loaded ? 100 : 0,
+              runtime: 'runtime' in runtime ? runtime.runtime : undefined,
+            },
+          ]),
+        ),
+      }))
     })
     return () => {
       active = false
     }
-  }, [installedJobs, view])
+  }, [installedJobs, t, view])
 
   const startDownload = async () => {
     if (!selectedLocalModel || !profile || !artifact || artifactGroup.length === 0) return
@@ -349,7 +404,7 @@ export function LocalModelCenter() {
       await refreshJobs()
       void router.navigate({ to: '/settings/downloads' })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '无法创建下载任务')
+      setError(cause instanceof Error ? cause.message : t('无法创建下载任务'))
     }
   }
 
@@ -360,16 +415,56 @@ export function LocalModelCenter() {
 
   const removeDownloadedModel = async (modelId: string) => {
     await deleteNativeModel(modelId)
-    await persistSettingsPatch({
-      providers: {
-        ...(providers || {}),
-        [ModelProviderEnum.Local]: {
-          ...(providers?.[ModelProviderEnum.Local] || {}),
-          models: localModels.filter((item) => item.modelId !== modelId),
-        },
-      },
+    setRuntimeByModelId((current) => {
+      const next = { ...current }
+      delete next[modelId]
+      return next
     })
     await refreshJobs()
+  }
+
+  const loadIntoMemory = async (modelId: string) => {
+    setRuntimeByModelId((current) => ({
+      ...Object.fromEntries(Object.entries(current).map(([id, state]) => [id, { ...state, loaded: false }])),
+      [modelId]: { loaded: false, loading: true, stage: 'starting', percent: 0 },
+    }))
+    try {
+      const result = await loadNativeModel(modelId)
+      setRuntimeByModelId((current) => ({
+        ...Object.fromEntries(Object.entries(current).map(([id, state]) => [id, { ...state, loaded: false }])),
+        [modelId]: {
+          loaded: result.loaded,
+          loading: false,
+          stage: result.loaded ? 'ready' : 'idle',
+          percent: result.loaded ? 100 : 0,
+          runtime: result.runtime,
+        },
+      }))
+    } catch (cause) {
+      setRuntimeByModelId((current) => ({
+        ...current,
+        [modelId]: {
+          loaded: false,
+          loading: false,
+          stage: 'idle',
+          percent: 0,
+          error: cause instanceof Error ? cause.message : t('模型加载失败'),
+        },
+      }))
+      throw cause
+    }
+  }
+
+  const unloadRuntime = async () => {
+    await yachiyoModelManagerNative.unload()
+    setRuntimeByModelId((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([id, state]) => [
+          id,
+          { ...state, loaded: false, loading: false, stage: 'idle', percent: 0 },
+        ]),
+      ),
+    )
   }
 
   const removeModel = async () => {
@@ -386,15 +481,15 @@ export function LocalModelCenter() {
         <header className="local-model-heading">
           <div>
             <Text className="local-model-eyebrow">ON-DEVICE MODELS</Text>
-            <Title order={1}>已安装模型</Title>
-            <Text c="dimmed">管理已下载到应用私有目录的模型和运行时。</Text>
+            <Title order={1}>{t('已安装模型')}</Title>
+            <Text c="dimmed">{t('管理已下载到应用私有目录的模型和运行时。')}</Text>
           </div>
           <ActionIcon
             className="local-model-queue-trigger"
             size={42}
             radius="xl"
             variant="default"
-            aria-label="打开下载队列"
+            aria-label={t('打开下载队列')}
             onClick={() => void router.navigate({ to: '/settings/downloads' })}
           >
             <IconDownload size={21} />
@@ -409,8 +504,8 @@ export function LocalModelCenter() {
           value={view}
           onChange={(value) => setView(value as ModelCenterView)}
           data={[
-            { label: '模型社区', value: 'community' },
-            { label: `已安装 (${installedJobs.length})`, value: 'installed' },
+            { label: t('模型社区'), value: 'community' },
+            { label: t('已安装 ({{count}})', { count: installedJobs.length }), value: 'installed' },
           ]}
         />
         {queueError && (
@@ -421,27 +516,31 @@ export function LocalModelCenter() {
         {installedJobs.length === 0 ? (
           <section className="local-model-queue-empty">
             <IconDatabase size={34} />
-            <Text fw={700}>还没有已安装模型</Text>
+            <Text fw={700}>{t('还没有已安装模型')}</Text>
             <Text size="sm" c="dimmed">
-              从模型社区选择 GGUF、LiteRT-LM 或嵌入模型并完成下载。
+              {t('从模型社区选择 GGUF、LiteRT-LM 或嵌入模型并完成下载。')}
             </Text>
             <Button radius="xl" color="chatbox-brand" onClick={() => setView('community')}>
-              浏览模型社区
+              {t('浏览模型社区')}
             </Button>
           </section>
         ) : (
           <div className="local-model-installed-list">
             {installedJobs.map((job) => {
               const health = healthByModelId[job.modelId]
-              const format = job.artifacts.map((item) => item.format).filter((item, index, all) => all.indexOf(item) === index)
-              const runtime = job.artifacts.find((item) => item.runtime)?.runtime ||
-                (job.artifacts.some((item) => item.format === 'gguf') ? 'llama.cpp' : '未识别')
+              const format = job.artifacts
+                .map((item) => item.format)
+                .filter((item, index, all) => all.indexOf(item) === index)
+              const runtime =
+                job.artifacts.find((item) => item.runtime)?.runtime ||
+                (job.artifacts.some((item) => item.format === 'gguf') ? 'llama.cpp' : t('未识别'))
               const quantization = job.artifacts
                 .map((item) => item.filename.match(/(?:^|[-_.])(Q\d(?:_[A-Z0-9]+)?)(?:[-_.]|$)/i)?.[1])
                 .find(Boolean)
               const isDefault =
                 defaultChatModel?.provider === ModelProviderEnum.Local && defaultChatModel.model === job.modelId
               const pending = pendingJobIds.has(job.id)
+              const runtimeState = runtimeByModelId[job.modelId]
               return (
                 <section key={job.modelId} className="local-model-installed-row">
                   <div className="local-model-installed-heading">
@@ -454,31 +553,65 @@ export function LocalModelCenter() {
                       </Text>
                     </div>
                     <Group gap={6}>
-                      {isDefault && <Badge color="chatbox-brand" variant="light">默认</Badge>}
+                      {isDefault && (
+                        <Badge color="chatbox-brand" variant="light">
+                          {t('默认')}
+                        </Badge>
+                      )}
                       <Badge
-                        color={health?.status === 'supported' ? 'green' : health?.status === 'warning' ? 'yellow' : health?.status === 'unsupported' ? 'red' : 'gray'}
+                        color={
+                          health?.status === 'supported'
+                            ? 'green'
+                            : health?.status === 'warning'
+                              ? 'yellow'
+                              : health?.status === 'unsupported'
+                                ? 'red'
+                                : 'gray'
+                        }
                         variant="light"
                       >
                         {health?.status === 'supported'
-                          ? '可运行'
+                          ? t('可运行')
                           : health?.status === 'warning'
-                            ? '可运行，有警告'
+                            ? t('可运行，有警告')
                             : health?.status === 'unsupported'
-                              ? '不可运行'
-                              : '正在检查'}
+                              ? t('不可运行')
+                              : t('正在检查')}
                       </Badge>
                     </Group>
                   </div>
                   <div className="local-model-installed-meta">
-                    <span>{format.join(' + ') || '未知格式'}</span>
+                    <span>{format.join(' + ') || t('未知格式')}</span>
                     <span>{runtime}</span>
-                    <span>{quantization || '量化信息未声明'}</span>
-                    <span>{formatBytes(job.bytesTotal)}</span>
+                    <span>{quantization || t('量化信息未声明')}</span>
+                    <span>{formatBytes(t, job.bytesTotal)}</span>
                   </div>
                   {health?.reason && (
                     <Text size="xs" c={health.status === 'unsupported' ? 'red' : 'dimmed'}>
                       {health.reason}
                     </Text>
+                  )}
+                  {(runtimeState?.loading || runtimeState?.error) && (
+                    <div className="local-model-runtime-progress">
+                      <Group justify="space-between" gap="sm" wrap="nowrap">
+                        <Text size="xs" fw={650} c={runtimeState.error ? 'red' : undefined}>
+                          {runtimeState.error || runtimeStageLabel(t, runtimeState.stage)}
+                        </Text>
+                        {!runtimeState.error && (
+                          <Text size="xs" c="dimmed">
+                            {runtimeState.percent}%
+                          </Text>
+                        )}
+                      </Group>
+                      {!runtimeState.error && (
+                        <Progress
+                          value={runtimeState.percent}
+                          animated={runtimeState.percent < 100}
+                          radius="xl"
+                          color="chatbox-brand"
+                        />
+                      )}
+                    </div>
                   )}
                   <Group gap="xs" justify="flex-end">
                     {!job.artifacts.some((item) => item.format === 'tflite') && (
@@ -490,23 +623,35 @@ export function LocalModelCenter() {
                         disabled={isDefault || health?.status === 'unsupported'}
                         onClick={() => void setInstalledAsDefault(job.modelId)}
                       >
-                        {isDefault ? '当前默认' : '设为默认'}
+                        {isDefault ? t('当前默认') : t('设为默认')}
                       </Button>
                     )}
                     <Button
                       size="compact-sm"
                       radius="xl"
-                      variant="default"
-                      disabled={pending}
-                      onClick={() => void runJobAction(job.id, () => yachiyoModelManagerNative.unload({ modelId: job.modelId }))}
+                      color={runtimeState?.loaded ? 'green' : 'chatbox-brand'}
+                      variant={runtimeState?.loaded ? 'light' : 'filled'}
+                      leftSection={!runtimeState?.loaded ? <IconPlayerPlay size={15} /> : <IconCheck size={15} />}
+                      loading={runtimeState?.loading}
+                      disabled={pending || runtimeState?.loaded || health?.status === 'unsupported'}
+                      onClick={() => void runJobAction(job.id, () => loadIntoMemory(job.modelId))}
                     >
-                      卸载内存
+                      {runtimeState?.loaded ? t('已加载') : runtimeState?.loading ? t('加载中') : t('加载到内存')}
+                    </Button>
+                    <Button
+                      size="compact-sm"
+                      radius="xl"
+                      variant="default"
+                      disabled={pending || !runtimeState?.loaded}
+                      onClick={() => void runJobAction(job.id, unloadRuntime)}
+                    >
+                      {t('卸载内存')}
                     </Button>
                     <ActionIcon
                       size={30}
                       variant="subtle"
                       color="red"
-                      aria-label={`删除 ${job.repository}`}
+                      aria-label={t('删除 {{repository}}', { repository: job.repository })}
                       disabled={pending}
                       onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
                     >
@@ -531,20 +676,20 @@ export function LocalModelCenter() {
               variant="subtle"
               color="gray"
               size={38}
-              aria-label="返回本地模型"
+              aria-label={t('返回本地模型')}
               onClick={() => setDownloadQueueOpened(false)}
             >
               <IconArrowLeft size={22} />
             </ActionIcon>
             <div>
-              <Title order={2}>下载队列</Title>
+              <Title order={2}>{t('下载队列')}</Title>
               <Text c="dimmed" size="sm">
-                退出此页面后下载仍会在后台继续
+                {t('退出此页面后下载仍会在后台继续')}
               </Text>
             </div>
           </Group>
           <Badge color={activeDownloadCount ? 'chatbox-brand' : 'gray'} variant="light" radius="xl">
-            {activeDownloadCount ? `${activeDownloadCount} 个正在下载` : '当前无下载'}
+            {activeDownloadCount ? t('{{count}} 个正在下载', { count: activeDownloadCount }) : t('当前无下载')}
           </Badge>
         </header>
 
@@ -557,9 +702,9 @@ export function LocalModelCenter() {
         {downloadJobs.length === 0 ? (
           <section className="local-model-queue-empty">
             <IconDownload size={34} />
-            <Text fw={700}>还没有下载任务</Text>
+            <Text fw={700}>{t('还没有下载任务')}</Text>
             <Text size="sm" c="dimmed">
-              在模型详情中选择兼容文件开始下载。
+              {t('在模型详情中选择兼容文件开始下载。')}
             </Text>
           </section>
         ) : (
@@ -593,7 +738,7 @@ export function LocalModelCenter() {
                       variant="light"
                       radius="xl"
                     >
-                      {downloadStatusLabel(job.status)}
+                      {downloadStatusLabel(t, job.status)}
                     </Badge>
                   </div>
                   <Progress
@@ -604,12 +749,12 @@ export function LocalModelCenter() {
                   />
                   <div className="local-model-queue-stats">
                     <span>
-                      {formatBytes(job.bytesDownloaded)} / {formatBytes(job.bytesTotal)}
+                      {formatBytes(t, job.bytesDownloaded)} / {formatBytes(t, job.bytesTotal)}
                     </span>
                     {job.status === 'downloading' && (
                       <span>
-                        {metric?.bytesPerSecond ? `${formatBytes(metric.bytesPerSecond)}/s` : '正在连接'} ·{' '}
-                        {formatDuration(metric?.remainingSeconds)}
+                        {metric?.bytesPerSecond ? `${formatBytes(t, metric.bytesPerSecond)}/s` : t('正在连接')} ·{' '}
+                        {formatDuration(t, metric?.remainingSeconds)}
                       </span>
                     )}
                     <strong>{progress.toFixed(1)}%</strong>
@@ -630,7 +775,7 @@ export function LocalModelCenter() {
                           void runJobAction(job.id, () => yachiyoModelManagerNative.pause({ jobId: job.id }))
                         }
                       >
-                        暂停
+                        {t('暂停')}
                       </Button>
                     )}
                     {canResume && (
@@ -643,7 +788,7 @@ export function LocalModelCenter() {
                           void runJobAction(job.id, () => yachiyoModelManagerNative.resume({ jobId: job.id }))
                         }
                       >
-                        继续
+                        {t('继续')}
                       </Button>
                     )}
                     {canCancel && (
@@ -651,7 +796,7 @@ export function LocalModelCenter() {
                         size={30}
                         variant="subtle"
                         color="red"
-                        aria-label="取消下载"
+                        aria-label={t('取消下载')}
                         disabled={pending}
                         onClick={() =>
                           void runJobAction(job.id, () => yachiyoModelManagerNative.cancel({ jobId: job.id }))
@@ -665,7 +810,7 @@ export function LocalModelCenter() {
                         size={30}
                         variant="subtle"
                         color="red"
-                        aria-label="删除本地模型"
+                        aria-label={t('删除本地模型')}
                         disabled={pending}
                         onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
                       >
@@ -683,7 +828,7 @@ export function LocalModelCenter() {
   }
 
   if (activeModel) {
-    const compatibility = reportLabel(report)
+    const compatibility = reportLabel(t, report)
     const progress = activeJob?.bytesTotal ? (activeJob.bytesDownloaded / activeJob.bytesTotal) * 100 : 0
     return (
       <main className="local-model-center local-model-detail">
@@ -692,7 +837,7 @@ export function LocalModelCenter() {
             variant="subtle"
             color="gray"
             size={38}
-            aria-label="返回模型列表"
+            aria-label={t('返回模型列表')}
             onClick={() => setSelected(undefined)}
           >
             <IconArrowLeft size={22} />
@@ -710,36 +855,36 @@ export function LocalModelCenter() {
           <Stack gap="md">
             <section className="local-model-summary-grid">
               <div>
-                <small>参数量</small>
-                <strong>{formatParameters(activeModel.parameterCount)}</strong>
+                <small>{t('参数量')}</small>
+                <strong>{formatParameters(t, activeModel.parameterCount)}</strong>
               </div>
               <div>
-                <small>模型文件</small>
+                <small>{t('模型文件')}</small>
                 <strong>
-                  {formatBytes(artifactGroupBytes || artifact?.sizeBytes || activeModel.storageSizeBytes)}
+                  {formatBytes(t, artifactGroupBytes || artifact?.sizeBytes || activeModel.storageSizeBytes)}
                 </strong>
               </div>
               <div>
-                <small>上下文</small>
+                <small>{t('上下文')}</small>
                 <strong>
-                  {activeModel.contextLength ? `${activeModel.contextLength.toLocaleString()} tokens` : '未知'}
+                  {activeModel.contextLength ? `${activeModel.contextLength.toLocaleString()} tokens` : t('未知')}
                 </strong>
               </div>
               <div>
-                <small>格式</small>
-                <strong>{activeModel.formats.join(', ') || '未知'}</strong>
+                <small>{t('格式')}</small>
+                <strong>{activeModel.formats.join(', ') || t('未知')}</strong>
               </div>
             </section>
             {runnableArtifacts.length > 0 && (
               <Select
-                label="模型文件与量化"
-                description="GGUF 会使用 llama.cpp 在本机运行；分片模型会下载完整分片组。"
+                label={t('模型文件与量化')}
+                description={t('GGUF 会使用 llama.cpp 在本机运行；分片模型会下载完整分片组。')}
                 value={artifact?.id || null}
                 allowDeselect={false}
                 searchable
                 data={runnableArtifacts.map((item) => ({
                   value: item.id,
-                  label: `${item.filename} · ${formatBytes(item.sizeBytes)}`,
+                  label: `${item.filename} · ${formatBytes(t, item.sizeBytes)}`,
                 }))}
                 onChange={(value) => setSelectedArtifactId(value || undefined)}
               />
@@ -747,9 +892,9 @@ export function LocalModelCenter() {
             <section className="local-model-compatibility" data-status={report?.status || 'unknown'}>
               <Group justify="space-between" align="flex-start">
                 <div>
-                  <Text fw={700}>设备运行评估</Text>
+                  <Text fw={700}>{t('设备运行评估')}</Text>
                   <Text size="sm" c="dimmed">
-                    {profile?.soc || profile?.cpu || '正在读取设备信息'}
+                    {profile?.soc || profile?.cpu || t('正在读取设备信息')}
                   </Text>
                 </div>
                 <Badge color={compatibility.color} variant="light" radius="xl">
@@ -758,11 +903,15 @@ export function LocalModelCenter() {
               </Group>
               <div className="local-model-device-metrics">
                 <span>
-                  <IconCpu size={17} /> RAM {formatBytes(profile?.availableRamBytes)} 可用 /{' '}
-                  {formatBytes(profile?.ramBytes)} 总计
+                  <IconCpu size={17} />{' '}
+                  {t('RAM {{available}} 可用 / {{total}} 总计', {
+                    available: formatBytes(t, profile?.availableRamBytes),
+                    total: formatBytes(t, profile?.ramBytes),
+                  })}
                 </span>
                 <span>
-                  <IconDatabase size={17} /> 可用存储 {formatBytes(profile?.availableStorageBytes)}
+                  <IconDatabase size={17} />{' '}
+                  {t('可用存储 {{storage}}', { storage: formatBytes(t, profile?.availableStorageBytes) })}
                 </span>
               </div>
               {report?.issues.map((issue) => (
@@ -773,23 +922,23 @@ export function LocalModelCenter() {
             </section>
             <section className="local-model-metadata">
               <div>
-                <span>来源</span>
-                <strong>{sourceLabel(activeModel.source)}</strong>
+                <span>{t('来源')}</span>
+                <strong>{sourceLabel(t, activeModel.source)}</strong>
               </div>
               <div>
-                <span>架构</span>
-                <strong>{activeModel.architecture.join(', ') || '未声明'}</strong>
+                <span>{t('架构')}</span>
+                <strong>{activeModel.architecture.join(', ') || t('未声明')}</strong>
               </div>
               <div>
-                <span>量化</span>
-                <strong>{activeModel.quantization || '模型包内定义'}</strong>
+                <span>{t('量化')}</span>
+                <strong>{activeModel.quantization || t('模型包内定义')}</strong>
               </div>
               <div>
-                <span>许可证</span>
-                <strong>{activeModel.license || '请查看模型卡'}</strong>
+                <span>{t('许可证')}</span>
+                <strong>{activeModel.license || t('请查看模型卡')}</strong>
               </div>
               <div>
-                <span>固定版本</span>
+                <span>{t('固定版本')}</span>
                 <strong>{activeModel.revision.slice(0, 12)}</strong>
               </div>
             </section>
@@ -797,13 +946,22 @@ export function LocalModelCenter() {
               <section className="local-model-download-state">
                 <Group justify="space-between">
                   <Text fw={600}>
-                    {activeJob.status === 'paused' ? '已暂停' : activeJob.status === 'failed' ? '下载失败' : '正在下载'}
+                    {activeJob.status === 'paused'
+                      ? t('已暂停')
+                      : activeJob.status === 'failed'
+                        ? t('下载失败')
+                        : t('正在下载')}
                   </Text>
                   <Text size="sm">{progress.toFixed(1)}%</Text>
                 </Group>
-                <Progress value={progress} color="chatbox-brand" radius="xl" animated={activeJob.status === 'downloading'} />
+                <Progress
+                  value={progress}
+                  color="chatbox-brand"
+                  radius="xl"
+                  animated={activeJob.status === 'downloading'}
+                />
                 <Text size="xs" c="dimmed">
-                  {formatBytes(activeJob.bytesDownloaded)} / {formatBytes(activeJob.bytesTotal)}
+                  {formatBytes(t, activeJob.bytesDownloaded)} / {formatBytes(t, activeJob.bytesTotal)}
                 </Text>
                 {activeJob.status === 'downloading' || activeJob.status === 'queued' ? (
                   <Button
@@ -814,7 +972,7 @@ export function LocalModelCenter() {
                       void runJobAction(activeJob.id, () => yachiyoModelManagerNative.pause({ jobId: activeJob.id }))
                     }
                   >
-                    暂停
+                    {t('暂停')}
                   </Button>
                 ) : (
                   <Button
@@ -825,7 +983,7 @@ export function LocalModelCenter() {
                       void runJobAction(activeJob.id, () => yachiyoModelManagerNative.resume({ jobId: activeJob.id }))
                     }
                   >
-                    继续
+                    {t('继续')}
                   </Button>
                 )}
               </section>
@@ -839,7 +997,7 @@ export function LocalModelCenter() {
                     leftSection={<IconCheck size={18} />}
                     onClick={() => void setAsDefault()}
                   >
-                    设为聊天模型
+                    {t('设为聊天模型')}
                   </Button>
                 )}
                 <Button
@@ -850,7 +1008,7 @@ export function LocalModelCenter() {
                   loading={pendingJobIds.has(activeJob.id)}
                   onClick={() => void runJobAction(activeJob.id, removeModel)}
                 >
-                  删除
+                  {t('删除')}
                 </Button>
               </Group>
             ) : (
@@ -865,8 +1023,8 @@ export function LocalModelCenter() {
                 onClick={() => void startDownload()}
               >
                 {artifact
-                  ? `下载到应用目录 · ${formatBytes(artifactGroupBytes || artifact.sizeBytes)}`
-                  : '没有可验证的 GGUF / LiteRT-LM / TFLite 文件'}
+                  ? t('下载到应用目录 · {{size}}', { size: formatBytes(t, artifactGroupBytes || artifact.sizeBytes) })
+                  : t('没有可验证的 GGUF / LiteRT-LM / TFLite 文件')}
               </Button>
             )}
             {(error || queueError) && (
@@ -885,15 +1043,15 @@ export function LocalModelCenter() {
       <header className="local-model-heading">
         <div>
           <Text className="local-model-eyebrow">ON-DEVICE MODELS</Text>
-          <Title order={1}>发现本地模型</Title>
-          <Text c="dimmed">搜索可在 Android 设备上离线运行的模型。</Text>
+          <Title order={1}>{t('发现本地模型')}</Title>
+          <Text c="dimmed">{t('搜索可在 Android 设备上离线运行的模型。')}</Text>
         </div>
         <ActionIcon
           className="local-model-queue-trigger"
           size={42}
           radius="xl"
           variant="default"
-          aria-label="打开下载队列"
+          aria-label={t('打开下载队列')}
           onClick={() => void router.navigate({ to: '/settings/downloads' })}
         >
           <IconDownload size={21} />
@@ -908,8 +1066,8 @@ export function LocalModelCenter() {
         value={view}
         onChange={(value) => setView(value as ModelCenterView)}
         data={[
-          { label: '模型社区', value: 'community' },
-          { label: `已安装 (${installedJobs.length})`, value: 'installed' },
+          { label: t('模型社区'), value: 'community' },
+          { label: t('已安装 ({{count}})', { count: installedJobs.length }), value: 'installed' },
         ]}
       />
       <div className="local-model-searchbar">
@@ -920,12 +1078,12 @@ export function LocalModelCenter() {
             if (event.key === 'Enter') void search()
           }}
           leftSection={<IconSearch size={19} />}
-          placeholder="搜索模型，例如 Gemma 3、Qwen 2.5"
+          placeholder={t('搜索模型，例如 Gemma 3、Qwen 2.5')}
           radius="xl"
           size="md"
         />
         <Button radius="xl" color="chatbox-brand" onClick={() => void search()} loading={loading}>
-          搜索
+          {t('搜索')}
         </Button>
       </div>
       <SegmentedControl
@@ -938,9 +1096,9 @@ export function LocalModelCenter() {
           void search(nextSource)
         }}
         data={[
-          { label: '全部', value: 'all' },
+          { label: t('全部'), value: 'all' },
           { label: 'Hugging Face', value: 'huggingface' },
-          { label: '魔搭社区', value: 'modelscope' },
+          { label: t('魔搭社区'), value: 'modelscope' },
         ]}
       />
       {error && (
@@ -959,31 +1117,38 @@ export function LocalModelCenter() {
               onClick={() => void openDetail(model)}
             >
               <span className="local-model-source-mark" data-source={model.source}>
-                {model.source === 'huggingface' ? 'HF' : '魔搭'}
+                {model.source === 'huggingface' ? 'HF' : t('魔搭')}
               </span>
               <span className="local-model-row-copy">
                 <strong>{model.displayName || model.name}</strong>
                 <small>{model.repository}</small>
                 <span className="local-model-row-tags">
                   <Badge size="xs" variant="light" color="gray">
-                    {formatParameters(model.parameterCount)}
+                    {formatParameters(t, model.parameterCount)}
                   </Badge>
                   {model.formats.slice(0, 2).map((format) => (
-                    <Badge key={format} size="xs" variant="light" color={format === 'litertlm' ? 'chatbox-brand' : 'gray'}>
+                    <Badge
+                      key={format}
+                      size="xs"
+                      variant="light"
+                      color={format === 'litertlm' ? 'chatbox-brand' : 'gray'}
+                    >
                       {format}
                     </Badge>
                   ))}
                   {installed && (
                     <Badge size="xs" variant="light" color="green">
-                      已下载
+                      {t('已下载')}
                     </Badge>
                   )}
                 </span>
               </span>
               <span className="local-model-row-meta">
-                <strong>{formatBytes(model.storageSizeBytes)}</strong>
+                <strong>{formatBytes(t, model.storageSizeBytes)}</strong>
                 <small>
-                  {model.downloads ? `${model.downloads.toLocaleString()} 次下载` : sourceLabel(model.source)}
+                  {model.downloads
+                    ? t('{{count}} 次下载', { count: model.downloads.toLocaleString() })
+                    : sourceLabel(t, model.source)}
                 </small>
               </span>
             </button>

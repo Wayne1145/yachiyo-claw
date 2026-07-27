@@ -3,6 +3,7 @@ import { ActionIcon } from '@mantine/core'
 import { IconChevronLeft, IconHistory, IconPuzzle } from '@tabler/icons-react'
 import { useLocation } from '@tanstack/react-router'
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { copyAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import {
   type AndroidShellTab,
@@ -45,6 +46,7 @@ import './android-app-shell.css'
 import './local-model-center.css'
 
 export function AndroidAppShell({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
   const location = useLocation()
   const lastConversationPathname = useRef(
     location.pathname === '/' || location.pathname.startsWith('/session/') || location.pathname.startsWith('/task/')
@@ -93,8 +95,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       location.pathname.startsWith(`/plugin/${record.manifest.id}/`),
   )
   const activeTab = activePlugin ? `plugin-${activePlugin.manifest.id}` : resolveAndroidShellTab(location.pathname)
-  const activeTabLabel =
-    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天'
+  const activeTabLabel = t(
+    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天',
+  )
   const workspaceView = resolveAndroidShellWorkspaceView(location.pathname)
   const isAllowedPath = isAllowedAndroidShellPath(location.pathname)
   const isAgentTaskPath = location.pathname === '/task' || location.pathname.startsWith('/task/')
@@ -368,7 +371,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
                 variant="subtle"
                 color="gray"
                 size={36}
-                aria-label="返回设置"
+                aria-label={String(t('返回设置'))}
                 onClick={() => router.navigate({ to: '/settings' })}
               >
                 <IconChevronLeft size={22} />
@@ -378,14 +381,14 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
             )}
             <div className="yachiyo-mobile-title">
               <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
-              <span>{isAgentTaskPath ? 'Agent 对话' : activeTabLabel}</span>
+              <span>{isAgentTaskPath ? t('Agent 对话') : activeTabLabel}</span>
             </div>
             {activeTab === 'chat' && (
               <ActionIcon
                 variant="subtle"
                 color="gray"
                 size={36}
-                aria-label="会话记录"
+                aria-label={String(t('会话记录'))}
                 onClick={() => setHistoryOpened(true)}
               >
                 <IconHistory size={21} />
@@ -393,7 +396,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
             )}
             <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
               <span aria-hidden="true" />
-              {hasProvider ? '已连接' : '未连接'}
+              {hasProvider ? t('已连接') : t('未连接')}
             </div>
             {activeTab === 'chat' && (
               <AgentSessionControls

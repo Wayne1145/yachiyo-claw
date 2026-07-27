@@ -269,6 +269,14 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+
+.local-model-runtime-progress {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--mantine-color-pink-1) 48%, transparent);
+}
 .local-model-installed-meta span {
   padding: 4px 9px;
   border-radius: 999px;

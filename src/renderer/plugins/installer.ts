@@ -60,6 +60,8 @@ export interface PluginFileStore {
   rename(from: string, to: string): Promise<void>
   removeDir(path: string): Promise<void>
   exists(path: string): Promise<boolean>
+  /** Immediate child directory names. Optional for non-persistent/test stores. */
+  listDirectories?(path: string): Promise<string[]>
 }
 
 export interface PluginRegistryStore {
@@ -372,6 +374,37 @@ export class PluginInstaller {
         'files'
       )
     }
+  }
+
+  /** Removes crash-left staging directories and immutable versions no registry row can reference. */
+  async cleanupAbandonedCode(): Promise<void> {
+    if (!this.fileStore.listDirectories || !this.registry.list) return
+    await this.withMutation(async () => {
+      const records = (await this.registry.list!()).map((record) =>
+        parseInstalledPluginRecord(record, record.manifest.id),
+      )
+      const referenced = new Set<string>()
+      for (const record of records) {
+        for (const version of [record, ...(record.previousVersions ?? [])]) {
+          const path = pluginInstallDir(version)
+          if (path.startsWith(`${PLUGIN_VERSIONS_DIR}/`)) referenced.add(path)
+        }
+      }
+
+      const pluginIds = await this.fileStore.listDirectories!(PLUGIN_VERSIONS_DIR)
+      for (const pluginId of pluginIds) {
+        if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pluginId)) continue
+        const parent = `${PLUGIN_VERSIONS_DIR}/${pluginId}`
+        const versions = await this.fileStore.listDirectories!(parent).catch(() => [])
+        for (const name of versions) {
+          const isVersion = /^[a-f0-9]{16}-\d+$/.test(name)
+          const isStage = /^\.staging-[a-f0-9]{16}-\d+$/.test(name)
+          if ((isVersion && !referenced.has(`${parent}/${name}`)) || isStage) {
+            await this.fileStore.removeDir(`${parent}/${name}`).catch(() => undefined)
+          }
+        }
+      }
+    })
   }
 
   /** Atomically repoints the registry to a retained verified version; code bytes are never moved. */

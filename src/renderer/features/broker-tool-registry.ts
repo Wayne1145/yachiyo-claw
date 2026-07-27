@@ -20,6 +20,7 @@ export const INTERNAL_BROKER_TOOL_IDS = [
   'plugin.sandbox.read',
   'plugin.sandbox.write',
   'plugin.sandbox.exec',
+  'plugin.network.fetch',
 ] as const
 
 export type InternalBrokerToolId = (typeof INTERNAL_BROKER_TOOL_IDS)[number]
@@ -106,10 +107,11 @@ export function registerBuiltInBrokerTools(): void {
   for (const toolId of INTERNAL_BROKER_TOOL_IDS) {
     const featureId = toolId.startsWith('skill.') ? 'skills' : toolId.startsWith('plugin.') ? 'plugins' : 'sandbox'
     const readOnly = toolId === 'plugin.sandbox.read'
+    const backend = toolId === 'plugin.network.fetch' ? 'standard' : 'sandbox'
     registerBrokerToolDescriptor({
       featureId,
       trust: 'sandboxed',
-      descriptor: descriptor(toolId, readOnly ? 'read' : 'sensitive', ['sandbox'], !readOnly),
+      descriptor: descriptor(toolId, readOnly ? 'read' : 'sensitive', [backend], !readOnly),
     })
   }
 }

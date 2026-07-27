@@ -26,6 +26,7 @@ import {
   IconUpload,
 } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isPluginCompatible, type PluginHealth } from '@shared/plugins/lifecycle'
 import type { PluginMarketplaceEntry } from '@shared/plugins/marketplace'
 import { isPluginCapabilityImplemented } from '@shared/plugins/device-policy'
@@ -63,7 +64,7 @@ import { useInAndroidAppShell } from './AndroidAppShellContext'
  * a verified plugin must request it again from its detail page.
  */
 
-const CAPABILITY_LABELS: Record<string, string> = {
+const CAPABILITY_LABEL_KEYS: Record<string, string> = {
   storage: '本地存储(仅本插件的独立空间)',
   ui: '插件页面(在 /plugin 内渲染界面)',
   tools: '向 Agent 提供工具',
@@ -72,54 +73,66 @@ const CAPABILITY_LABELS: Record<string, string> = {
   device: '设备控制(高风险)',
 }
 
-const SOURCE_LABELS: Record<string, string> = {
+const SOURCE_LABEL_KEYS: Record<string, string> = {
   marketplace: '官方市场',
   https: 'HTTPS / GitHub',
   sideload: '本地侧载',
 }
 
-function pluginCenterErrorMessage(cause: unknown, fallback: string): string {
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+function capabilityLabel(t: Translate, capability: string): string {
+  const key = CAPABILITY_LABEL_KEYS[capability]
+  return key ? t(key) : capability
+}
+
+function sourceLabel(t: Translate, source: string): string {
+  const key = SOURCE_LABEL_KEYS[source]
+  return key ? t(key) : source
+}
+
+function pluginCenterErrorMessage(t: Translate, cause: unknown, fallback: string): string {
   const message = cause instanceof Error ? cause.message.trim() : ''
   if (!message) return fallback
 
   const marketplaceHttp = /^plugin_marketplace_http_(\d{3})$/i.exec(message)
   if (marketplaceHttp) {
     return marketplaceHttp[1] === '404'
-      ? '插件市场地址不存在或尚未发布，请稍后重试。'
-      : `插件市场暂时无法访问（服务器返回 ${marketplaceHttp[1]}），请稍后重试。`
+      ? t('插件市场地址不存在或尚未发布，请稍后重试。')
+      : t('插件市场暂时无法访问（服务器返回 {{status}}），请稍后重试。', { status: marketplaceHttp[1] })
   }
 
   const downloadHttp = /^(?:(?:plugin_)?download_http|plugin_package_probe_http|github_release_http)_(\d{3})$/i.exec(
-    message
+    message,
   )
   if (downloadHttp) {
     return downloadHttp[1] === '404'
-      ? '插件下载地址不存在或文件已被移除，请检查地址后重试。'
-      : `插件下载失败（服务器返回 ${downloadHttp[1]}），请稍后重试。`
+      ? t('插件下载地址不存在或文件已被移除，请检查地址后重试。')
+      : t('插件下载失败（服务器返回 {{status}}），请稍后重试。', { status: downloadHttp[1] })
   }
 
   const knownMessages: Record<string, string> = {
-    plugin_url_must_be_public_https: '仅支持不含账号信息的公开 HTTPS 插件地址。',
-    plugin_url_private_network_denied: '为保护本地网络安全，不能从内网地址安装插件。',
-    plugin_redirect_location_unavailable: '插件下载地址返回了无效跳转，请联系插件作者。',
-    plugin_too_many_redirects: '插件下载地址跳转次数过多，请检查地址后重试。',
-    plugin_package_size_invalid: '插件包大小无效或超过允许上限。',
-    plugin_package_too_large: '插件包超过允许的大小上限。',
-    plugin_package_size_mismatch: '插件包实际大小与发布信息不一致，已停止安装。',
-    plugin_package_digest_mismatch: '插件包完整性校验失败，已停止安装。',
-    plugin_download_failed: '插件下载失败，请检查网络后重试。',
-    plugin_download_cancelled: '插件下载已取消。',
-    plugin_download_paused: '插件下载已暂停，可在下载管理中继续。',
-    plugin_download_wait_timeout: '插件下载等待超时，可在下载管理中查看进度后重试。',
-    plugin_marketplace_too_large: '插件市场返回的数据超过安全大小限制。',
-    plugin_marketplace_identity_mismatch: '下载的插件身份与市场信息不一致，已停止安装。',
-    github_repository_invalid: 'GitHub 仓库地址格式不正确。',
-    github_release_plugin_asset_missing: '最新 GitHub Release 中没有找到可安装的插件 ZIP。',
-    plugin_feature_disabled: '第三方插件功能已在功能管理中关闭。',
+    plugin_url_must_be_public_https: t('仅支持不含账号信息的公开 HTTPS 插件地址。'),
+    plugin_url_private_network_denied: t('为保护本地网络安全，不能从内网地址安装插件。'),
+    plugin_redirect_location_unavailable: t('插件下载地址返回了无效跳转，请联系插件作者。'),
+    plugin_too_many_redirects: t('插件下载地址跳转次数过多，请检查地址后重试。'),
+    plugin_package_size_invalid: t('插件包大小无效或超过允许上限。'),
+    plugin_package_too_large: t('插件包超过允许的大小上限。'),
+    plugin_package_size_mismatch: t('插件包实际大小与发布信息不一致，已停止安装。'),
+    plugin_package_digest_mismatch: t('插件包完整性校验失败，已停止安装。'),
+    plugin_download_failed: t('插件下载失败，请检查网络后重试。'),
+    plugin_download_cancelled: t('插件下载已取消。'),
+    plugin_download_paused: t('插件下载已暂停，可在下载管理中继续。'),
+    plugin_download_wait_timeout: t('插件下载等待超时，可在下载管理中查看进度后重试。'),
+    plugin_marketplace_too_large: t('插件市场返回的数据超过安全大小限制。'),
+    plugin_marketplace_identity_mismatch: t('下载的插件身份与市场信息不一致，已停止安装。'),
+    github_repository_invalid: t('GitHub 仓库地址格式不正确。'),
+    github_release_plugin_asset_missing: t('最新 GitHub Release 中没有找到可安装的插件 ZIP。'),
+    plugin_feature_disabled: t('第三方插件功能已在功能管理中关闭。'),
   }
   const code = message.split(':', 1)[0]
   if (knownMessages[code]) return knownMessages[code]
-  if (cause instanceof SyntaxError) return '插件市场返回的数据格式无效，请稍后重试。'
+  if (cause instanceof SyntaxError) return t('插件市场返回的数据格式无效，请稍后重试。')
   if (/invalid url|failed to fetch|networkerror/i.test(message)) return fallback
   if (/^(?:plugin|github|download)_[a-z0-9_.-]+$/i.test(code)) return fallback
   return message
@@ -152,23 +165,23 @@ interface PluginActivityEntry {
   failures?: string[]
 }
 
-function activityTitle(entry: PluginActivityEntry): string {
+function activityTitle(t: Translate, entry: PluginActivityEntry): string {
   if (entry.event === 'grant')
-    return `已授权 ${CAPABILITY_LABELS[entry.capability ?? ''] ?? entry.capability ?? '能力'}`
+    return t('已授权 {{capability}}', { capability: capabilityLabel(t, entry.capability ?? t('能力')) })
   if (entry.event === 'revoke')
-    return `已撤销 ${CAPABILITY_LABELS[entry.capability ?? ''] ?? entry.capability ?? '能力'}`
-  if (entry.event === 'runtime_started') return '插件运行环境已启动'
-  if (entry.event === 'runtime_start_failed') return '插件启动失败'
-  if (entry.event === 'invocation_succeeded') return `调用成功：${entry.toolName ?? '插件工具'}`
-  if (entry.event === 'invocation_failed') return `调用失败：${entry.toolName ?? '插件工具'}`
-  if (entry.event === 'invocation_denied' || entry.event === 'capability_denied') return '插件请求已拒绝'
-  if (entry.event === 'uninstall_incomplete') return '卸载存在残留'
-  if (entry.event === 'view_render_failed') return '插件页面渲染失败'
+    return t('已撤销 {{capability}}', { capability: capabilityLabel(t, entry.capability ?? t('能力')) })
+  if (entry.event === 'runtime_started') return t('插件运行环境已启动')
+  if (entry.event === 'runtime_start_failed') return t('插件启动失败')
+  if (entry.event === 'invocation_succeeded') return t('调用成功：{{tool}}', { tool: entry.toolName ?? t('插件工具') })
+  if (entry.event === 'invocation_failed') return t('调用失败：{{tool}}', { tool: entry.toolName ?? t('插件工具') })
+  if (entry.event === 'invocation_denied' || entry.event === 'capability_denied') return t('插件请求已拒绝')
+  if (entry.event === 'uninstall_incomplete') return t('卸载存在残留')
+  if (entry.event === 'view_render_failed') return t('插件页面渲染失败')
   if (entry.event) return entry.event
-  return entry.toolName ?? entry.toolId ?? entry.method ?? '插件活动'
+  return entry.toolName ?? entry.toolId ?? entry.method ?? t('插件活动')
 }
 
-function activityDetail(entry: PluginActivityEntry): string {
+function activityDetail(t: Translate, entry: PluginActivityEntry): string {
   const details = [
     entry.status,
     entry.backend,
@@ -180,11 +193,13 @@ function activityDetail(entry: PluginActivityEntry): string {
     .filter(Boolean)
     .join(' · ')
   if (details) return details
-  return [entry.status, entry.backend, entry.errorCode].filter(Boolean).join(' · ') || '已记录'
+  return [entry.status, entry.backend, entry.errorCode].filter(Boolean).join(' · ') || t('已记录')
 }
 
 /** Per-plugin detail: grant panel with immediate revoke, health status, bounded activity log. */
 function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; onChanged: () => Promise<void> }) {
+  const { t: i18nT, i18n } = useTranslation()
+  const t = i18nT as Translate
   const [grants, setGrants] = useState<Array<{ capability: string; state: string; domains?: string[] }>>([])
   const [health, setHealth] = useState<PluginHealth | null>(null)
   const [audit, setAudit] = useState<PluginActivityEntry[]>([])
@@ -210,23 +225,23 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
   return (
     <Stack gap="sm" mt="sm">
       {health?.disabledReason && (
-        <Alert color="red" title="已自动禁用">
+        <Alert color="red" title={t('已自动禁用')}>
           <Group justify="space-between">
             <Text size="sm">
               {health.disabledReason}
-              {health.lastError ? ` · 最近错误: ${health.lastError}` : ''}
+              {health.lastError ? t(' · 最近错误: {{error}}', { error: health.lastError }) : ''}
             </Text>
             <Button size="compact-sm" onClick={() => void reenableDisabledPlugin(record.manifest.id).then(reload)}>
-              重新启用
+              {t('重新启用')}
             </Button>
           </Group>
         </Alert>
       )}
       <Text size="sm" fw={600}>
-        能力授权
+        {t('能力授权')}
       </Text>
       <Text size="xs" c="dimmed">
-        插件运行在独立的执行环境中,无法直接调用系统能力;它只能使用你在这里授权的能力。撤销立即生效。
+        {t('插件运行在独立的执行环境中,无法直接调用系统能力;它只能使用你在这里授权的能力。撤销立即生效。')}
       </Text>
       {grants.map((grant) => {
         const declared = record.manifest.capabilities.find((c) => c.name === grant.capability)
@@ -243,26 +258,26 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
             <Group justify="space-between" align="flex-start">
               <div style={{ flex: 1 }}>
                 <Text size="sm" fw={isDevice ? 650 : 500} c={isDevice ? 'red' : undefined}>
-                  {CAPABILITY_LABELS[grant.capability] ?? grant.capability}
+                  {capabilityLabel(t, grant.capability)}
                 </Text>
                 <Text size="xs" c="dimmed">
                   {declared?.reason}
                 </Text>
                 {grant.capability === 'sandbox' && (
                   <Text size="xs" c="orange">
-                    可执行命令、联网并修改共享 PRoot 系统镜像；PRoot 不是安全隔离边界。只向可信插件授权。
+                    {t('可执行命令、联网并修改共享 PRoot 系统镜像；PRoot 不是安全隔离边界。只向可信插件授权。')}
                   </Text>
                 )}
                 {grant.domains && (
                   <Text size="xs" c="dimmed">
-                    允许的域名: {grant.domains.join(', ')}
+                    {t('允许的域名: {{domains}}', { domains: grant.domains.join(', ') })}
                   </Text>
                 )}
                 {(unavailable || requiresTrustedSignature) && (
                   <Text size="xs" c="red">
                     {requiresTrustedSignature
-                      ? '设备控制只对市场验签通过的插件开放；本地侧载和未签名插件不能获得此能力。'
-                      : '当前版本尚未开放此能力。'}
+                      ? t('设备控制只对市场验签通过的插件开放；本地侧载和未签名插件不能获得此能力。')
+                      : t('当前版本尚未开放此能力。')}
                   </Text>
                 )}
               </div>
@@ -286,28 +301,34 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
       <Modal
         opened={deviceWarningOpen}
         onClose={() => setDeviceWarningOpen(false)}
-        title="授予第三方插件设备控制"
+        title={t('授予第三方插件设备控制')}
         centered
       >
         <Stack gap="sm">
-          <Alert color="red" title="此权限风险极高">
-            授权了设备权限的第三方插件，能做的事和恶意软件没有本质区别。只应向你完全信任的插件授予。
+          <Alert color="red" title={t('此权限风险极高')}>
+            {t('授权了设备权限的第三方插件，能做的事和恶意软件没有本质区别。只应向你完全信任的插件授予。')}
           </Alert>
           <Text size="sm">
-            此插件将能够读取当前屏幕上的全部文字内容（包括其他应用里的）、点击和滚动界面元素、代你输入文字、
-            启动任意已安装应用，以及按下返回、主屏和最近任务等系统按键。
+            {t(
+              '此插件将能够读取当前屏幕上的全部文字内容（包括其他应用里的）、点击和滚动界面元素、代你输入文字、启动任意已安装应用，以及按下返回、主屏和最近任务等系统按键。',
+            )}
           </Text>
           <Code block>
-            {`插件 ID: ${record.manifest.id}\n版本: ${record.manifest.version}\n签名: ${record.signatureVerified ? '已验证' : '未验证'}\n申请理由: ${record.manifest.capabilities.find((item) => item.name === 'device')?.reason ?? ''}`}
+            {t('插件 ID: {{id}}\n版本: {{version}}\n签名: {{signature}}\n申请理由: {{reason}}', {
+              id: record.manifest.id,
+              version: record.manifest.version,
+              signature: record.signatureVerified ? t('已验证') : t('未验证'),
+              reason: record.manifest.capabilities.find((item) => item.name === 'device')?.reason ?? '',
+            })}
           </Code>
           <Checkbox
             checked={deviceRiskAccepted}
             onChange={(event) => setDeviceRiskAccepted(event.currentTarget.checked)}
-            label="我理解此插件可以控制手机并读取其他应用界面，仍然要授予"
+            label={t('我理解此插件可以控制手机并读取其他应用界面，仍然要授予')}
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setDeviceWarningOpen(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button
               color="red"
@@ -319,24 +340,24 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
                 })
               }
             >
-              授予设备控制
+              {t('授予设备控制')}
             </Button>
           </Group>
         </Stack>
       </Modal>
       <Group justify="space-between">
         <Text size="sm" fw={600}>
-          活动日志
+          {t('活动日志')}
         </Text>
         {audit.length > 6 && (
           <Button size="compact-xs" variant="subtle" onClick={() => setShowAllAudit((value) => !value)}>
-            {showAllAudit ? '仅看最近' : '查看全部'}
+            {showAllAudit ? t('仅看最近') : t('查看全部')}
           </Button>
         )}
       </Group>
       {audit.length === 0 ? (
         <Text size="xs" c="dimmed">
-          暂无记录
+          {t('暂无记录')}
         </Text>
       ) : (
         <List listStyleType="none" spacing={6} style={{ maxHeight: showAllAudit ? 360 : 190, overflowY: 'auto' }}>
@@ -345,14 +366,14 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
               <Group justify="space-between" align="flex-start" wrap="nowrap">
                 <div style={{ minWidth: 0 }}>
                   <Text size="xs" fw={600} lineClamp={1}>
-                    {activityTitle(entry)}
+                    {activityTitle(t, entry)}
                   </Text>
                   <Text size="xs" c={entry.status === 'denied' || entry.errorCode ? 'red' : 'dimmed'} lineClamp={2}>
-                    {activityDetail(entry)}
+                    {activityDetail(t, entry)}
                   </Text>
                 </div>
                 <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
-                  {entry.at ? new Date(entry.at).toLocaleString() : '时间未知'}
+                  {entry.at ? new Date(entry.at).toLocaleString(i18n.resolvedLanguage) : t('时间未知')}
                 </Text>
               </Group>
             </List.Item>
@@ -362,7 +383,7 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
       {(record.previousVersions?.length ?? 0) > 0 && (
         <Stack gap={6}>
           <Text size="sm" fw={600}>
-            可回退版本
+            {t('可回退版本')}
           </Text>
           {record.previousVersions?.map((version) => (
             <Group key={`${version.manifest.version}:${version.packageSha256}`} justify="space-between">
@@ -373,12 +394,12 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
                 leftSection={<IconArrowBackUp size={13} />}
                 onClick={() => void rollback(record.manifest.id, version.manifest.version).then(onChanged)}
               >
-                回退
+                {t('回退')}
               </Button>
             </Group>
           ))}
           <Text size="xs" c="dimmed">
-            回退后所有能力会撤销，需要重新逐项授权。
+            {t('回退后所有能力会撤销，需要重新逐项授权。')}
           </Text>
         </Stack>
       )}
@@ -387,6 +408,8 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
 }
 
 export function PluginCenter() {
+  const { t: i18nT } = useTranslation()
+  const t = i18nT as Translate
   const inAndroidAppShell = useInAndroidAppShell()
   const installed = usePluginStore((state) => state.installed)
   const pendingConsent = usePluginStore((state) => state.pendingConsent)
@@ -419,13 +442,16 @@ export function PluginCenter() {
     void Promise.all([
       platform.getVersion().catch(() => null),
       Promise.all(
-        installed.map(async (record) => [
-          record.manifest.id,
-          {
-            dataBytes: await pluginDataStore.usedBytes(`plugin:${record.manifest.id}:`),
-            health: await pluginHealthStore.get(record.manifest.id),
-          },
-        ] as const),
+        installed.map(
+          async (record) =>
+            [
+              record.manifest.id,
+              {
+                dataBytes: await pluginDataStore.usedBytes(`plugin:${record.manifest.id}:`),
+                health: await pluginHealthStore.get(record.manifest.id),
+              },
+            ] as const,
+        ),
       ),
     ]).then(([version, entries]) => {
       if (!active) return
@@ -449,11 +475,11 @@ export function PluginCenter() {
     setError(null)
     setBusy(true)
     try {
-      if (file.size > PLUGIN_PACKAGE_LIMITS.maxArchiveBytes) throw new Error('插件包过大')
+      if (file.size > PLUGIN_PACKAGE_LIMITS.maxArchiveBytes) throw new Error(t('插件包过大'))
       // Sideload warning is part of the consent sheet below; source marks it unsigned-by-default.
       await requestInstall(new Uint8Array(await file.arrayBuffer()), 'sideload')
     } catch (requestError) {
-      setError(pluginCenterErrorMessage(requestError, '插件包无效，请检查文件后重试。'))
+      setError(pluginCenterErrorMessage(t, requestError, t('插件包无效，请检查文件后重试。')))
     } finally {
       setBusy(false)
     }
@@ -466,7 +492,7 @@ export function PluginCenter() {
     try {
       const originalUrl = new URL(sourceUrl.trim()).toString()
       const source = await resolvePluginPackageSource(originalUrl)
-      const request = await pluginPackageDownloadRequest(source, '第三方插件')
+      const request = await pluginPackageDownloadRequest(source, t('第三方插件'))
       savePendingPluginInstall({
         schemaVersion: 1,
         state: 'prepared',
@@ -476,7 +502,7 @@ export function PluginCenter() {
         updateSource: { kind: 'url', url: originalUrl },
         createdAt: Date.now(),
       })
-      const downloaded = await downloadPluginPackage(source, '第三方插件')
+      const downloaded = await downloadPluginPackage(source, t('第三方插件'))
       try {
         await requestInstall(downloaded.bytes, 'https', {
           ...(source.sha256 ? { expectedSha256: source.sha256 } : {}),
@@ -489,7 +515,7 @@ export function PluginCenter() {
         throw error
       }
     } catch (requestError) {
-      setError(pluginCenterErrorMessage(requestError, '插件下载或校验失败，请检查地址后重试。'))
+      setError(pluginCenterErrorMessage(t, requestError, t('插件下载或校验失败，请检查地址后重试。')))
     } finally {
       setBusy(false)
     }
@@ -522,6 +548,7 @@ export function PluginCenter() {
           expectedSha256: entry.sha256,
           signature: entry.signature,
           updateSource: { kind: 'marketplace', url: marketplaceUrl },
+          expectedPlugin: { id: entry.id, version: entry.version },
           artifactId: downloaded.downloadId,
         })
         const inspected = usePluginStore.getState().pendingConsent?.verified.manifest
@@ -535,7 +562,7 @@ export function PluginCenter() {
         throw error
       }
     } catch (requestError) {
-      setError(pluginCenterErrorMessage(requestError, '市场插件安装失败，请稍后重试。'))
+      setError(pluginCenterErrorMessage(t, requestError, t('市场插件安装失败，请稍后重试。')))
     } finally {
       setBusy(false)
     }
@@ -563,13 +590,14 @@ export function PluginCenter() {
       const manualCount = installed.filter(
         (record) => record.source !== 'marketplace' && record.updateSource?.kind !== 'marketplace',
       ).length
+      const manualNotice = manualCount > 0 ? t('另有 {{count}} 个非市场插件需单独检查。', { count: manualCount }) : ''
       setNotice(
         updates.size > 0
-          ? `发现 ${updates.size} 个可用更新。${manualCount > 0 ? `另有 ${manualCount} 个非市场插件需单独检查。` : ''}`
-          : `市场插件均为最新版本。${manualCount > 0 ? `另有 ${manualCount} 个非市场插件需单独检查。` : ''}`,
+          ? t('发现 {{count}} 个可用更新。{{manualNotice}}', { count: updates.size, manualNotice })
+          : t('市场插件均为最新版本。{{manualNotice}}', { manualNotice }),
       )
     } catch (checkError) {
-      setError(pluginCenterErrorMessage(checkError, '插件更新检查失败，请稍后重试。'))
+      setError(pluginCenterErrorMessage(t, checkError, t('插件更新检查失败，请稍后重试。')))
     } finally {
       setMarketLoading(false)
     }
@@ -585,13 +613,13 @@ export function PluginCenter() {
         const entries = await loadPluginMarketplace(catalogUrl)
         const candidate = findMarketplacePluginUpdates([record], entries).get(record.manifest.id)
         if (!candidate) {
-          setNotice(`${record.manifest.displayName} 已是最新版本。`)
+          setNotice(t('{{name}} 已是最新版本。', { name: record.manifest.displayName }))
           return
         }
         setAvailableUpdates((previous) => new Map(previous).set(record.manifest.id, candidate))
         await installMarketplaceEntry(candidate, catalogUrl)
       } catch (checkError) {
-        setError(pluginCenterErrorMessage(checkError, '插件更新检查失败，请稍后重试。'))
+        setError(pluginCenterErrorMessage(t, checkError, t('插件更新检查失败，请稍后重试。')))
       } finally {
         setMarketLoading(false)
       }
@@ -601,7 +629,10 @@ export function PluginCenter() {
       setBusy(true)
       try {
         const source = await resolvePluginPackageSource(record.updateSource.url)
-        const request = await pluginPackageDownloadRequest(source, `${record.manifest.displayName} 更新检查`)
+        const request = await pluginPackageDownloadRequest(
+          source,
+          t('{{name}} 更新检查', { name: record.manifest.displayName }),
+        )
         savePendingPluginInstall({
           schemaVersion: 1,
           state: 'prepared',
@@ -609,13 +640,18 @@ export function PluginCenter() {
           source: 'https',
           ...(source.sha256 ? { expectedSha256: source.sha256 } : {}),
           updateSource: record.updateSource,
+          expectedPlugin: { id: record.manifest.id },
           createdAt: Date.now(),
         })
-        const downloaded = await downloadPluginPackage(source, `${record.manifest.displayName} 更新检查`)
+        const downloaded = await downloadPluginPackage(
+          source,
+          t('{{name}} 更新检查', { name: record.manifest.displayName }),
+        )
         try {
           await requestInstall(downloaded.bytes, 'https', {
             ...(source.sha256 ? { expectedSha256: source.sha256 } : {}),
             updateSource: record.updateSource,
+            expectedPlugin: { id: record.manifest.id },
             artifactId: downloaded.downloadId,
           })
         } catch (error) {
@@ -624,15 +660,16 @@ export function PluginCenter() {
           throw error
         }
       } catch (checkError) {
-        const message = checkError instanceof Error ? checkError.message : '插件更新检查失败'
-        if (/already installed/i.test(message)) setNotice(`${record.manifest.displayName} 已是最新版本。`)
-        else setError(pluginCenterErrorMessage(checkError, '插件更新检查失败，请稍后重试。'))
+        const message = checkError instanceof Error ? checkError.message : t('插件更新检查失败')
+        if (/already installed/i.test(message))
+          setNotice(t('{{name}} 已是最新版本。', { name: record.manifest.displayName }))
+        else setError(pluginCenterErrorMessage(t, checkError, t('插件更新检查失败，请稍后重试。')))
       } finally {
         setBusy(false)
       }
       return
     }
-    setNotice('这个旧版侧载插件没有可验证的更新来源，请手动选择更新包。')
+    setNotice(t('这个旧版侧载插件没有可验证的更新来源，请手动选择更新包。'))
   }
 
   const uninstallPlugin = async (record: InstalledPluginRecord) => {
@@ -643,9 +680,10 @@ export function PluginCenter() {
     } catch (uninstallError) {
       setError(
         pluginCenterErrorMessage(
+          t,
           uninstallError,
-          '卸载未完全完成。插件已停止并移除权限，但仍有文件或数据残留，请稍后重试。'
-        )
+          t('卸载未完全完成。插件已停止并移除权限，但仍有文件或数据残留，请稍后重试。'),
+        ),
       )
     } finally {
       setBusy(false)
@@ -655,9 +693,7 @@ export function PluginCenter() {
   const manifest = pendingConsent?.verified.manifest
   const updating = manifest ? installed.find((record) => record.manifest.id === manifest.id) : undefined
   const updateChanges =
-    updating && manifest
-      ? describePluginUpdate(updating, manifest, pendingConsent?.verified.signerKeyId)
-      : null
+    updating && manifest ? describePluginUpdate(updating, manifest, pendingConsent?.verified.signerKeyId) : null
 
   return (
     <main className="local-model-center local-model-download-queue">
@@ -665,14 +701,18 @@ export function PluginCenter() {
         <Group justify="space-between" gap="sm" wrap="wrap" w="100%">
           <Group gap="sm">
             {!inAndroidAppShell && (
-              <ActionIcon variant="subtle" aria-label="返回设置" onClick={() => void router.navigate({ to: '/settings' })}>
+              <ActionIcon
+                variant="subtle"
+                aria-label={t('返回设置')}
+                onClick={() => void router.navigate({ to: '/settings' })}
+              >
                 <IconArrowLeft />
               </ActionIcon>
             )}
             <div>
-              <Title order={2}>插件</Title>
+              <Title order={2}>{t('插件')}</Title>
               <Text size="sm" c="dimmed">
-                安装并管理第三方插件，系统能力均通过受控接口调用
+                {t('安装并管理第三方插件，系统能力均通过受控接口调用')}
               </Text>
             </div>
           </Group>
@@ -684,7 +724,7 @@ export function PluginCenter() {
               loading={marketLoading}
               onClick={() => void checkAllUpdates()}
             >
-              检查全部更新
+              {t('检查全部更新')}
             </Button>
           )}
         </Group>
@@ -692,11 +732,11 @@ export function PluginCenter() {
 
       <section className="local-model-queue-row">
         <Stack gap="xs">
-          <Text fw={650}>安装插件</Text>
+          <Text fw={650}>{t('安装插件')}</Text>
           <Group align="flex-end">
             <TextInput
               style={{ flex: '1 1 190px' }}
-              label="HTTPS 或 GitHub 地址"
+              label={t('HTTPS 或 GitHub 地址')}
               placeholder="https://github.com/owner/plugin"
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.currentTarget.value)}
@@ -707,14 +747,14 @@ export function PluginCenter() {
               disabled={!sourceUrl.trim()}
               onClick={() => void installFromUrl()}
             >
-              下载并检查
+              {t('下载并检查')}
             </Button>
           </Group>
           <Group gap="xs">
             <FileButton accept=".zip,application/zip" onChange={(file) => void installFromFile(file)}>
               {(props) => (
                 <Button variant="default" leftSection={<IconUpload size={15} />} loading={busy} {...props}>
-                  从 ZIP 侧载
+                  {t('从 ZIP 侧载')}
                 </Button>
               )}
             </FileButton>
@@ -728,12 +768,12 @@ export function PluginCenter() {
                 void loadPluginMarketplace()
                   .then(setMarketplace)
                   .catch((marketError) =>
-                    setError(pluginCenterErrorMessage(marketError, '插件市场加载失败，请稍后重试。'))
+                    setError(pluginCenterErrorMessage(t, marketError, t('插件市场加载失败，请稍后重试。'))),
                   )
                   .finally(() => setMarketLoading(false))
               }}
             >
-              浏览插件市场
+              {t('浏览插件市场')}
             </Button>
           </Group>
           {error && (
@@ -753,12 +793,12 @@ export function PluginCenter() {
         <section className="local-model-queue-row">
           <Stack gap="sm">
             <Group justify="space-between">
-              <Text fw={650}>插件市场</Text>
+              <Text fw={650}>{t('插件市场')}</Text>
               <Badge variant="light">{marketplace.length}</Badge>
             </Group>
             {marketplace.length === 0 && (
               <Text size="sm" c="dimmed">
-                市场暂时没有已验签的插件。
+                {t('市场暂时没有已验签的插件。')}
               </Text>
             )}
             {marketplace.map((entry) => (
@@ -780,7 +820,7 @@ export function PluginCenter() {
                   loading={busy}
                   onClick={() => void installMarketplaceEntry(entry)}
                 >
-                  安装
+                  {t('安装')}
                 </Button>
               </Group>
             ))}
@@ -790,7 +830,7 @@ export function PluginCenter() {
 
       {installed.length === 0 && (
         <Text c="dimmed" ta="center" py="md">
-          尚未安装任何插件
+          {t('尚未安装任何插件')}
         </Text>
       )}
 
@@ -798,12 +838,12 @@ export function PluginCenter() {
         const stats = pluginStats[record.manifest.id]
         const compatible = appVersion ? isPluginCompatible(record.manifest, appVersion) : true
         const status = !compatible
-          ? { label: '不兼容', color: 'red' }
+          ? { label: t('不兼容'), color: 'red' }
           : stats?.health?.disabledReason
-            ? { label: '连续失败已禁用', color: 'red' }
+            ? { label: t('连续失败已禁用'), color: 'red' }
             : record.enabled === false
-              ? { label: '已停用', color: 'gray' }
-              : { label: '正常', color: 'green' }
+              ? { label: t('已停用'), color: 'gray' }
+              : { label: t('正常'), color: 'green' }
         const signerLabel = record.signerKeyId?.split(':')[0]?.slice(0, 24)
         const available = availableUpdates.get(record.manifest.id)
         return (
@@ -816,30 +856,38 @@ export function PluginCenter() {
                     {record.manifest.displayName}
                   </Text>
                   <Text size="xs" c="dimmed" lineClamp={2} style={{ overflowWrap: 'anywhere' }}>
-                    {record.manifest.id} · v{record.manifest.version} · {record.manifest.author?.name ?? '作者未声明'}
+                    {record.manifest.id} · v{record.manifest.version} ·{' '}
+                    {record.manifest.author?.name ?? t('作者未声明')}
                   </Text>
                   <Text size="xs" c="dimmed" lineClamp={2} style={{ overflowWrap: 'anywhere' }}>
-                    {SOURCE_LABELS[record.source] ?? record.source} ·{' '}
-                    {record.signatureVerified ? `签名者 ${signerLabel ?? '已验证'}` : '无法验证作者与下载完整性'}
+                    {sourceLabel(t, record.source)} ·{' '}
+                    {record.signatureVerified
+                      ? t('签名者 {{signer}}', { signer: signerLabel ?? t('已验证') })
+                      : t('无法验证作者与下载完整性')}
                   </Text>
                   <Text size="xs" c="dimmed">
-                    代码 {formatBytes(pluginCodeBytes(record))} · 数据 {formatBytes(stats?.dataBytes ?? 0)}
+                    {t('代码 {{codeSize}} · 数据 {{dataSize}}', {
+                      codeSize: formatBytes(pluginCodeBytes(record)),
+                      dataSize: formatBytes(stats?.dataBytes ?? 0),
+                    })}
                   </Text>
                 </div>
                 <Group gap={6} wrap="wrap" justify="flex-end">
-                  {available && <Badge color="chatbox-brand">可更新至 v{available.version}</Badge>}
+                  {available && (
+                    <Badge color="chatbox-brand">{t('可更新至 v{{version}}', { version: available.version })}</Badge>
+                  )}
                   <Badge color={status.color} size="sm">
                     {status.label}
                   </Badge>
                   <Badge color={record.signatureVerified ? 'green' : 'yellow'} size="sm">
-                    {record.signatureVerified ? '已验签' : '未签名'}
+                    {record.signatureVerified ? t('已验签') : t('未签名')}
                   </Badge>
                 </Group>
               </Group>
               <Group gap="xs" justify="flex-end" wrap="wrap">
                 <Switch
                   size="sm"
-                  label={record.enabled === false ? '已停用' : '已启用'}
+                  label={record.enabled === false ? t('已停用') : t('已启用')}
                   checked={record.enabled !== false}
                   onChange={(event) => void setEnabled(record.manifest.id, event.currentTarget.checked)}
                 />
@@ -851,13 +899,19 @@ export function PluginCenter() {
                     loading={busy || marketLoading}
                     onClick={() => void checkOneUpdate(record)}
                   >
-                    {available ? '查看更新' : '检查更新'}
+                    {available ? t('查看更新') : t('检查更新')}
                   </Button>
                 )}
                 <FileButton accept=".zip,application/zip" onChange={(file) => void installFromFile(file)}>
                   {(props) => (
-                    <Button size="compact-sm" variant="default" leftSection={<IconUpload size={14} />} loading={busy} {...props}>
-                      更新包
+                    <Button
+                      size="compact-sm"
+                      variant="default"
+                      leftSection={<IconUpload size={14} />}
+                      loading={busy}
+                      {...props}
+                    >
+                      {t('更新包')}
                     </Button>
                   )}
                 </FileButton>
@@ -866,7 +920,7 @@ export function PluginCenter() {
                   variant="default"
                   onClick={() => setDetailId(detailId === record.manifest.id ? null : record.manifest.id)}
                 >
-                  {detailId === record.manifest.id ? '收起' : '权限与活动'}
+                  {detailId === record.manifest.id ? t('收起') : t('权限与活动')}
                 </Button>
                 <Button
                   disabled={record.enabled === false || !compatible}
@@ -876,12 +930,12 @@ export function PluginCenter() {
                     void router.navigate({ to: '/plugin/$pluginId', params: { pluginId: record.manifest.id } })
                   }
                 >
-                  打开
+                  {t('打开')}
                 </Button>
                 <ActionIcon
                   color="red"
                   variant="subtle"
-                  aria-label={`卸载插件 ${record.manifest.displayName}`}
+                  aria-label={t('卸载插件 {{name}}', { name: record.manifest.displayName })}
                   onClick={() => setUninstallTarget(record)}
                 >
                   <IconTrash size={16} />
@@ -893,41 +947,33 @@ export function PluginCenter() {
         )
       })}
 
-      <Modal
-        opened={uninstallTarget !== null}
-        onClose={() => setUninstallTarget(null)}
-        title="卸载插件"
-        centered
-      >
+      <Modal opened={uninstallTarget !== null} onClose={() => setUninstallTarget(null)} title={t('卸载插件')} centered>
         {uninstallTarget && (
           <Stack gap="sm">
             <Text size="sm">
-              卸载“{uninstallTarget.manifest.displayName}”会删除所有版本的插件代码、插件数据、凭据和授权记录；
-              为了安全追溯，活动审计会保留。
+              {t('卸载“{{name}}”会删除所有版本的插件代码、插件数据、凭据和授权记录；为了安全追溯，活动审计会保留。', {
+                name: uninstallTarget.manifest.displayName,
+              })}
             </Text>
             <Text size="xs" c="dimmed">
-              如果只是暂时不使用，可以停用插件并保留数据。
+              {t('如果只是暂时不使用，可以停用插件并保留数据。')}
             </Text>
             <Group justify="flex-end" gap="xs" wrap="wrap">
               <Button variant="default" onClick={() => setUninstallTarget(null)}>
-                取消
+                {t('取消')}
               </Button>
               <Button
                 variant="default"
-                onClick={() =>
-                  void setEnabled(uninstallTarget.manifest.id, false).then(() => setUninstallTarget(null))
-                }
+                onClick={() => void setEnabled(uninstallTarget.manifest.id, false).then(() => setUninstallTarget(null))}
               >
-                仅停用并保留数据
+                {t('仅停用并保留数据')}
               </Button>
               <Button
                 color="red"
                 loading={busy}
-                onClick={() =>
-                  void uninstallPlugin(uninstallTarget).finally(() => setUninstallTarget(null))
-                }
+                onClick={() => void uninstallPlugin(uninstallTarget).finally(() => setUninstallTarget(null))}
               >
-                删除并卸载
+                {t('删除并卸载')}
               </Button>
             </Group>
           </Stack>
@@ -937,7 +983,7 @@ export function PluginCenter() {
       <Modal
         opened={pendingConsent !== null}
         onClose={cancelInstall}
-        title={updating ? '更新插件' : '安装插件'}
+        title={updating ? t('更新插件') : t('安装插件')}
         centered
       >
         {manifest && (
@@ -956,45 +1002,59 @@ export function PluginCenter() {
             {updating && (
               <Alert color="blue" title={`v${updating.manifest.version} → v${manifest.version}`}>
                 <Stack gap={4}>
-                  <Text size="sm">更新由你确认后才会安装，不会自动运行新代码。</Text>
+                  <Text size="sm">{t('更新由你确认后才会安装，不会自动运行新代码。')}</Text>
                   {updateChanges?.capabilityChanges.added.map((capability) => (
                     <Text key={`added:${capability}`} size="xs" c="red">
-                      新增能力：{CAPABILITY_LABELS[capability] ?? capability}，需要重新授权
+                      {t('新增能力：{{capability}}，需要重新授权', {
+                        capability: capabilityLabel(t, capability),
+                      })}
                     </Text>
                   ))}
                   {updateChanges?.capabilityChanges.expandedDomains.map((domain) => (
                     <Text key={`domain:${domain}`} size="xs" c="red">
-                      新增联网域名：{domain}，网络授权将失效
+                      {t('新增联网域名：{{domain}}，网络授权将失效', { domain })}
                     </Text>
                   ))}
                   {(updateChanges?.capabilityChanges.removed.length ?? 0) > 0 && (
                     <Text size="xs" c="dimmed">
-                      移除能力：{updateChanges?.capabilityChanges.removed.map((item) => CAPABILITY_LABELS[item] ?? item).join('、')}
+                      {t('移除能力：{{capabilities}}', {
+                        capabilities: updateChanges?.capabilityChanges.removed
+                          .map((item) => capabilityLabel(t, item))
+                          .join('、'),
+                      })}
                     </Text>
                   )}
                   <Text size="xs" c={updateChanges?.signerChanged ? 'red' : 'dimmed'}>
-                    发布者签名：{updateChanges?.signerChanged ? '已变化，原授权不会继承' : '与当前版本一致'}
+                    {t('发布者签名：{{status}}', {
+                      status: updateChanges?.signerChanged ? t('已变化，原授权不会继承') : t('与当前版本一致'),
+                    })}
                   </Text>
-                  <Text size="xs" c="dimmed">设备控制授权无论能力是否变化都会撤销。</Text>
+                  <Text size="xs" c="dimmed">
+                    {t('设备控制授权无论能力是否变化都会撤销。')}
+                  </Text>
                 </Stack>
               </Alert>
             )}
             {!pendingConsent?.verified.signatureVerified && (
-              <Alert color="yellow" title="无法验证发布者">
+              <Alert color="yellow" title={t('无法验证发布者')}>
                 {pendingConsent?.verified.source === 'sideload'
-                  ? '无法验证这个插件来自它声称的作者，也无法确认它在传递过程中没有被替换。请只安装你能独立核对来源的文件。'
-                  : '无法验证这个插件来自它声称的作者，也无法确认它在下载过程中没有被替换。HTTPS 只保护连接，不证明作者身份。'}
+                  ? t(
+                      '无法验证这个插件来自它声称的作者，也无法确认它在传递过程中没有被替换。请只安装你能独立核对来源的文件。',
+                    )
+                  : t(
+                      '无法验证这个插件来自它声称的作者，也无法确认它在下载过程中没有被替换。HTTPS 只保护连接，不证明作者身份。',
+                    )}
               </Alert>
             )}
             {manifest.entry && (
-              <Alert color="orange" title="此插件包含可执行代码">
-                插件脚本会在受限 Worker 中运行，但该环境不是独立虚拟机。只安装来源可信、用途明确的插件。
+              <Alert color="orange" title={t('此插件包含可执行代码')}>
+                {t('插件脚本会在受限 Worker 中运行，但该环境不是独立虚拟机。只安装来源可信、用途明确的插件。')}
               </Alert>
             )}
             {manifest.capabilities.length > 0 ? (
               <Stack gap={6}>
                 <Text size="sm" fw={600}>
-                  请求的能力
+                  {t('请求的能力')}
                 </Text>
                 {manifest.capabilities.map((capability) => {
                   const capabilityBlocked =
@@ -1002,7 +1062,7 @@ export function PluginCenter() {
                   return (
                     <div key={capability.name}>
                       <Checkbox
-                        label={CAPABILITY_LABELS[capability.name] ?? capability.name}
+                        label={capabilityLabel(t, capability.name)}
                         checked={!capabilityBlocked && granted.includes(capability.name)}
                         disabled={capabilityBlocked}
                         onChange={(event) => {
@@ -1011,20 +1071,22 @@ export function PluginCenter() {
                           setGranted((previous) =>
                             checked
                               ? [...previous, capability.name]
-                              : previous.filter((name) => name !== capability.name)
+                              : previous.filter((name) => name !== capability.name),
                           )
                         }}
                       />
                       <Text size="xs" c="dimmed" pl={30}>
                         {capability.reason}
-                        {capability.domains ? ` · 域名: ${capability.domains.join(', ')}` : ''}
+                        {capability.domains
+                          ? t(' · 域名: {{domains}}', { domains: capability.domains.join(', ') })
+                          : ''}
                         {capability.name === 'sandbox'
-                          ? ' ·（可执行命令并修改共享 PRoot 系统镜像，仅向可信插件授权）'
+                          ? t(' ·（可执行命令并修改共享 PRoot 系统镜像，仅向可信插件授权）')
                           : ''}
                         {capability.name === 'device'
-                          ? ' ·（安装后需在插件详情中单独授权，且仅支持已验签插件）'
+                          ? t(' ·（安装后需在插件详情中单独授权，且仅支持已验签插件）')
                           : capabilityBlocked
-                            ? ' ·（当前版本尚未开放此第三方能力）'
+                            ? t(' ·（当前版本尚未开放此第三方能力）')
                             : ''}
                       </Text>
                     </div>
@@ -1033,12 +1095,12 @@ export function PluginCenter() {
               </Stack>
             ) : (
               <Text size="sm" c="dimmed">
-                此插件未请求任何能力。
+                {t('此插件未请求任何能力。')}
               </Text>
             )}
             <Group justify="flex-end" gap="xs">
               <Button variant="default" onClick={cancelInstall}>
-                取消
+                {t('取消')}
               </Button>
               <Button
                 loading={busy}
@@ -1046,12 +1108,12 @@ export function PluginCenter() {
                   setBusy(true)
                   void confirmInstall(granted)
                     .catch((confirmError) =>
-                      setError(pluginCenterErrorMessage(confirmError, '插件安装失败，请检查插件包后重试。'))
+                      setError(pluginCenterErrorMessage(t, confirmError, t('插件安装失败，请检查插件包后重试。'))),
                     )
                     .finally(() => setBusy(false))
                 }}
               >
-                {updating ? '确认更新' : '安装'}
+                {updating ? t('确认更新') : t('安装')}
               </Button>
             </Group>
           </Stack>

@@ -9,6 +9,7 @@ import {
   IconShieldLock,
 } from '@tabler/icons-react'
 import { type ReactNode, useCallback, useEffect, useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { YACHIYO_LATEST_RELEASE_URL, YACHIYO_RELEASES_URL } from '@shared/releases/yachiyo'
 import useVersion from '@/hooks/useVersion'
 import {
@@ -55,6 +56,7 @@ function StatusRow({
 }
 
 export function AndroidAgentWorkspace() {
+  const { t } = useTranslation()
   const titleId = useId()
   const [fullAccess, setFullAccess] = useState(isAgentFullAccessEnabled)
   const [backend, setBackend] = useState<AgentBackend>(getAgentBackend)
@@ -71,7 +73,7 @@ export function AndroidAgentWorkspace() {
         const cached = getCachedRootCapability()
         if (!cached) {
           setRootState('idle')
-          setRootDetail('点击下方按钮后才会向 Root 管理器申请授权')
+          setRootDetail(String(t('点击下方按钮后才会向 Root 管理器申请授权')))
           return
         }
         setRootState(cached.available ? 'ready' : 'unavailable')
@@ -84,20 +86,20 @@ export function AndroidAgentWorkspace() {
         setRootState(permissions.shizukuGranted ? 'ready' : 'unavailable')
         setRootDetail(
           permissions.shizukuGranted
-            ? 'Shizuku 已授权'
+            ? String(t('Shizuku 已授权'))
             : permissions.shizukuRunning
-              ? 'Shizuku 已连接，等待授权'
-              : 'Shizuku 服务未运行'
+              ? String(t('Shizuku 已连接，等待授权'))
+              : String(t('Shizuku 服务未运行'))
         )
         return
       }
       setRootState(permissions.accessibility ? 'ready' : 'unavailable')
-      setRootDetail(permissions.accessibility ? '无障碍服务已连接' : '无障碍服务未启用')
+      setRootDetail(permissions.accessibility ? String(t('无障碍服务已连接')) : String(t('无障碍服务未启用')))
     } catch (reason) {
       setRootState('unavailable')
-      setRootDetail(reason instanceof Error ? reason.message : String(reason))
+      setRootDetail(String(t(reason instanceof Error ? reason.message : String(reason))))
     }
-  }, [backend])
+  }, [backend, t])
 
   useEffect(() => {
     void refreshBackend()
@@ -144,7 +146,7 @@ export function AndroidAgentWorkspace() {
       setRootState('unavailable')
     } catch (reason) {
       setRootState('unavailable')
-      setRootDetail(reason instanceof Error ? reason.message : String(reason))
+      setRootDetail(String(t(reason instanceof Error ? reason.message : String(reason))))
     }
   }
 
@@ -168,7 +170,7 @@ export function AndroidAgentWorkspace() {
       const session = await createEmpty('chat')
       await openChatSessionAsAgent(session.id)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setError(String(t(reason instanceof Error ? reason.message : String(reason))))
     } finally {
       setCreating(false)
     }
@@ -184,7 +186,7 @@ export function AndroidAgentWorkspace() {
         setWorkingDirectory(result.path)
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setError(String(t(reason instanceof Error ? reason.message : String(reason))))
     } finally {
       setChoosingDirectory(false)
     }
@@ -199,27 +201,29 @@ export function AndroidAgentWorkspace() {
         <div>
           <Text className="yachiyo-eyebrow">DEVICE AGENT</Text>
           <Title id={titleId} order={1}>
-            Agent 工作台
+            {t('Agent 工作台')}
           </Title>
         </div>
       </section>
 
-      <section className="yachiyo-status-panel" aria-label="Agent 状态">
+      <section className="yachiyo-status-panel" aria-label={String(t('Agent 状态'))}>
         <StatusRow
-          label={`${backend === 'root' ? 'Root' : backend === 'shizuku' ? 'Shizuku' : '无障碍'} 运行时`}
+          label={t('{{backend}} 运行时', {
+            backend: backend === 'root' ? 'Root' : backend === 'shizuku' ? 'Shizuku' : t('无障碍'),
+          })}
           value={
             rootState === 'idle'
-              ? '尚未检测'
+              ? t('尚未检测')
               : rootState === 'checking'
-                ? '检测中'
+                ? t('检测中')
                 : rootState === 'ready'
-                  ? '可用'
-                  : '不可用'
+                  ? t('可用')
+                  : t('不可用')
           }
           tone={rootState === 'ready' ? 'ready' : 'neutral'}
         />
         <StatusRow
-          label="工作目录"
+          label={t('工作目录')}
           value={workingDirectory}
           action={
             <Button
@@ -229,7 +233,7 @@ export function AndroidAgentWorkspace() {
               leftSection={<IconFolderOpen size={16} />}
               onClick={handleChooseDirectory}
             >
-              选择
+              {t('选择')}
             </Button>
           }
         />
@@ -242,22 +246,22 @@ export function AndroidAgentWorkspace() {
       <section className="yachiyo-agent-access-panel">
         <IconShieldLock size={32} aria-hidden="true" />
         <div className="yachiyo-agent-access-copy">
-          <Title order={2}>完全访问模式</Title>
+          <Title order={2}>{t('完全访问模式')}</Title>
           <Text c="dimmed" size="sm">
-            允许 Agent 使用 Root Shell、读取界面并执行点击、滑动、输入、按键和应用启动操作。
+            {t('允许 Agent 使用 Root Shell、读取界面并执行点击、滑动、输入、按键和应用启动操作。')}
           </Text>
         </div>
         <Switch
           size="lg"
           checked={fullAccess}
           onChange={(event) => handleFullAccessChange(event.currentTarget.checked)}
-          aria-label="完全访问模式"
+          aria-label={String(t('完全访问模式'))}
         />
       </section>
 
       {rootState !== 'ready' && (
-        <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="Agent 后端不可用">
-          <Text size="sm">{rootDetail || '请授权所选访问后端。'}</Text>
+        <Alert color="orange" icon={<IconAlertTriangle size={18} />} title={t('Agent 后端不可用')}>
+          <Text size="sm">{rootDetail || t('请授权所选访问后端。')}</Text>
           <Button
             mt="sm"
             size="compact-sm"
@@ -266,7 +270,11 @@ export function AndroidAgentWorkspace() {
             loading={rootState === 'checking'}
             onClick={() => void handleAuthorizeBackend()}
           >
-            {backend === 'root' ? '检测并授权 Root' : backend === 'shizuku' ? '打开或授权 Shizuku' : '去开启无障碍服务'}
+            {backend === 'root'
+              ? t('检测并授权 Root')
+              : backend === 'shizuku'
+                ? t('打开或授权 Shizuku')
+                : t('去开启无障碍服务')}
           </Button>
         </Alert>
       )}
@@ -274,9 +282,9 @@ export function AndroidAgentWorkspace() {
 
       <section className="yachiyo-agent-launch-panel">
         <div>
-          <Title order={2}>设备 Agent</Title>
+          <Title order={2}>{t('设备 Agent')}</Title>
           <Text c="dimmed" size="sm">
-            描述目标后，Agent 会先观察屏幕，再调用设备工具完成任务。
+            {t('描述目标后，Agent 会先观察屏幕，再调用设备工具完成任务。')}
           </Text>
         </div>
         <Button
@@ -286,7 +294,7 @@ export function AndroidAgentWorkspace() {
           loading={creating}
           onClick={handleCreateTask}
         >
-          新建 Agent 任务
+          {t('新建 Agent 任务')}
         </Button>
       </section>
     </main>
@@ -294,6 +302,7 @@ export function AndroidAgentWorkspace() {
 }
 
 export function AndroidTasksWorkspace() {
+  const { t } = useTranslation()
   const titleId = useId()
 
   return (
@@ -305,7 +314,7 @@ export function AndroidTasksWorkspace() {
         <div>
           <Text className="yachiyo-eyebrow">AUTOMATIONS</Text>
           <Title id={titleId} order={1}>
-            任务
+            {t('任务')}
           </Title>
         </div>
       </section>
@@ -316,6 +325,7 @@ export function AndroidTasksWorkspace() {
 }
 
 export function AndroidAboutWorkspace() {
+  const { t } = useTranslation()
   const titleId = useId()
   const { version, needCheckUpdate } = useVersion()
 
@@ -332,21 +342,23 @@ export function AndroidAboutWorkspace() {
         </div>
       </section>
 
-      <section className="yachiyo-status-panel" aria-label="应用信息">
-        <StatusRow label="版本" value={version ? `v${version}` : '读取中'} />
-        <StatusRow label="平台" value="Android 11+" />
-        <StatusRow label="许可证" value="GPL-3.0" />
+      <section className="yachiyo-status-panel" aria-label={String(t('应用信息'))}>
+        <StatusRow label={t('版本')} value={version ? `v${version}` : t('读取中')} />
+        <StatusRow label={t('平台')} value="Android 11+" />
+        <StatusRow label={t('许可证')} value="GPL-3.0" />
         <StatusRow
-          label="更新"
-          value={needCheckUpdate ? '发现新版本' : '已是最新版本'}
+          label={t('更新')}
+          value={needCheckUpdate ? t('发现新版本') : t('已是最新版本')}
           tone={needCheckUpdate ? 'ready' : 'neutral'}
           action={
             <Button
               size="compact-xs"
               variant="light"
-              onClick={() => void platform.openLink(needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL)}
+              onClick={() =>
+                void platform.openLink(needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL)
+              }
             >
-              查看 Releases
+              {t('查看 Releases')}
             </Button>
           }
         />

@@ -64,6 +64,7 @@ const startingRuntimes = new Map<string, PluginRuntime>()
 const runtimeGenerations = new Map<string, number>()
 const networkQuotas = new Map<string, PluginNetworkQuota>()
 const sandboxInvocationTimes = new Map<string, number[]>()
+let pluginCodeReconciled = false
 
 export function isPluginFeatureEnabled(
   overrides: Readonly<Record<string, boolean>> = settingsStore.getState().featureOverrides ?? {}
@@ -210,6 +211,7 @@ interface PluginStoreState {
     metadata?: Pick<import('@shared/plugins/verify').VerifyPluginPackageInput, 'expectedSha256' | 'signature'> & {
       updateSource?: PluginUpdateSource
       artifactId?: string
+      expectedPlugin?: { id: string; version?: string }
     }
   ): Promise<void>
   /** Step 2a: user approved — install, persist granted capabilities, refresh. */
@@ -227,6 +229,14 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
   pendingConsent: null,
 
   async refresh() {
+    if (!pluginCodeReconciled) {
+      try {
+        await installer.cleanupAbandonedCode()
+        pluginCodeReconciled = true
+      } catch {
+        // Leave the flag clear so a transient filesystem failure is retried on the next refresh.
+      }
+    }
     const installed = await listInstalledPlugins()
     // Reading each decision performs the one-time Keystore migration for pre-plugin-platform builds.
     await Promise.all(
@@ -261,8 +271,15 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
   },
 
   async requestInstall(bytes, source, metadata) {
-    const { updateSource, artifactId, ...verification } = metadata ?? {}
+    const { updateSource, artifactId, expectedPlugin, ...verification } = metadata ?? {}
     const verified = await installer.inspect({ packageBytes: bytes, source, ...verification })
+    if (
+      expectedPlugin &&
+      (verified.manifest.id !== expectedPlugin.id ||
+        (expectedPlugin.version !== undefined && verified.manifest.version !== expectedPlugin.version))
+    ) {
+      throw new Error('plugin_update_identity_mismatch')
+    }
     const existing = await localforagePluginRegistry.get(verified.manifest.id)
     if (existing) {
       assertPluginUpdateProvenance(existing, verified)
@@ -315,6 +332,9 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
     const now = Date.now()
     const boundSha = record.manifest.entrySha256 ?? record.packageSha256
     try {
+      // Grants are an exact projection of the active manifest. Clearing first also removes stale
+      // rows left by interrupted updates or older versions that reused the same entry digest.
+      await pluginGrantStore.removeAll(pluginId)
       for (const capability of record.manifest.capabilities) {
         // Device control always requires a second explicit action after installation.
         const canGrant =
@@ -333,15 +353,11 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
         }
         await pluginGrantStore.put(grant)
       }
-      for (const oldCapability of existing?.manifest.capabilities ?? []) {
-        if (!record.manifest.capabilities.some((capability) => capability.name === oldCapability.name)) {
-          await pluginGrantStore.remove(pluginId, oldCapability.name)
-        }
-      }
     } catch (error) {
       // Keystore persistence is part of the install transaction. Restore both active code and grants.
       if (existing) await installer.restoreAfterFailedUpdate(existing).catch(() => {})
       else await installer.uninstall(pluginId).catch(() => {})
+      await pluginGrantStore.removeAll(pluginId).catch(() => {})
       for (const [capability, grant] of previousGrants) {
         if (grant) await pluginGrantStore.put(grant).catch(() => {})
         else await pluginGrantStore.remove(pluginId, capability).catch(() => {})
@@ -412,6 +428,9 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
     disposePluginRuntime(pluginId)
     const record = await installer.rollback(pluginId, version)
     const boundSha = record.manifest.entrySha256 ?? record.packageSha256
+    // A rollback changes the active code identity. Rebuild the grant set as revoked so a capability
+    // removed by the target manifest cannot survive via an old digest-bound row.
+    await pluginGrantStore.removeAll(pluginId)
     for (const capability of record.manifest.capabilities) {
       await pluginGrantStore.put({
         schemaVersion: 1,
@@ -451,6 +470,9 @@ async function evaluateHostCallAuthorization(
           ? 'device'
           : null
   if (!capability) return { allowed: false, reason: 'method_not_found' }
+  if (!record.manifest.capabilities.some((entry) => entry.name === capability)) {
+    return { allowed: false, reason: 'capability_not_declared' }
+  }
   if (!isPluginCapabilityImplemented(capability)) {
     return { allowed: false, reason: 'capability_not_implemented' }
   }
@@ -546,7 +568,7 @@ async function pluginBrokerCheckpoint(
 async function recordDeniedPluginAction(
   principal: Extract<AgentPrincipal, { kind: 'plugin' }>,
   toolId: string,
-  backend: 'sandbox' | 'accessibility',
+  backend: 'sandbox' | 'accessibility' | 'standard',
   parameters: JsonValue,
   errorCode: string
 ): Promise<void> {
@@ -849,6 +871,46 @@ function buildHostApi(record: InstalledPluginRecord) {
       const domains = grant?.state === 'granted' ? (grant.domains ?? []) : []
       const request = (args ?? {}) as { url?: string; method?: string; headers?: Record<string, string>; body?: string }
       if (typeof request.url !== 'string') throw new Error('invalid_url')
+      if (request.body !== undefined && typeof request.body !== 'string') throw new Error('body_must_be_string')
+      const principal = requirePluginPrincipal(record, context)
+      let url: string
+      try {
+        url = new URL(request.url).toString()
+      } catch {
+        throw new Error('invalid_url')
+      }
+      const method = (request.method ?? 'GET').trim().toUpperCase()
+      if (!['GET', 'POST', 'PUT', 'DELETE', 'HEAD'].includes(method)) throw new Error('method_not_allowed')
+      const bodyBytes = typeof request.body === 'string' ? new TextEncoder().encode(request.body).byteLength : 0
+      const bodyDigest = await digestAgentJson({ body: request.body ?? null })
+      const parameters = {
+        url,
+        method,
+        headerNames: Object.keys(request.headers ?? {}).map((name) => name.toLowerCase()).sort(),
+        bodyBytes,
+        bodyDigest,
+      } as JsonValue
+      const mutating = method !== 'GET' && method !== 'HEAD'
+      let approvalDecision: 'once' | 'conversation' | 'not-required' = 'not-required'
+      if (mutating) {
+        const bindingDigest = await digestAgentJson(parameters)
+        const authorization = await requestAgentAuthorization({
+          principal,
+          sessionId: context.sessionId,
+          runId: context.runId,
+          title: `插件 ${record.manifest.displayName} 请求发送数据`,
+          detail: `${method} ${url}\nBody: ${bodyBytes} bytes (${bodyDigest.slice(0, 12)}...)`,
+          risk: 'dangerous',
+          signal: context.signal,
+          rememberConversationApproval: false,
+          bindingDigest,
+        })
+        if (authorization.decision === 'deny') {
+          await recordDeniedPluginAction(principal, 'plugin.network.fetch', 'standard', parameters, 'user_denied')
+          throw new Error('plugin_network_user_denied')
+        }
+        approvalDecision = authorization.decision
+      }
       const quota =
         networkQuotas.get(pluginId) ??
         (() => {
@@ -856,27 +918,54 @@ function buildHostApi(record: InstalledPluginRecord) {
           networkQuotas.set(pluginId, created)
           return created
         })()
-      const nativeRequest = { url: request.url, method: request.method, headers: request.headers, body: request.body }
-      const response = Capacitor.isNativePlatform()
-        ? await (async () => {
-            quota.beforeRequest()
-            const requestId = pluginCallId('plugin-network')
-            const cancel = () => void yachiyoPluginNetworkNative.cancel({ requestId }).catch(() => undefined)
-            context.signal.addEventListener('abort', cancel, { once: true })
-            try {
-              if (context.signal.aborted) throw new Error('plugin_network_cancelled')
-              const result = await yachiyoPluginNetworkNative.fetch({
-                ...nativeRequest,
-                allowedDomains: domains,
-                requestId,
-              })
-              quota.recordResponse(new TextEncoder().encode(result.body).byteLength)
-              return result
-            } finally {
-              context.signal.removeEventListener('abort', cancel)
-            }
-          })()
-        : await pluginFetch(nativeRequest, domains, fetch, quota, { signal: context.signal })
+      const nativeRequest = { url, method, headers: request.headers, body: request.body }
+      const checkpoint = await pluginBrokerCheckpoint(record, 'network.fetch', context)
+      const response = await executeAgentAction({
+        featureId: 'plugins',
+        principal,
+        toolId: 'plugin.network.fetch',
+        backend: 'standard',
+        parameters,
+        taskId: context.runId || context.sessionId || `plugin-${pluginId}`,
+        ...checkpoint,
+        abortSignal: context.signal,
+        approvalDecision,
+        sideEffect: mutating,
+        isSuccess: () => true,
+        resultToJson: (result) => ({ status: result.status, finalUrl: result.finalUrl }),
+        execute: async () =>
+          Capacitor.isNativePlatform()
+            ? await (async () => {
+                quota.beforeRequest()
+                const requestId = pluginCallId('plugin-network')
+                const cancel = () => void yachiyoPluginNetworkNative.cancel({ requestId }).catch(() => undefined)
+                context.signal.addEventListener('abort', cancel, { once: true })
+                try {
+                  if (context.signal.aborted) throw new Error('plugin_network_cancelled')
+                  const result = await yachiyoPluginNetworkNative.fetch({
+                    ...nativeRequest,
+                    allowedDomains: domains,
+                    requestId,
+                  })
+                  quota.recordResponse(new TextEncoder().encode(result.body).byteLength)
+                  return result
+                } finally {
+                  context.signal.removeEventListener('abort', cancel)
+                }
+              })()
+            : await pluginFetch(nativeRequest, domains, fetch, quota, { signal: context.signal }),
+      })
+      appendPluginAudit({
+        at: Date.now(),
+        principal: {
+          kind: 'plugin',
+          pluginId,
+          entrySha256: record.manifest.entrySha256 ?? record.packageSha256,
+        },
+        event: 'network_request',
+        method,
+        status: 'ok',
+      })
       return response as unknown as JsonValue
     },
     'sandbox.exec': (args: JsonValue, context: PluginHostCallContext) =>

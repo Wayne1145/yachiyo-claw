@@ -1,6 +1,7 @@
 import { ActionIcon, Alert, Badge, Group, Stack, Switch, Text, Title } from '@mantine/core'
 import { IconArrowLeft, IconBlocks, IconShieldLock } from '@tabler/icons-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FeatureManifest, FeaturePlatform } from '@shared/features/contract'
 import { BUILTIN_FEATURES } from '@/features/builtin-features'
 import { previewFeatureToggle, setFeatureEnabled } from '@/features/feature-settings'
@@ -53,21 +54,19 @@ const FEATURE_DETAILS: Record<string, string> = {
   updater: '检查、下载并安装签名一致的新版本',
 }
 
-function trustLabel(feature: FeatureManifest): { label: string; color: string } {
-  if (feature.trust === 'privileged') return { label: '特权能力', color: 'red' }
-  if (feature.trust === 'sandboxed') return { label: '受控能力', color: 'yellow' }
-  return { label: '应用内能力', color: 'gray' }
+function trustLabel(feature: FeatureManifest): { key: string; color: string } {
+  if (feature.trust === 'privileged') return { key: '特权能力', color: 'red' }
+  if (feature.trust === 'sandboxed') return { key: '受控能力', color: 'yellow' }
+  return { key: '应用内能力', color: 'gray' }
 }
 
 export function FeatureManager() {
+  const { t } = useTranslation()
   const inAndroidAppShell = useInAndroidAppShell()
   const overrides = useSettingsStore((state) => state.featureOverrides)
   const platform = resolveRendererFeaturePlatform() as FeaturePlatform
   const enabled = useMemo(() => getEnabledFeatureIds(platform, overrides), [overrides, platform])
-  const features = useMemo(
-    () => BUILTIN_FEATURES.filter((feature) => feature.platforms.includes(platform)),
-    [platform],
-  )
+  const features = useMemo(() => BUILTIN_FEATURES.filter((feature) => feature.platforms.includes(platform)), [platform])
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,18 +77,28 @@ export function FeatureManager() {
       const blocker = preview.blocked.find((item) => item.feature === feature.id)
       if (blocker) {
         setError(
-          `无法启用“${FEATURE_LABELS[feature.id] ?? feature.displayName}”：请先启用 ${FEATURE_LABELS[blocker.missingRequirement] ?? blocker.missingRequirement}。`,
+          String(
+            t('无法启用“{{feature}}”：请先启用 {{requirement}}。', {
+              feature: t(FEATURE_LABELS[feature.id] ?? feature.displayName),
+              requirement: t(FEATURE_LABELS[blocker.missingRequirement] ?? blocker.missingRequirement),
+            })
+          )
         )
         return
       }
     } else {
       const affected = preview.blocked
         .filter((item) => item.missingRequirement === feature.id && item.feature !== feature.id)
-        .map((item) => FEATURE_LABELS[item.feature] ?? item.feature)
+        .map((item) => t(FEATURE_LABELS[item.feature] ?? item.feature))
       if (
         affected.length > 0 &&
         !window.confirm(
-          `关闭“${FEATURE_LABELS[feature.id] ?? feature.displayName}”后，以下依赖能力也将不可用：${affected.join('、')}。继续吗？`,
+          String(
+            t('关闭“{{feature}}”后，以下依赖能力也将不可用：{{affected}}。继续吗？', {
+              feature: t(FEATURE_LABELS[feature.id] ?? feature.displayName),
+              affected: affected.join(String(t('、'))),
+            })
+          )
         )
       ) {
         return
@@ -99,7 +108,7 @@ export function FeatureManager() {
     try {
       await setFeatureEnabled(feature.id, checked, platform)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '功能设置保存失败')
+      setError(cause instanceof Error ? String(t(cause.message)) : String(t('功能设置保存失败')))
     } finally {
       setBusyId(null)
     }
@@ -113,7 +122,7 @@ export function FeatureManager() {
             variant="subtle"
             color="gray"
             size={38}
-            aria-label="返回设置"
+            aria-label={t('返回设置')}
             onClick={() => void router.navigate({ to: '/settings' })}
           >
             <IconArrowLeft size={21} />
@@ -123,15 +132,15 @@ export function FeatureManager() {
           <IconBlocks size={22} />
         </span>
         <div>
-          <Title order={2}>功能模块</Title>
+          <Title order={2}>{t('功能模块')}</Title>
           <Text size="sm" c="dimmed">
-            按需启用应用能力；关闭依赖项时会先说明影响范围
+            {t('按需启用应用能力；关闭依赖项时会先说明影响范围')}
           </Text>
         </div>
       </header>
 
       {error && (
-        <Alert color="red" title="无法更改设置">
+        <Alert color="red" title={t('无法更改设置')}>
           {error}
         </Alert>
       )}
@@ -145,27 +154,33 @@ export function FeatureManager() {
               <div className="yachiyo-feature-row" key={feature.id} data-enabled={checked ? 'true' : 'false'}>
                 <div className="yachiyo-feature-copy">
                   <Group gap="xs" wrap="wrap">
-                    <Text fw={650}>{FEATURE_LABELS[feature.id] ?? feature.displayName}</Text>
+                    <Text fw={650}>{t(FEATURE_LABELS[feature.id] ?? feature.displayName)}</Text>
                     <Badge
                       size="xs"
                       color={trust.color}
                       variant="light"
                       leftSection={feature.trust === 'privileged' ? <IconShieldLock size={11} /> : undefined}
                     >
-                      {trust.label}
+                      {t(trust.key)}
                     </Badge>
                   </Group>
                   <Text size="xs" c="dimmed">
-                    {FEATURE_DETAILS[feature.id] ?? feature.description}
+                    {t(FEATURE_DETAILS[feature.id] ?? feature.description)}
                   </Text>
                   {feature.requires?.length ? (
                     <Text size="xs" c="dimmed">
-                      依赖：{feature.requires.map((id) => FEATURE_LABELS[id] ?? id).join('、')}
+                      {t('依赖：{{dependencies}}', {
+                        dependencies: feature.requires.map((id) => t(FEATURE_LABELS[id] ?? id)).join(String(t('、'))),
+                      })}
                     </Text>
                   ) : null}
                 </div>
                 <Switch
-                  aria-label={`${checked ? '关闭' : '启用'}${FEATURE_LABELS[feature.id] ?? feature.displayName}`}
+                  aria-label={String(
+                    t(checked ? '关闭 {{feature}}' : '启用 {{feature}}', {
+                      feature: t(FEATURE_LABELS[feature.id] ?? feature.displayName),
+                    })
+                  )}
                   checked={checked}
                   disabled={busyId !== null}
                   onChange={(event) => void toggle(feature, event.currentTarget.checked)}

@@ -24,16 +24,30 @@ export function reconcileInstalledLocalModels(
   current: ProviderModelInfo[],
   jobs: DownloadJob[],
 ): ProviderModelInfo[] {
-  const completed = jobs.filter((job) => job.status === 'completed')
-  const completedByModelId = new Map(completed.map((job) => [job.modelId, job]))
-  const reconciled = current.map((model) => {
-    const job = completedByModelId.get(model.modelId)
-    if (!job) return model
-    const inferred = modelForJob(job)
-    return JSON.stringify(model.capabilities || []) === JSON.stringify(inferred.capabilities)
-      ? model
-      : { ...model, capabilities: inferred.capabilities }
-  })
+  const completedByModelId = new Map<string, DownloadJob>()
+  for (const job of jobs) {
+    // Native jobs are newest-first. Keep one provider entry even when an older
+    // app version downloaded several quantizations under the same model ID.
+    if (job.status === 'completed' && !completedByModelId.has(job.modelId)) {
+      completedByModelId.set(job.modelId, job)
+    }
+  }
+  const completed = [...completedByModelId.values()]
+  const seenCurrent = new Set<string>()
+  const reconciled = current
+    .filter((model) => {
+      if (!completedByModelId.has(model.modelId) || seenCurrent.has(model.modelId)) return false
+      seenCurrent.add(model.modelId)
+      return true
+    })
+    .map((model) => {
+      const job = completedByModelId.get(model.modelId)
+      if (!job) return model
+      const inferred = modelForJob(job)
+      return JSON.stringify(model.capabilities || []) === JSON.stringify(inferred.capabilities)
+        ? model
+        : { ...model, capabilities: inferred.capabilities }
+    })
   const additions = completed
     .filter((job) => !current.some((model) => model.modelId === job.modelId))
     .map(modelForJob)
@@ -41,19 +55,46 @@ export function reconcileInstalledLocalModels(
 }
 
 /** Runs at Android shell startup so old downloads are usable before opening the model center. */
-export async function syncInstalledLocalModelsIntoSettings(): Promise<boolean> {
-  const { jobs } = await listNativeModelJobs()
+export async function syncInstalledLocalModelsIntoSettings(nativeJobs?: DownloadJob[]): Promise<boolean> {
+  const jobs = nativeJobs || (await listNativeModelJobs()).jobs
   const settings = settingsStore.getState()
   const providers = settings.providers || {}
   const localProvider = providers[ModelProviderEnum.Local] || {}
   const current = localProvider.models || []
   const next = reconcileInstalledLocalModels(current, jobs)
-  if (JSON.stringify(next) === JSON.stringify(current)) return false
+  const defaultRemoved =
+    settings.defaultChatModel?.provider === ModelProviderEnum.Local &&
+    !next.some((model) => model.modelId === settings.defaultChatModel?.model)
+  const availableIds = new Set(next.map((model) => model.modelId))
+  const referenceWasRemoved = (reference?: { provider: string; model: string }) =>
+    reference?.provider === ModelProviderEnum.Local && !availableIds.has(reference.model)
+  const nextFavorites = settings.favoritedModels?.filter(
+    (favorite) => favorite.provider !== ModelProviderEnum.Local || availableIds.has(favorite.model),
+  )
+  const favoritesChanged = JSON.stringify(nextFavorites) !== JSON.stringify(settings.favoritedModels)
+  const threadNamingRemoved = referenceWasRemoved(settings.threadNamingModel)
+  const searchModelRemoved = referenceWasRemoved(settings.searchTermConstructionModel)
+  const ocrModelRemoved = referenceWasRemoved(settings.ocrModel)
+  if (
+    JSON.stringify(next) === JSON.stringify(current) &&
+    !defaultRemoved &&
+    !favoritesChanged &&
+    !threadNamingRemoved &&
+    !searchModelRemoved &&
+    !ocrModelRemoved
+  ) {
+    return false
+  }
   await persistSettingsPatch({
     providers: {
       ...providers,
       [ModelProviderEnum.Local]: { ...localProvider, models: next },
     },
+    ...(defaultRemoved ? { defaultChatModel: undefined } : {}),
+    ...(favoritesChanged ? { favoritedModels: nextFavorites } : {}),
+    ...(threadNamingRemoved ? { threadNamingModel: undefined } : {}),
+    ...(searchModelRemoved ? { searchTermConstructionModel: undefined } : {}),
+    ...(ocrModelRemoved ? { ocrModel: undefined } : {}),
   })
   return true
 }

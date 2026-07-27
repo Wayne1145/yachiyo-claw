@@ -12,6 +12,17 @@ object GgufRunner {
 
   @JvmStatic
   @Synchronized
+  fun load(modelPath: String, requestId: String) {
+    require(File(modelPath).isFile) { "local_model_file_missing" }
+    require(LocalModelFormat.isRunnableGgufPath(modelPath)) { "local_model_not_gguf" }
+    nativeLoad(modelPath, requestId)
+  }
+
+  @JvmStatic
+  fun loadProgress(): Float = nativeLoadProgress().coerceIn(0f, 1f)
+
+  @JvmStatic
+  @Synchronized
   fun infer(modelPath: String, messages: JSONArray, maxTokens: Int, requestId: String): String {
     require(File(modelPath).isFile) { "local_model_file_missing" }
     require(LocalModelFormat.isRunnableGgufPath(modelPath)) { "local_model_not_gguf" }
@@ -65,6 +76,11 @@ object GgufRunner {
     }
     return parts.joinToString("\n")
   }
+
+  @JvmStatic
+  private external fun nativeLoad(modelPath: String, requestId: String)
+
+  @JvmStatic private external fun nativeLoadProgress(): Float
 
   @JvmStatic
   private external fun nativeInfer(

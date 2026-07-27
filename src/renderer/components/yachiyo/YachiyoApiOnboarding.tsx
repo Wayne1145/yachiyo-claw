@@ -2,8 +2,11 @@ import { Button, PasswordInput, Stack, Text, Title } from '@mantine/core'
 import { ApiError } from '@shared/models/errors'
 import { IconArrowRight, IconKey, IconLock, IconServer } from '@tabler/icons-react'
 import { type FormEvent, useId, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { YACHIYO_API_BASE_URL, YACHIYO_DEFAULT_MODEL_ID } from '@/mobile/android-app-shell'
 import { YachiyoMark } from './YachiyoMark'
+
+type OnboardingError = 'missing-key' | 'unauthorized' | 'persist-failed' | 'model-unavailable' | 'network'
 
 export function YachiyoApiOnboarding({
   onSubmit,
@@ -12,15 +15,28 @@ export function YachiyoApiOnboarding({
   onSubmit: (apiKey: string) => Promise<void> | void
   onOpenProviders: () => void
 }) {
+  const { t } = useTranslation()
   const [apiKey, setApiKey] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<OnboardingError | null>(null)
   const titleId = useId()
+  const errorMessage =
+    error === 'missing-key'
+      ? t('请输入 API Key')
+      : error === 'unauthorized'
+        ? t('API Key 无效或无权访问，请检查后重试')
+        : error === 'persist-failed'
+          ? t('密钥验证成功，但安全保存失败，请重试')
+          : error === 'model-unavailable'
+            ? t('服务可达，但默认模型 gpt-5.6 当前不可用')
+            : error === 'network'
+              ? t('无法连接 Yachiyo API，请检查网络后重试')
+              : null
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (!apiKey.trim()) {
-      setError('请输入 API Key')
+      setError('missing-key')
       return
     }
 
@@ -31,13 +47,13 @@ export function YachiyoApiOnboarding({
       setApiKey('')
     } catch (submitError) {
       if (submitError instanceof ApiError && (submitError.statusCode === 401 || submitError.statusCode === 403)) {
-        setError('API Key 无效或无权访问，请检查后重试')
+        setError('unauthorized')
       } else if (submitError instanceof Error && submitError.message === 'settings_persist_failed') {
-        setError('密钥验证成功，但安全保存失败，请重试')
+        setError('persist-failed')
       } else if (submitError instanceof Error && submitError.message === 'yachiyo_default_model_unavailable') {
-        setError('服务可达，但默认模型 gpt-5.6 当前不可用')
+        setError('model-unavailable')
       } else {
-        setError('无法连接 Yachiyo API，请检查网络后重试')
+        setError('network')
       }
     } finally {
       setSubmitting(false)
@@ -53,20 +69,20 @@ export function YachiyoApiOnboarding({
             <div>
               <Text className="yachiyo-eyebrow">YACHIYO CLAW</Text>
               <Title id={titleId} order={1} className="yachiyo-onboarding-title">
-                连接 Yachiyo API
+                {t('连接 Yachiyo API')}
               </Title>
             </div>
           </div>
 
-          <div className="yachiyo-endpoint-summary" aria-label="默认连接信息">
+          <div className="yachiyo-endpoint-summary" aria-label={String(t('默认连接信息'))}>
             <div>
               <IconServer size={18} aria-hidden="true" />
-              <span>服务</span>
+              <span>{t('服务')}</span>
               <strong>{YACHIYO_API_BASE_URL.replace('https://', '')}</strong>
             </div>
             <div>
               <IconKey size={18} aria-hidden="true" />
-              <span>模型</span>
+              <span>{t('模型')}</span>
               <strong>{YACHIYO_DEFAULT_MODEL_ID}</strong>
             </div>
           </div>
@@ -74,7 +90,7 @@ export function YachiyoApiOnboarding({
           <form onSubmit={handleSubmit}>
             <Stack gap="md">
               <PasswordInput
-                label="API Key"
+                label={t('API Key')}
                 value={apiKey}
                 onChange={(event) => {
                   setApiKey(event.currentTarget.value)
@@ -83,7 +99,7 @@ export function YachiyoApiOnboarding({
                 placeholder="sk-..."
                 autoComplete="off"
                 leftSection={<IconKey size={18} aria-hidden="true" />}
-                error={error}
+                error={errorMessage}
                 size="md"
               />
               <Button
@@ -93,18 +109,18 @@ export function YachiyoApiOnboarding({
                 rightSection={<IconArrowRight size={18} aria-hidden="true" />}
                 className="yachiyo-primary-button"
               >
-                保存并开始
+                {t('保存并开始')}
               </Button>
             </Stack>
           </form>
 
           <div className="yachiyo-local-security-note">
             <IconLock size={18} aria-hidden="true" />
-            <Text size="sm">密钥由 Android Keystore 加密，仅保存在此设备。</Text>
+            <Text size="sm">{t('密钥由 Android Keystore 加密，仅保存在此设备。')}</Text>
           </div>
 
           <Button variant="subtle" color="gray" onClick={onOpenProviders}>
-            使用其他 API 服务
+            {t('使用其他 API 服务')}
           </Button>
         </Stack>
       </section>

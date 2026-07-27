@@ -1100,6 +1100,11 @@ body:has(.yachiyo-mobile-shell),
   overflow-wrap: anywhere;
 }
 
+.yachiyo-permission-label-line .mantine-Badge-root {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
 .yachiyo-permission-row button {
   flex: 0 0 auto;
   border-radius: 999px;
@@ -1958,10 +1963,20 @@ body:has(.yachiyo-mobile-shell),
     gap: 8px;
   }
 
-  .yachiyo-permission-row button {
-    max-width: 112px;
+  .yachiyo-permission-row .yachiyo-permission-action {
+    width: auto;
+    max-width: min(142px, 42%);
+    height: auto;
+    min-height: 32px;
     padding-right: 9px;
     padding-left: 9px;
+  }
+
+  .yachiyo-permission-action .mantine-Button-label {
+    overflow: visible;
+    white-space: normal;
+    line-height: 1.2;
+    text-align: center;
   }
 
   .yachiyo-agent-access-panel {

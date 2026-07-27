@@ -15,6 +15,7 @@ import {
   IconTestPipe,
 } from '@tabler/icons-react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { registerBuiltinFeatureUi } from '@/features/builtin-feature-ui'
 import { registerBuiltinFeatures } from '@/features/builtin-features'
 import { getEnabledFeatureIds } from '@/features/feature-runtime'
@@ -125,6 +126,7 @@ const CORE_GROUPS: Array<{ id: 'model' | 'capability' | 'app' | 'developer'; tit
 ]
 
 export function AndroidSettingsHome() {
+  const { t } = useTranslation()
   const overrides = useSettingsStore((state) => state.featureOverrides)
   const plugins = usePluginStore((state) => state.installed)
   const contributionPluginIds = usePluginStore((state) => state.contributionPluginIds)
@@ -157,19 +159,19 @@ export function AndroidSettingsHome() {
             open: () => void router.navigate({ to: entry.route as '/' }),
           }))
         return { ...group, items: [...group.items, ...contributed, ...pluginEntries].sort((a, b) => a.order - b.order) }
-      }
+      },
     )
   }, [contributionPluginIds, overrides, plugins])
   return (
     <main className="yachiyo-settings-home">
       <header className="yachiyo-settings-heading">
-        <Title order={1}>设置</Title>
+        <Title order={1}>{t('设置')}</Title>
         <Text c="dimmed">Yachiyo Claw</Text>
       </header>
 
       {groups.map((group) => (
         <section key={group.title} className="yachiyo-settings-group">
-          <Text className="yachiyo-settings-group-title">{group.title}</Text>
+          <Text className="yachiyo-settings-group-title">{t(group.title)}</Text>
           <div className="yachiyo-settings-list">
             {group.items.map((item, index) => {
               const Icon = item.icon
@@ -184,8 +186,8 @@ export function AndroidSettingsHome() {
                     <Icon size={20} stroke={1.8} />
                   </span>
                   <span className="yachiyo-settings-copy">
-                    <strong>{item.label}</strong>
-                    <small>{item.detail}</small>
+                    <strong>{t(item.label)}</strong>
+                    <small>{t(item.detail)}</small>
                   </span>
                   <IconChevronRight size={19} stroke={1.7} />
                 </button>

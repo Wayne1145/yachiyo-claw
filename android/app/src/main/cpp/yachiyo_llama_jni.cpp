@@ -17,6 +17,7 @@ namespace {
 std::mutex g_model_mutex;
 std::mutex g_request_mutex;
 std::atomic<bool> g_cancelled{false};
+std::atomic<float> g_load_progress{0.0F};
 llama_model * g_model = nullptr;
 std::string g_model_path;
 std::string g_request_id;
@@ -104,7 +105,8 @@ bool abort_requested(void *) {
     return g_cancelled.load(std::memory_order_relaxed);
 }
 
-bool continue_loading(float, void *) {
+bool continue_loading(float progress, void *) {
+    g_load_progress.store(std::clamp(progress, 0.0F, 1.0F), std::memory_order_relaxed);
     return !g_cancelled.load(std::memory_order_relaxed);
 }
 
@@ -129,7 +131,11 @@ void ensure_backend() {
 }
 
 void ensure_model(const std::string & path) {
-    if (g_model != nullptr && g_model_path == path) return;
+    if (g_model != nullptr && g_model_path == path) {
+        g_load_progress.store(1.0F, std::memory_order_relaxed);
+        return;
+    }
+    g_load_progress.store(0.0F, std::memory_order_relaxed);
     if (g_model != nullptr) {
         llama_model_free(g_model);
         g_model = nullptr;
@@ -146,6 +152,17 @@ void ensure_model(const std::string & path) {
         throw std::runtime_error("local_model_load_failed");
     }
     g_model_path = path;
+    g_load_progress.store(1.0F, std::memory_order_relaxed);
+}
+
+std::string model_metadata(const char * key) {
+    std::vector<char> buffer(128);
+    int32_t written = llama_model_meta_val_str(g_model, key, buffer.data(), buffer.size());
+    if (written < 0) {
+        buffer.resize(static_cast<size_t>(-written) + 1);
+        written = llama_model_meta_val_str(g_model, key, buffer.data(), buffer.size());
+    }
+    return written > 0 ? std::string(buffer.data(), static_cast<size_t>(written)) : std::string();
 }
 
 std::string apply_chat_template(
@@ -158,8 +175,27 @@ std::string apply_chat_template(
         messages.push_back({roles[index].c_str(), contents[index].c_str()});
     }
     const char * chat_template = llama_model_chat_template(g_model, nullptr);
-    int32_t required = llama_chat_apply_template(chat_template, messages.data(), messages.size(), true, nullptr, 0);
-    if (required <= 0) throw std::runtime_error("local_model_chat_template_unsupported");
+    int32_t required = chat_template == nullptr
+        ? 0
+        : llama_chat_apply_template(chat_template, messages.data(), messages.size(), true, nullptr, 0);
+    if (required <= 0) {
+        const std::string architecture = model_metadata("general.architecture");
+        // llama_chat_apply_template intentionally supports a bounded template set. Newer GGUFs can
+        // carry valid Jinja that is not recognized yet, so select a conservative built-in family.
+        chat_template = architecture.find("gemma") != std::string::npos ? "gemma" : "chatml";
+        required = llama_chat_apply_template(chat_template, messages.data(), messages.size(), true, nullptr, 0);
+    }
+    if (required <= 0) {
+        std::string plain;
+        for (size_t index = 0; index < roles.size(); ++index) {
+            plain += roles[index];
+            plain += ": ";
+            plain += contents[index];
+            plain += "\n";
+        }
+        plain += "assistant: ";
+        return plain;
+    }
     std::vector<char> formatted(static_cast<size_t>(required) + 1);
     int32_t written = llama_chat_apply_template(
         chat_template,
@@ -274,6 +310,38 @@ std::string generate(
 
 }  // namespace
 
+extern "C" JNIEXPORT void JNICALL
+Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoad(
+    JNIEnv * env,
+    jclass,
+    jstring model_path,
+    jstring request_id
+) {
+    try {
+        const std::string path = from_jstring(env, model_path);
+        const std::string request = from_jstring(env, request_id);
+        begin_request(request);
+        try {
+            std::lock_guard<std::mutex> model_lock(g_model_mutex);
+            ensure_backend();
+            ensure_model(path);
+            end_request();
+        } catch (...) {
+            end_request();
+            throw;
+        }
+    } catch (const std::exception & error) {
+        throw_java(env, error.what());
+    } catch (...) {
+        throw_java(env, "local_model_load_failed");
+    }
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoadProgress(JNIEnv *, jclass) {
+    return g_load_progress.load(std::memory_order_relaxed);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_io_github_yachiyoclaw_model_GgufRunner_nativeInfer(
     JNIEnv * env,
@@ -327,4 +395,5 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeUnload(JNIEnv *, jclass) {
     if (g_model != nullptr) llama_model_free(g_model);
     g_model = nullptr;
     g_model_path.clear();
+    g_load_progress.store(0.0F, std::memory_order_relaxed);
 }

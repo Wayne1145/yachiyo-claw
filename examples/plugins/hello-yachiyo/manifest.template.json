@@ -24,6 +24,19 @@
         "order": 900
       }
     ],
-    "tools": [{ "name": "hello-yachiyo_echo", "description": "Echo pure JSON data from the isolated plugin Worker." }]
+    "tools": [
+      {
+        "name": "hello-yachiyo_echo",
+        "description": "Echo a text value from the isolated plugin Worker.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Text to echo back unchanged." }
+          },
+          "required": ["text"],
+          "additionalProperties": false
+        }
+      }
+    ]
   }
 }

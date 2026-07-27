@@ -36,6 +36,10 @@ function functionGemmaJob(): DownloadJob {
   }
 }
 
+function duplicateFunctionGemmaJob(): DownloadJob {
+  return { ...functionGemmaJob(), id: 'job-2', updatedAt: 2 }
+}
+
 describe('installed local model provider reconciliation', () => {
   it('adds tool-use capability to migrated FunctionGemma records', () => {
     const result = reconcileInstalledLocalModels(
@@ -50,5 +54,25 @@ describe('installed local model provider reconciliation', () => {
     const once = reconcileInstalledLocalModels([], [functionGemmaJob()])
     const twice = reconcileInstalledLocalModels(once, [functionGemmaJob()])
     expect(twice).toEqual(once)
+  })
+
+  it('removes provider entries whose native model is no longer completed', () => {
+    const result = reconcileInstalledLocalModels(
+      [{ modelId: 'deleted-model', type: 'chat' }, { modelId: 'qa-functiongemma-270m-v011', type: 'chat' }],
+      [functionGemmaJob()],
+    )
+
+    expect(result.map((model) => model.modelId)).toEqual(['qa-functiongemma-270m-v011'])
+  })
+
+  it('collapses duplicate native jobs and stale duplicate provider entries', () => {
+    const duplicate = { modelId: 'qa-functiongemma-270m-v011', type: 'chat' as const }
+    const result = reconcileInstalledLocalModels(
+      [duplicate, { ...duplicate, nickname: 'stale duplicate' }],
+      [duplicateFunctionGemmaJob(), functionGemmaJob()],
+    )
+
+    expect(result).toHaveLength(1)
+    expect(result[0].modelId).toBe('qa-functiongemma-270m-v011')
   })
 })

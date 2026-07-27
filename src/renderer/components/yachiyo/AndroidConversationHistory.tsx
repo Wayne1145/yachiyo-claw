@@ -9,6 +9,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react'
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import {
   ensureChatSessionForTask,
@@ -43,6 +44,7 @@ export function AndroidConversationHistory({
   onClose: () => void
   onSelectSession?: (sessionId: string) => void | Promise<void>
 }) {
+  const { t, i18n } = useTranslation()
   const [search, setSearch] = useState('')
   const [openingId, setOpeningId] = useState<string>()
   const chats = useSessionList()
@@ -51,7 +53,9 @@ export function AndroidConversationHistory({
 
   useEffect(() => {
     if (!opened) return
-    const protectedIds = new Set(taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)))
+    const protectedIds = new Set(
+      taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+    )
     void pruneAbandonedEmptySessions(60_000, protectedIds)
   }, [opened, taskItems])
 
@@ -60,7 +64,7 @@ export function AndroidConversationHistory({
     const chatRecords = (chats.sessionMetaList || []).map((session) => ({
       id: session.id,
       kind: 'chat' as const,
-      name: session.name || '新对话',
+      name: session.name || String(t('新对话')),
       timestamp: session.createdAt,
       shared: taskItems.some((task) => task.linkedSessionId === session.id),
       linkedTaskId: taskItems.find((task) => task.linkedSessionId === session.id)?.id,
@@ -71,7 +75,7 @@ export function AndroidConversationHistory({
       .map((task) => ({
         id: task.id,
         kind: 'task' as const,
-        name: task.name || 'Agent 对话',
+        name: task.name || String(t('Agent 对话')),
         timestamp: task.updatedAt || task.createdAt,
         shared: false,
         starred: false,
@@ -81,7 +85,7 @@ export function AndroidConversationHistory({
     return [...chatRecords, ...legacyTasks]
       .filter((record) => !normalizedSearch || record.name.toLocaleLowerCase().includes(normalizedSearch))
       .sort((left, right) => right.timestamp - left.timestamp)
-  }, [chats.sessionMetaList, search, taskItems])
+  }, [chats.sessionMetaList, search, taskItems, t])
 
   const openRecord = async (record: (typeof records)[number]) => {
     setOpeningId(record.id)
@@ -114,7 +118,9 @@ export function AndroidConversationHistory({
   const createConversation = async () => {
     setOpeningId('new')
     try {
-      const protectedIds = new Set(taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)))
+      const protectedIds = new Set(
+        taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+      )
       await pruneAbandonedEmptySessions(0, protectedIds)
       const session = await createEmpty('chat')
       if (onSelectSession) {
@@ -139,7 +145,7 @@ export function AndroidConversationHistory({
     const source = await getSession(sourceId)
     if (!source) return
     const { id: _id, ...copy } = structuredClone(source)
-    const fork = await createSession({ ...copy, name: `${source.name} · 分支`, starred: false }, source.id)
+    const fork = await createSession({ ...copy, name: `${source.name} · ${t('分支')}`, starred: false }, source.id)
     copyAgentSessionConfig(sourceId, fork.id)
     await openRecord({
       id: fork.id,
@@ -173,14 +179,14 @@ export function AndroidConversationHistory({
   }
 
   return (
-    <AdaptiveModal opened={opened} onClose={onClose} title="会话记录" centered size="lg">
+    <AdaptiveModal opened={opened} onClose={onClose} title={t('会话记录')} centered size="lg">
       <Stack gap="md" className="yachiyo-history-dialog">
         <Flex gap="sm">
           <TextInput
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
             leftSection={<IconSearch size={17} />}
-            placeholder="搜索会话"
+            placeholder={String(t('搜索会话'))}
             className="yachiyo-history-search"
           />
           <Button
@@ -188,7 +194,7 @@ export function AndroidConversationHistory({
             loading={openingId === 'new'}
             onClick={() => void createConversation()}
           >
-            新建
+            {t('新建')}
           </Button>
         </Flex>
 
@@ -198,7 +204,7 @@ export function AndroidConversationHistory({
           </Flex>
         ) : records.length === 0 ? (
           <Text c="dimmed" ta="center" py="xl">
-            暂无会话
+            {t('暂无会话')}
           </Text>
         ) : (
           <Stack gap={6} className="yachiyo-history-list">
@@ -213,6 +219,7 @@ export function AndroidConversationHistory({
                 onFavorite={() => void favoriteRecord(record)}
                 onFork={() => void forkRecord(record)}
                 onDelete={() => void deleteRecord(record)}
+                locale={i18n.resolvedLanguage || i18n.language}
               />
             ))}
           </Stack>
@@ -227,7 +234,7 @@ export function AndroidConversationHistory({
               if (tasks.hasNextPage) void tasks.fetchNextPage()
             }}
           >
-            加载更多
+            {t('加载更多')}
           </Button>
         )}
       </Stack>
@@ -254,6 +261,7 @@ function SwipeHistoryItem({
   onFavorite,
   onFork,
   onDelete,
+  locale,
 }: {
   record: HistoryRecord
   active: boolean
@@ -263,7 +271,9 @@ function SwipeHistoryItem({
   onFavorite: () => void
   onFork: () => void
   onDelete: () => void
+  locale: string
 }) {
+  const { t } = useTranslation()
   const [offset, setOffset] = useState(0)
   const drag = useRef<{ x: number; y: number; startOffset: number; horizontal?: boolean } | null>(null)
 
@@ -301,15 +311,15 @@ function SwipeHistoryItem({
       <div className="yachiyo-history-actions" aria-hidden={offset === 0}>
         <button type="button" data-action="favorite" disabled={offset === 0} onClick={() => runAction(onFavorite)}>
           {record.starred ? <IconStarFilled size={19} /> : <IconStar size={19} />}
-          <span>{record.starred ? '取消收藏' : '收藏'}</span>
+          <span>{record.starred ? t('取消收藏') : t('收藏')}</span>
         </button>
         <button type="button" data-action="fork" disabled={offset === 0} onClick={() => runAction(onFork)}>
           <IconGitFork size={19} />
-          <span>分叉</span>
+          <span>{t('分叉')}</span>
         </button>
         <button type="button" data-action="delete" disabled={offset === 0} onClick={() => runAction(onDelete)}>
           <IconTrash size={19} />
-          <span>删除</span>
+          <span>{t('删除')}</span>
         </button>
       </div>
       <button
@@ -327,15 +337,13 @@ function SwipeHistoryItem({
           else onOpen()
         }}
       >
-        <span className="yachiyo-history-icon">
-          {loading ? <Loader size={17} /> : <IconMessageCircle size={19} />}
-        </span>
+        <span className="yachiyo-history-icon">{loading ? <Loader size={17} /> : <IconMessageCircle size={19} />}</span>
         <span className="yachiyo-history-copy">
           <strong>{record.name}</strong>
-          <small>{new Date(record.timestamp).toLocaleString()}</small>
+          <small>{new Date(record.timestamp).toLocaleString(locale)}</small>
         </span>
         <Badge variant="light" color={record.shared ? 'chatbox-brand' : 'gray'}>
-          {record.shared ? 'Agent 可用' : '聊天'}
+          {record.shared ? t('Agent 可用') : t('聊天')}
         </Badge>
       </button>
     </div>

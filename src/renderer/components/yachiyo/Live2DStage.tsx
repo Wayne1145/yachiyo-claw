@@ -5,6 +5,8 @@ import { Ticker, TickerPlugin } from '@pixi/ticker'
 import { install as installUnsafeEval } from '@pixi/unsafe-eval'
 import JSZip from 'jszip'
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
 import { getLive2DResolution, type Live2DRenderQuality, resolveLive2DAssetUrl } from '@/mobile/live2d-performance'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
@@ -33,7 +35,7 @@ function hasCubismCore(): boolean {
   return Boolean((window as Window & { Live2DCubismCore?: unknown }).Live2DCubismCore)
 }
 
-async function loadCubismCore(): Promise<void> {
+async function loadCubismCore(t: TFunction): Promise<void> {
   if (hasCubismCore()) return
 
   const script = document.createElement('script')
@@ -44,9 +46,9 @@ async function loadCubismCore(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     script.onload = () => {
       if (hasCubismCore()) resolve()
-      else reject(new Error('Live2D Cubism Core 初始化失败'))
+      else reject(new Error(String(t('Live2D Cubism Core 初始化失败'))))
     }
-    script.onerror = () => reject(new Error('Live2D Cubism Core 加载失败'))
+    script.onerror = () => reject(new Error(String(t('Live2D Cubism Core 加载失败'))))
     document.head.appendChild(script)
   }).catch((reason) => {
     script.remove()
@@ -54,10 +56,10 @@ async function loadCubismCore(): Promise<void> {
   })
 }
 
-async function ensureCubismRuntime(): Promise<Cubism4Module> {
+async function ensureCubismRuntime(t: TFunction): Promise<Cubism4Module> {
   if (runtimePromise) return runtimePromise
   const pending = (async () => {
-    await loadCubismCore()
+    await loadCubismCore(t)
     const runtime = await import('pixi-live2d-display/cubism4')
     runtime.ZipLoader.zipReader = (data: Blob) => JSZip.loadAsync(data)
     runtime.ZipLoader.getFilePaths = async (zip: JSZip) =>
@@ -66,7 +68,7 @@ async function ensureCubismRuntime(): Promise<Cubism4Module> {
       Promise.all(
         paths.map(async (path) => {
           const entry = zip.file(path)
-          if (!entry) throw new Error(`Live2D ZIP 文件不存在: ${path}`)
+          if (!entry) throw new Error(String(t('Live2D ZIP 文件不存在：{{path}}', { path })))
           return new File([await entry.async('blob')], path.split('/').pop() || path)
         })
       )
@@ -93,13 +95,13 @@ type WebGLLimits = {
   maxRenderbufferSize: number
 }
 
-function getWebGLLimits(): WebGLLimits {
+function getWebGLLimits(t: TFunction): WebGLLimits {
   if (cachedWebGLLimits) return cachedWebGLLimits
   const canvas = document.createElement('canvas')
   const context =
     canvas.getContext('webgl2', { alpha: false, antialias: false }) ||
     canvas.getContext('webgl', { alpha: false, antialias: false })
-  if (!context) throw new Error('当前 WebView 不支持 WebGL，Live2D 无法显示')
+  if (!context) throw new Error(String(t('当前 WebView 不支持 WebGL，Live2D 无法显示')))
 
   const maxRenderbufferSize = context.getParameter(context.MAX_RENDERBUFFER_SIZE)
   context.getExtension('WEBGL_lose_context')?.loseContext()
@@ -145,6 +147,7 @@ export const Live2DStage = forwardRef<
     onReady?: () => void
   }
 >(function Live2DStage({ model: descriptor, speaking = false, muted = false, quality = 'high', onReady }, ref) {
+  const { t } = useTranslation()
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application>()
   const modelRef = useRef<ModelInstance>()
@@ -170,7 +173,7 @@ export const Live2DStage = forwardRef<
       if (action.kind === 'expression' && action.expressionName) {
         await instance.expression(action.expressionName)
       } else if (action.kind === 'motion' && action.motionGroup) {
-        const runtime = await ensureCubismRuntime()
+        const runtime = await ensureCubismRuntime(t)
         await instance.motion(action.motionGroup, action.motionIndex ?? 0, runtime.MotionPriority.FORCE)
       }
     },
@@ -208,9 +211,9 @@ export const Live2DStage = forwardRef<
       setError(undefined)
       setReady(false)
       ensurePixiUnsafeEval()
-      const runtime = await ensureCubismRuntime()
+      const runtime = await ensureCubismRuntime(t)
       if (disposed) return
-      const limits = getWebGLLimits()
+      const limits = getWebGLLimits(t)
       const android = isAndroidRuntime()
       const width = Math.max(1, host.clientWidth)
       const height = Math.max(1, host.clientHeight)
@@ -251,7 +254,7 @@ export const Live2DStage = forwardRef<
             event.preventDefault()
             if (disposed) return
             if (recoveryModeRef.current || contextRecoveryCountRef.current > 0) {
-              setError('Live2D 渲染上下文丢失')
+              setError(String(t('Live2D 渲染上下文丢失')))
               return
             }
             contextRecoveryCountRef.current += 1
@@ -336,13 +339,13 @@ export const Live2DStage = forwardRef<
         }
       }
 
-      throw lastReason instanceof Error ? lastReason : new Error('Live2D 模型加载失败')
+      throw lastReason instanceof Error ? lastReason : new Error(String(t('Live2D 模型加载失败')))
     }
 
     void initialize().catch((reason) => {
       if (!disposed) {
         setReady(false)
-        setError(reason instanceof Error ? reason.message : 'Live2D 模型加载失败')
+        setError(reason instanceof Error ? reason.message : String(t('Live2D 模型加载失败')))
       }
     })
 
@@ -353,7 +356,7 @@ export const Live2DStage = forwardRef<
       disposeResources()
       host.replaceChildren()
     }
-  }, [descriptor.source, onReady, quality, retryKey])
+  }, [descriptor.source, onReady, quality, retryKey, t])
 
   return (
     <div

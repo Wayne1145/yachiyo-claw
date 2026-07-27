@@ -95,6 +95,14 @@ export const capacitorPluginFileStore: PluginFileStore = {
       return false
     }
   },
+  async listDirectories(path) {
+    try {
+      const result = await Filesystem.readdir({ path: `${PLUGIN_ROOT}/${path}`, directory: Directory.Data })
+      return result.files.filter((entry) => entry.type === 'directory').map((entry) => entry.name)
+    } catch {
+      return []
+    }
+  },
 }
 
 const registryStorage = localforage.createInstance({ name: 'yachiyo-claw', storeName: 'plugin-registry' })

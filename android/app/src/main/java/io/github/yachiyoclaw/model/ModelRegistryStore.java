@@ -153,17 +153,51 @@ final class ModelRegistryStore {
     }
 
     void deleteModel(String modelId) throws Exception {
-        JSONObject job = findCompletedModel(modelId);
-        if (job == null) return;
-        File directory = modelDirectory(job);
-        String root = contentDir.getCanonicalPath() + File.separator;
-        if (!directory.getCanonicalPath().startsWith(root)) throw new SecurityException("model_delete_path_rejected");
+        String requested = normalizeIdentity(modelId);
+        if (requested.isEmpty()) return;
+        JSONArray jobs = list();
+        for (int index = 0; index < jobs.length(); index++) {
+            JSONObject job = jobs.optJSONObject(index);
+            if (job == null || isWorkerActive(job.optString("status"))) continue;
+            if (!matchesModelIdentity(requested, job.optString("modelId"), job.optString("repository"), job.optString("id"))) {
+                continue;
+            }
+            deleteModelFiles(job);
+            Files.deleteIfExists(jobFile(requireId(job.optString("id"))).toPath());
+        }
+    }
+
+    private void deleteModelFiles(JSONObject job) throws Exception {
+        File contentRoot = contentDir.getCanonicalFile();
+        File directory = modelDirectory(job).getCanonicalFile();
+        if (!isWithin(contentRoot, directory)) throw new SecurityException("model_delete_path_rejected");
+        deleteTree(directory);
+        pruneEmptyParents(directory.getParentFile(), contentRoot);
+
+        String recordedPath = job.optString("modelPath");
+        if (recordedPath.trim().isEmpty()) return;
+        File recorded = new File(recordedPath).getCanonicalFile();
+        if (!isWithin(contentRoot, recorded)) throw new SecurityException("model_delete_path_rejected");
+        Files.deleteIfExists(recorded.toPath());
+        pruneEmptyParents(recorded.getParentFile(), contentRoot);
+    }
+
+    private static void deleteTree(File directory) throws Exception {
+        if (!directory.exists()) return;
         try (var paths = Files.walk(directory.toPath())) {
             paths.sorted(Comparator.reverseOrder()).forEach(path -> {
                 try { Files.deleteIfExists(path); } catch (Exception ignored) {}
             });
         }
-        update(job.optString("id"), "cancelled", 0, null, null);
+    }
+
+    private static void pruneEmptyParents(File directory, File stopAt) throws Exception {
+        File current = directory;
+        while (current != null && !current.equals(stopAt) && isWithin(stopAt, current.getCanonicalFile())) {
+            File[] children = current.listFiles();
+            if (children == null || children.length != 0 || !current.delete()) return;
+            current = current.getParentFile();
+        }
     }
 
     private File jobFile(String id) {

@@ -16,7 +16,7 @@ export interface PendingPluginInstall {
   expectedSha256?: string
   signature?: SkillSignature
   updateSource?: PluginUpdateSource
-  expectedPlugin?: Pick<PluginMarketplaceEntry, 'id' | 'version'>
+  expectedPlugin?: Pick<PluginMarketplaceEntry, 'id'> & { version?: string }
   createdAt: number
 }
 
@@ -55,7 +55,12 @@ function parsePending(value: unknown): PendingPluginInstall | null {
   if (item.signature !== undefined && !isSignature(item.signature)) return null
   if (item.expectedSha256 !== undefined && !/^[a-f0-9]{64}$/i.test(String(item.expectedSha256))) return null
   const expectedPlugin = item.expectedPlugin as Record<string, unknown> | undefined
-  if (expectedPlugin && (typeof expectedPlugin.id !== 'string' || typeof expectedPlugin.version !== 'string')) return null
+  if (
+    expectedPlugin &&
+    (typeof expectedPlugin.id !== 'string' ||
+      !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(expectedPlugin.id) ||
+      (expectedPlugin.version !== undefined && typeof expectedPlugin.version !== 'string'))
+  ) return null
   const updateSource = item.updateSource as PluginUpdateSource | undefined
   if (
     updateSource &&

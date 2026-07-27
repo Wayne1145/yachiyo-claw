@@ -1,6 +1,7 @@
 import { Alert, Button, SegmentedControl, Stack, Switch, Text, Title } from '@mantine/core'
 import { IconAdjustments, IconAlertTriangle, IconBolt, IconShieldLock } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import {
   type AgentBackend,
@@ -26,12 +27,19 @@ const APPROVAL_LABEL: Record<AgentApprovalMode, string> = {
   full: '完全控制',
 }
 
-export function describeAgentMode(sessionId: string, enabled: boolean): string {
-  if (!enabled) return '普通聊天'
+export function describeAgentMode(
+  sessionId: string,
+  enabled: boolean,
+  translate: (key: string) => string = (key) => key,
+): string {
+  if (!enabled) return translate('普通聊天')
   const config = getAgentSessionConfig(sessionId)
-  if (!config.deviceControlEnabled) return `Agent · 内部工具 · ${APPROVAL_LABEL[config.approvalMode]}`
-  const backend = config.backend === 'accessibility' ? '无障碍' : config.backend === 'shizuku' ? 'Shizuku' : 'Root'
-  return `Agent · 手机控制 ${backend} · ${APPROVAL_LABEL[config.approvalMode]}`
+  if (!config.deviceControlEnabled) {
+    return `Agent · ${translate('内部工具')} · ${translate(APPROVAL_LABEL[config.approvalMode])}`
+  }
+  const backend =
+    config.backend === 'accessibility' ? translate('无障碍') : config.backend === 'shizuku' ? 'Shizuku' : 'Root'
+  return `Agent · ${translate('手机控制')} ${backend} · ${translate(APPROVAL_LABEL[config.approvalMode])}`
 }
 
 export function AgentSessionControls({
@@ -43,6 +51,7 @@ export function AgentSessionControls({
   enabled: boolean
   onToggle: (enabled: boolean) => Promise<void>
 }) {
+  const { t } = useTranslation()
   const [config, setConfig] = useState(() => getAgentSessionConfig(sessionId))
   const [settingsOpened, setSettingsOpened] = useState(false)
   const [phonePermissionOpened, setPhonePermissionOpened] = useState(false)
@@ -105,7 +114,10 @@ export function AgentSessionControls({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsOpened, phonePermissionOpened, backend])
 
-  const status = useMemo(() => describeAgentMode(sessionId, enabled), [sessionId, enabled, config])
+  const status = useMemo(
+    () => describeAgentMode(sessionId, enabled, (key) => String(t(key))),
+    [sessionId, enabled, config, t],
+  )
 
   const openSettings = (enableAfterSave = false) => {
     setPendingEnable(enableAfterSave)
@@ -196,7 +208,7 @@ export function AgentSessionControls({
           leftSection={<IconBolt size={17} />}
           onClick={() => void toggle()}
         >
-          {enabled ? 'Agent 已启用' : 'Agent 能力未启用'}
+          {enabled ? t('Agent 已启用') : t('Agent 能力未启用')}
         </Button>
         <Button
           className="yachiyo-agent-settings-button"
@@ -204,7 +216,7 @@ export function AgentSessionControls({
           leftSection={<IconAdjustments size={17} />}
           onClick={() => openSettings(false)}
         >
-          Agent 设置
+          {t('Agent 设置')}
         </Button>
         <Text size="xs" c="dimmed" className="yachiyo-agent-mode-label">
           {status}
@@ -217,7 +229,7 @@ export function AgentSessionControls({
           setSettingsOpened(false)
           setPendingEnable(false)
         }}
-        title="当前对话的 Agent 设置"
+        title={t('当前对话的 Agent 设置')}
         centered
         size="lg"
       >
@@ -226,8 +238,8 @@ export function AgentSessionControls({
           <section className="yachiyo-agent-config-panel">
             <Switch
               size="md"
-              label="手机控制"
-              description="可选。开启后才允许 Agent 通过 Root、Shizuku 或无障碍观察和操作手机。"
+              label={t('手机控制')}
+              description={t('可选。开启后才允许 Agent 通过 Root、Shizuku 或无障碍观察和操作手机。')}
               checked={deviceControlEnabled}
               onChange={(event) => {
                 const checked = event.currentTarget.checked
@@ -240,22 +252,27 @@ export function AgentSessionControls({
             />
             {deviceControlEnabled && (
               <Button variant="light" onClick={() => setPhonePermissionOpened(true)}>
-                手机控制权限与后端
+                {t('手机控制权限与后端')}
               </Button>
             )}
           </section>
           <section className="yachiyo-agent-config-panel">
             <div>
-              <Title order={2}>执行审批</Title>
+              <Title order={2}>{t('执行审批')}</Title>
               <Text c="dimmed" size="sm">
-                手动审批会确认每次写操作；AI 预审只将高风险操作交给你；完全控制不会询问。
+                {t('手动审批会确认每次写操作；AI 预审只将高风险操作交给你；完全控制不会询问。')}
               </Text>
             </div>
-            <SegmentedControl fullWidth value={approvalMode} onChange={selectApprovalMode} data={APPROVAL_OPTIONS} />
+            <SegmentedControl
+              fullWidth
+              value={approvalMode}
+              onChange={selectApprovalMode}
+              data={APPROVAL_OPTIONS.map((option) => ({ ...option, label: String(t(option.label)) }))}
+            />
             {deviceControlEnabled && (
               <Switch
-                label="任务完成后自动返回 Yachiyo Claw"
-                description="Agent 在其他应用操作完成后，将 Yachiyo Claw 重新切换到前台。"
+                label={t('任务完成后自动返回 Yachiyo Claw')}
+                description={t('Agent 在其他应用操作完成后，将 Yachiyo Claw 重新切换到前台。')}
                 checked={returnToApp}
                 onChange={(event) => {
                   const checked = event.currentTarget.checked
@@ -266,27 +283,27 @@ export function AgentSessionControls({
             )}
           </section>
           {config.allowDangerousForConversation && (
-            <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="当前对话已跳过后续审批">
+            <Alert color="orange" icon={<IconAlertTriangle size={18} />} title={t('当前对话已跳过后续审批')}>
               <Button
                 mt="xs"
                 size="compact-sm"
                 variant="light"
                 onClick={() => setConfig(saveAgentSessionConfig(sessionId, { allowDangerousForConversation: false }))}
               >
-                恢复审批
+                {t('恢复审批')}
               </Button>
             </Alert>
           )}
           <AdaptiveModal.Actions>
             <Button variant="default" onClick={() => setSettingsOpened(false)}>
-              取消
+              {t('取消')}
             </Button>
             <Button
               loading={saving}
               disabled={deviceControlEnabled && !phonePermissionsReady}
               onClick={() => void save()}
             >
-              保存设置
+              {t('保存设置')}
             </Button>
           </AdaptiveModal.Actions>
         </Stack>
@@ -295,16 +312,16 @@ export function AgentSessionControls({
       <AdaptiveModal
         opened={phonePermissionOpened}
         onClose={() => setPhonePermissionOpened(false)}
-        title="手机控制权限"
+        title={t('手机控制权限')}
         centered
         size="lg"
       >
         <Stack gap="md">
-          <Alert color="chatbox-brand" title="此权限仅用于操作手机">
-            内部 Linux 沙箱、Skills、MCP 和文件工具不需要 Root、Shizuku 或无障碍权限。
+          <Alert color="chatbox-brand" title={t('此权限仅用于操作手机')}>
+            {t('内部 Linux 沙箱、Skills、MCP 和文件工具不需要 Root、Shizuku 或无障碍权限。')}
           </Alert>
           <section className="yachiyo-agent-config-panel">
-            <Title order={2}>控制方式</Title>
+            <Title order={2}>{t('控制方式')}</Title>
             <SegmentedControl
               fullWidth
               value={backend}
@@ -312,39 +329,39 @@ export function AgentSessionControls({
               data={[
                 { value: 'root', label: 'Root' },
                 { value: 'shizuku', label: 'Shizuku' },
-                { value: 'accessibility', label: '无障碍' },
+                { value: 'accessibility', label: String(t('无障碍')) },
               ]}
             />
             <Text size="sm" c={backendReady ? 'green' : 'orange'}>
-              {backendDetail || '正在检测所选控制方式'}
+              {t(backendDetail || '正在检测所选控制方式')}
             </Text>
             {!backendReady && (
               <Button variant="light" loading={authorizing} onClick={() => void authorizeBackend()}>
                 {backend === 'root'
-                  ? '检测并授权 Root'
+                  ? t('检测并授权 Root')
                   : backend === 'shizuku'
-                    ? '打开或授权 Shizuku'
-                    : '去开启无障碍服务'}
+                    ? t('打开或授权 Shizuku')
+                    : t('去开启无障碍服务')}
               </Button>
             )}
           </section>
           <section className="yachiyo-agent-config-panel">
-            <Title order={2}>操作状态悬浮窗</Title>
+            <Title order={2}>{t('操作状态悬浮窗')}</Title>
             <Text size="sm" c={permissionStatus?.overlay ? 'green' : 'orange'}>
-              {permissionStatus?.overlay ? '已授权' : '未授权：用于显示操作光晕、流式状态、停止与审批入口。'}
+              {permissionStatus?.overlay ? t('已授权') : t('未授权：用于显示操作光晕、流式状态、停止与审批入口。')}
             </Text>
             {!permissionStatus?.overlay && (
               <Button variant="light" onClick={() => void yachiyoDeviceAccessNative.openPermissionSettings('overlay')}>
-                去授权悬浮窗
+                {t('去授权悬浮窗')}
               </Button>
             )}
           </section>
           <AdaptiveModal.Actions>
             <Button variant="default" onClick={() => setPhonePermissionOpened(false)}>
-              稍后处理
+              {t('稍后处理')}
             </Button>
             <Button disabled={!phonePermissionsReady} onClick={() => setPhonePermissionOpened(false)}>
-              权限已就绪
+              {t('权限已就绪')}
             </Button>
           </AdaptiveModal.Actions>
         </Stack>
@@ -353,17 +370,17 @@ export function AgentSessionControls({
       <AdaptiveModal
         opened={fullWarningOpened}
         onClose={() => setFullWarningOpened(false)}
-        title="启用完全控制？"
+        title={t('启用完全控制？')}
         centered
         size="sm"
       >
         <Stack gap="md">
-          <Alert color="red" icon={<IconShieldLock size={20} />} title="该模式风险很高">
-            Agent 可以直接执行 Root/Shizuku 命令、操作其他应用并修改或删除数据，不再逐次询问。
+          <Alert color="red" icon={<IconShieldLock size={20} />} title={t('该模式风险很高')}>
+            {t('Agent 可以直接执行 Root/Shizuku 命令、操作其他应用并修改或删除数据，不再逐次询问。')}
           </Alert>
           <AdaptiveModal.Actions>
             <Button variant="default" onClick={() => setFullWarningOpened(false)}>
-              保持审批
+              {t('保持审批')}
             </Button>
             <Button
               color="red"
@@ -372,7 +389,7 @@ export function AgentSessionControls({
                 setFullWarningOpened(false)
               }}
             >
-              我了解风险，继续
+              {t('我了解风险，继续')}
             </Button>
           </AdaptiveModal.Actions>
         </Stack>

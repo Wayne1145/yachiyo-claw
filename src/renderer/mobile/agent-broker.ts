@@ -31,7 +31,7 @@ const agentLocalStore = createFeatureLocalStore('android-device')
 
 export const ANDROID_AGENT_WORKING_DIRECTORY = '/data/local/tmp/yachiyo-agent'
 export type AgentBackend = 'root' | 'shizuku' | 'accessibility'
-export type AgentExecutionBackend = AgentBackend | 'adb' | 'companion' | 'sandbox'
+export type AgentExecutionBackend = AgentBackend | 'adb' | 'companion' | 'sandbox' | 'standard'
 export interface RootCapability {
   available: boolean
   detail: string

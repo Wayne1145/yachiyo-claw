@@ -35,6 +35,8 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 模型文件下载到应用私有目录，支持空间限制、断点续传、暂停/恢复/取消、SHA-256 校验和下载状态持久化。
 - 本地模型页的下载入口统一跳转到设置中的下载管理；离开来源页面或通知消失后仍可查看任务状态、下载速度、预计剩余时间、已下载/总大小与失败原因，并可继续、取消或删除任务。
 - Android 原生接入 LiteRT-LM 与 llama.cpp，可分别加载 `.litertlm` 和单文件/完整分片的 `.gguf` 对话模型；接入 MediaPipe Text Embedder，可使用已下载的 `.tflite` 模型生成本地文本向量。
+- 已下载模型提供独立列表、设为默认、加载进内存、卸载和删除操作；删除会同步清理原生文件、Provider 模型、默认项、收藏和各模型选择器中的失效引用。
+- 已在 Android 12、6 GB 模拟器上实机验证 Gemma 3 270M GGUF 连续对话、FunctionGemma LiteRT-LM 结构化工具调用及模型进程驻留；小于 1B 的模型会使用紧凑人格和按请求筛选的工具描述，避免上下文挤占回复。
 
 ### 本地知识库与 Vibe Coding
 
@@ -63,8 +65,9 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 ### 扩展与主题
 
 - 声明式主题中心支持粘贴 JSON、选择文件或公开 HTTPS 导入，可临时预览、安装、切换和删除；主题只能覆盖受支持的颜色 token，不能运行代码。
-- 第三方插件的 manifest、签名市场、安装事务、能力模型、声明式 UI、Host API 和隔离测试代码已进入开发者预览。
-- `v0.0.11` 的 Android 插件入口默认隐藏：当前目标 WebView 中 opaque sandbox iframe 可以运行引导脚本，但其中的 Blob Worker 无法可靠启动并触发 `load_timeout`。第三方插件运行时不作为本版本可用功能，待替代执行容器完成实机矩阵后再开放。
+- Android 已开放第三方插件中心、HTTPS/本地 ZIP 安装、声明式页面、设置贡献、Agent 工具贡献、权限管理、健康状态、更新和完整卸载。
+- 脚本插件运行在不继承应用源站权限的 opaque-origin Worker 中，通过带版本的纯 JSON RPC 调用白名单 Host API；网络、存储、工具等能力按插件摘要绑定授权，运行失败会记录审计并触发超时终止、健康熔断或安装回滚。
+- 已在 Android 实机验证示例插件从本地 FunctionGemma 工具调用、最上层审批、隔离 Worker 执行到结果回填和第二轮模型回答的完整链路。
 
 ### Live2D 实时交互
 
@@ -85,6 +88,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 可在启动时检查本项目的 GitHub Release；Android 更新器将 APK 下载到应用私有缓存，验证 HTTPS 来源、SHA-256 与包名后交给系统安装器，并支持未知来源安装权限引导。
 - 模型、更新、Linux 环境、插件/Skills 包体、远程主题和应用资源共用设置中的下载管理，支持 1-64 个分段、断点续传、代理、仅 Wi-Fi、独立通知和进程重建后的调度恢复。
 - Android CI 包含 TypeScript 检查、基础测试、原生日志隐私检查、Gradle 单测和 Debug APK 构建。
+- Yachiyo Claw 自定义的聊天、交互式、Agent、权限、本地模型、下载、主题、插件和工作区页面支持完整英文切换；用户自定义名称和第三方内容保持原文。
 
 ## 尚未完成与已知边界
 
@@ -94,13 +98,13 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - PRoot 沙箱尚未提供内核级隔离；Skill 脚本已统一进入该沙箱，但复杂 Python/Node 依赖仍由具体 Skill 或项目自行安装和管理。
 - WorkManager 已提供持久化唤醒和恢复，但应用进程不存在时的完整无界面 Agent 推理与工具执行尚未实现。
 - 应用内更新代码和自动化验证已完成，仍需用正式同签名 APK 完成从已发布版本升级、拒绝篡改包以及 Android 11/13/15-16 设备矩阵验收。
-- Android 第三方插件运行时因目标 WebView 中 Blob Worker 启动超时而默认隐藏；插件 SDK 和平台代码仅供开发/审计，不代表本版本 APK 能运行第三方插件。
+- 未签名的本地侧载插件会明确标记来源不可验证，并仍需用户逐项授予能力；签名市场、插件 API 兼容性和更多 Android System WebView 版本仍需扩大实机矩阵。
 - Skill 更新目前只检查远端 revision 并提示，不会静默替换安装内容；更完整的设备工具、长期记忆检索和 MCP 移动端管理体验仍在继续完善。
 
 开发计划与验收条件见 [ROADMAP](docs/ROADMAP.md)，权限和执行边界见 [SECURITY_MODEL](docs/SECURITY_MODEL.md)。
 使用与发布资料见 [统一下载管理](docs/downloads.md)、[主题](docs/themes.md)、[Skills](docs/skills.md)、
 [插件开发者预览](docs/plugins/README.md)、[隐私说明](PRIVACY.md)、[安全政策](SECURITY.md) 和
-[v0.0.11 发布说明](docs/releases/v0.0.11.md)。
+[v0.0.12 发布说明](docs/releases/v0.0.12.md)。
 
 ## Agent 执行结构
 
@@ -215,14 +219,13 @@ Yachiyo Claw 是独立的开源项目，与影片制作方、发行方、Netflix
 
 本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0-only](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## v0.0.11
+## v0.0.12
 
-- 软件更新、本地模型、Linux 环境、Skills、远程主题和应用资源包体进入统一的原生持久下载管理。
-- 新增声明式主题中心，并补全 SkillHub/GitHub Skills 的发现、下载恢复和真实更新检查。
-- 内置能力迁移到类型化 Feature 注册表；插件 manifest、签名市场、权限与隔离平台作为开发者预览保留。
-- Android 第三方插件入口在本版本默认隐藏，因为目标 WebView 的隔离 Worker 仍存在实机 `load_timeout`，不会把未可靠运行的能力作为已发布功能开放。
-- 更新弹窗显示 GitHub Release 日志，下载关闭弹窗后继续，完成后恢复安装提示。
+- Android 第三方插件中心正式开放，补全隔离 Worker、摘要绑定授权、Agent 工具、更新回滚和完整卸载，并通过本地模型实机工具调用闭环。
+- 修复 GGUF/LiteRT-LM 启动、聊天模板和小模型上下文问题，加入已下载模型的预加载/卸载，并同步清理删除后的所有模型引用。
+- Yachiyo Claw 自定义页面补全英文切换，持久下载任务等动态内置文本也会按当前语言显示。
+- 修复首次启用 Agent 的工作区选择竞态，并继续收紧插件网络、存储、安装恢复和运行时边界。
 
-完整变化、边界和发布门禁见 [v0.0.11 发布说明](docs/releases/v0.0.11.md)。
+完整变化、边界和发布门禁见 [v0.0.12 发布说明](docs/releases/v0.0.12.md)。
 
 Copyright (c) NewDreamStudio and contributors.

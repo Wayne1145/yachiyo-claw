@@ -39,6 +39,7 @@ export async function resumePendingPluginInstall(): Promise<PluginInstallRecover
       ...(pending.expectedSha256 ? { expectedSha256: pending.expectedSha256 } : {}),
       ...(pending.signature ? { signature: pending.signature } : {}),
       ...(pending.updateSource ? { updateSource: pending.updateSource } : {}),
+      ...(pending.expectedPlugin ? { expectedPlugin: pending.expectedPlugin } : {}),
       artifactId: pending.request.id,
     })
     const manifest = usePluginStore.getState().pendingConsent?.verified.manifest

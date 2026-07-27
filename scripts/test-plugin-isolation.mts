@@ -10,7 +10,7 @@ const runtimeModuleWithOptionalDefault = runtimeNamespace as typeof import('../s
   default?: typeof import('../src/renderer/plugins/blob-worker-runtime')
 }
 const runtimeModule = runtimeModuleWithOptionalDefault.default ?? runtimeModuleWithOptionalDefault
-const { buildOpaquePluginFrameDocument } = runtimeModule
+const { buildOpaquePluginFrameDataUrl } = runtimeModule
 const protocolNamespace = await import('../src/renderer/plugins/rpc-protocol')
 const protocolModuleWithOptionalDefault = protocolNamespace as typeof import('../src/renderer/plugins/rpc-protocol') & {
   default?: typeof import('../src/renderer/plugins/rpc-protocol')
@@ -36,7 +36,7 @@ for (const candidate of candidates) {
 if (!browser) throw new Error('chromium_browser_not_found')
 
 const channelId = 'plugin-isolation-probe'
-const frameDocument = buildOpaquePluginFrameDocument(channelId)
+const frameDataUrl = buildOpaquePluginFrameDataUrl(channelId)
 let baseUrl = ''
 let leakRequests = 0
 
@@ -87,6 +87,9 @@ function pluginEntry(): string {
     catch (error) { result.importAttempt = error && error.name ? error.name : 'unavailable'; }
     try { new self.Worker(URL.createObjectURL(new Blob(['postMessage(1)']))); result.nestedWorker = 'opened'; }
     catch (error) { result.nestedWorker = error && error.name ? error.name : 'unavailable'; }
+    ['setTimeout','setInterval','queueMicrotask','MessageChannel','scheduler','SharedArrayBuffer','Atomics'].forEach(function (name) {
+      result['ambient_' + name] = typeof inherited(name);
+    });
     result.localStorage = typeof self.localStorage;
     result.capacitor = typeof self.Capacitor;
     result.rawPostMessage = typeof self.postMessage;
@@ -96,13 +99,12 @@ function pluginEntry(): string {
 }
 
 function outerDocument(): string {
-  const frame = JSON.stringify(frameDocument).replace(/</g, '\\u003c')
+  const frame = JSON.stringify(frameDataUrl).replace(/</g, '\\u003c')
   const entry = JSON.stringify(pluginEntry()).replace(/</g, '\\u003c')
   return `<!doctype html><meta charset="utf-8"><pre id="result">pending</pre><script>
     var channelId = ${JSON.stringify(channelId)};
     var frame = document.createElement('iframe');
-    frame.setAttribute('sandbox', 'allow-scripts');
-    frame.srcdoc = ${frame};
+    frame.src = ${frame};
     addEventListener('message', function (event) {
       if (event.source !== frame.contentWindow || !event.data || event.data.channelId !== channelId) return;
       if (event.data.type === 'bridge-ready') {
@@ -268,6 +270,9 @@ try {
     if (result[capability] === 'loaded' || result[capability] === 'opened') {
       throw new Error(`plugin_ambient_escape:${capability}`)
     }
+  }
+  for (const capability of ['setTimeout', 'setInterval', 'queueMicrotask', 'MessageChannel', 'scheduler', 'SharedArrayBuffer', 'Atomics']) {
+    if (result[`ambient_${capability}`] !== 'undefined') throw new Error(`plugin_scheduler_escape:${capability}`)
   }
   if (
     result.localStorage !== 'undefined' ||

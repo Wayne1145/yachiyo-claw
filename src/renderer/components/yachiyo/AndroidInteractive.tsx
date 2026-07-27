@@ -26,6 +26,7 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import ProviderImageIcon from '@/components/icons/ProviderImageIcon'
@@ -75,6 +76,7 @@ export function AndroidInteractive({
   sessionId?: string
   onSessionChange: (sessionId: string) => void
 }) {
+  const { t } = useTranslation()
   const [models, setModels] = useState<Live2DModelDescriptor[]>([])
   const [selectedModelId, setSelectedModelId] = useState(getSelectedLive2DModelId)
   const [modelPickerOpen, setModelPickerOpen] = useState(!hasCompletedLive2DOnboarding())
@@ -120,7 +122,7 @@ export function AndroidInteractive({
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId) || models[0],
-    [models, selectedModelId],
+    [models, selectedModelId]
   )
   const conversationModel = useMemo(() => {
     const lastUsed = lastUsedModelStore.getState()
@@ -137,13 +139,13 @@ export function AndroidInteractive({
     })
   }, [agentMode, defaultChatModel, session?.settings, task?.settings])
   const conversationModelName = useMemo(() => {
-    if (!conversationModel) return '选择模型'
+    if (!conversationModel) return t('选择模型')
     const provider = providers.find((item) => item.id === conversationModel.provider)
     const model = (provider?.models || provider?.defaultSettings?.models)?.find(
-      (item) => item.modelId === conversationModel.modelId,
+      (item) => item.modelId === conversationModel.modelId
     )
     return model?.nickname || conversationModel.modelId
-  }, [conversationModel, providers])
+  }, [conversationModel, providers, t])
   const messages = agentMode ? task?.messages || [] : session?.messages || []
   const latestAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
   const latestText = latestAssistant ? getMessageText(latestAssistant) : ''
@@ -222,7 +224,7 @@ export function AndroidInteractive({
       void stopSpeaking()
       if (interactiveRecognitionActiveRef.current) void stopAndroidSpeechRecognition()
     },
-    [],
+    []
   )
 
   useEffect(() => {
@@ -248,12 +250,12 @@ export function AndroidInteractive({
       })
       .catch(() => {
         setCameraEnabled(false)
-        setNotice('无法打开摄像头，请授予相机权限')
+        setNotice(String(t('无法打开摄像头，请授予相机权限')))
       })
     return () => {
       disposed = true
     }
-  }, [cameraEnabled, cameraFacing])
+  }, [cameraEnabled, cameraFacing, t])
 
   const captureCurrentCamera = useCallback(() => {
     const video = videoRef.current
@@ -308,14 +310,14 @@ export function AndroidInteractive({
 
   const importModel = async (file: File | null) => {
     if (!file) return
-    setNotice('正在导入 Live2D 模型…')
+    setNotice(String(t('正在导入 Live2D 模型…')))
     try {
       const imported = await importLive2DModel(file)
       setModels(await listLive2DModels())
       chooseModel(imported)
-      setNotice('模型已导入')
+      setNotice(String(t('模型已导入')))
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '模型导入失败')
+      setNotice(error instanceof Error ? error.message : String(t('模型导入失败')))
     }
   }
 
@@ -347,10 +349,10 @@ export function AndroidInteractive({
         .find((item) => item.id === provider)
         ?.models?.find((item) => item.modelId === modelId)
       if (agentMode && !selectedInfo?.capabilities?.includes('tool_use')) {
-        setNotice('该模型仅支持聊天，当前不会调用 Agent 工具。')
+        setNotice(String(t('该模型仅支持聊天，当前不会调用 Agent 工具。')))
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '模型切换失败')
+      setNotice(error instanceof Error ? error.message : String(t('模型切换失败')))
     }
   }
 
@@ -372,7 +374,7 @@ export function AndroidInteractive({
       if (agentMode) {
         const agentTask = taskId ? task : await ensureAgentTaskForChat(sessionId)
         const targetTaskId = agentTask?.id || taskId
-        if (!targetTaskId) throw new Error('Agent 会话初始化失败')
+        if (!targetTaskId) throw new Error(String(t('Agent 会话初始化失败')))
         setTaskId(targetTaskId)
         await submitTaskMessage(targetTaskId, text)
       } else {
@@ -398,12 +400,12 @@ export function AndroidInteractive({
     <main className="yachiyo-interactive-page">
       <header className="yachiyo-interactive-header">
         <div className="yachiyo-interactive-header-main">
-          <ActionIcon variant="subtle" color="gray" aria-label="会话记录" onClick={() => setHistoryOpen(true)}>
+          <ActionIcon variant="subtle" color="gray" aria-label={t('会话记录')} onClick={() => setHistoryOpen(true)}>
             <IconHistory size={21} />
           </ActionIcon>
           <button type="button" className="yachiyo-interactive-title" onClick={() => setModelPickerOpen(true)}>
             <strong>{selectedModel.name}</strong>
-            <span>{session?.name || '交互式对话'}</span>
+            <span>{session?.name || t('交互式对话')}</span>
           </button>
           <ModelSelector
             onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
@@ -420,7 +422,7 @@ export function AndroidInteractive({
           >
             <UnstyledButton
               className="yachiyo-interactive-llm-selector"
-              aria-label={`切换模型：${conversationModelName}`}
+              aria-label={t('切换模型：{{model}}', { model: conversationModelName })}
               title={conversationModelName}
             >
               {conversationModel?.provider === ModelProviderEnum.Local ? (
@@ -445,15 +447,15 @@ export function AndroidInteractive({
             size="xs"
             value={agentMode ? 'agent' : 'chat'}
             data={[
-              { label: '聊天', value: 'chat' },
-              { label: 'Agent', value: 'agent' },
+              { label: t('聊天'), value: 'chat' },
+              { label: t('Agent'), value: 'agent' },
             ]}
             onChange={(value) => void toggleAgent(value)}
           />
           <ActionIcon
             variant="subtle"
             color="gray"
-            aria-label={muted ? '取消静音' : '静音'}
+            aria-label={muted ? t('取消静音') : t('静音')}
             onClick={() => setMuted(!muted)}
           >
             {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
@@ -461,12 +463,12 @@ export function AndroidInteractive({
           <ActionIcon
             variant="subtle"
             color={cameraEnabled ? 'chatbox-brand' : 'gray'}
-            aria-label="摄像头"
+            aria-label={t('摄像头')}
             onClick={() => setCameraEnabled(!cameraEnabled)}
           >
             <IconCamera size={21} />
           </ActionIcon>
-          <ActionIcon variant="subtle" color="gray" aria-label="交互设置" onClick={() => setModelPickerOpen(true)}>
+          <ActionIcon variant="subtle" color="gray" aria-label={t('交互设置')} onClick={() => setModelPickerOpen(true)}>
             <IconSettings size={21} />
           </ActionIcon>
         </div>
@@ -547,7 +549,18 @@ export function AndroidInteractive({
                 setVoiceTranscript(text)
                 void submit(text)
               })
-              .catch((error) => setNotice(getSpeechRecognitionErrorMessage(error)))
+              .catch((error) => {
+                const message = getSpeechRecognitionErrorMessage(error)
+                // The speech runtime formats HTTP failures before this UI can translate them.
+                const httpFailure = message.match(/^语音识别 API 请求失败（HTTP (.+)）。$/)
+                setNotice(
+                  String(
+                    httpFailure
+                      ? t('语音识别 API 请求失败（HTTP {{status}}）。', { status: httpFailure[1] })
+                      : t(message)
+                  )
+                )
+              })
               .finally(() => {
                 if (voiceRecognitionAttemptRef.current === attempt) {
                   interactiveRecognitionActiveRef.current = false
@@ -566,14 +579,14 @@ export function AndroidInteractive({
           onContextMenu={(event) => event.preventDefault()}
         >
           {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
-          <span>{recording ? '松开发送' : '按住说话'}</span>
+          <span>{recording ? t('松开发送') : t('按住说话')}</span>
         </button>
         <div className="yachiyo-interactive-keyboard" data-open={keyboardOpen ? 'true' : 'false'}>
           {keyboardOpen && (
             <Textarea
               value={input}
               onChange={(event) => setInput(event.currentTarget.value)}
-              placeholder="输入消息"
+              placeholder={String(t('输入消息'))}
               autosize
               minRows={1}
               maxRows={4}
@@ -589,11 +602,11 @@ export function AndroidInteractive({
           <button
             type="button"
             className="yachiyo-interactive-round-button"
-            aria-label={keyboardOpen ? '发送消息' : '打开键盘'}
+            aria-label={String(keyboardOpen ? t('发送消息') : t('打开键盘'))}
             onClick={() => (keyboardOpen && input.trim() ? void submit() : setKeyboardOpen(!keyboardOpen))}
           >
             <IconKeyboard size={24} />
-            {keyboardOpen && <span>{input.trim() ? '发送' : '收起'}</span>}
+            {keyboardOpen && <span>{input.trim() ? t('发送') : t('收起')}</span>}
           </button>
         </div>
       </footer>
@@ -606,19 +619,24 @@ export function AndroidInteractive({
         onSelectSession={onSessionChange}
       />
 
-      <AdaptiveModal opened={modelPickerOpen} onClose={() => setModelPickerOpen(false)} title="Live2D 模型" centered>
+      <AdaptiveModal
+        opened={modelPickerOpen}
+        onClose={() => setModelPickerOpen(false)}
+        title={t('Live2D 模型')}
+        centered
+      >
         <div className="yachiyo-live2d-picker">
           <Text size="sm" c="dimmed">
-            选择内置模型，或导入包含 .model3.json 的 ZIP 模型包。
+            {t('选择内置模型，或导入包含 .model3.json 的 ZIP 模型包。')}
           </Text>
           <Select
-            label="显示质量"
+            label={t('显示质量')}
             value={renderQuality}
             allowDeselect={false}
             data={[
-              { value: 'performance', label: '省电（1x）' },
-              { value: 'balanced', label: '均衡（最高 1.75x）' },
-              { value: 'high', label: '高清（最高 2.5x）' },
+              { value: 'performance', label: t('省电（1x）') },
+              { value: 'balanced', label: t('均衡（最高 1.75x）') },
+              { value: 'high', label: t('高清（最高 2.5x）') },
             ]}
             onChange={(value) => {
               if (!value) return
@@ -638,13 +656,13 @@ export function AndroidInteractive({
               {model.avatar ? <img src={model.avatar} alt="" /> : <span className="yachiyo-live2d-model-placeholder" />}
               <span>
                 <strong>{model.name}</strong>
-                <small>{model.actions.length} 个表情/动作</small>
+                <small>{t('{{actionCount}} 个表情/动作', { actionCount: model.actions.length })}</small>
               </span>
               {!model.builtIn && (
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  aria-label={`删除 ${model.name}`}
+                  aria-label={t('删除 {{name}}', { name: model.name })}
                   onClick={(event) => {
                     event.stopPropagation()
                     void deleteLive2DModel(model.id).then(async () => setModels(await listLive2DModels()))
@@ -658,7 +676,7 @@ export function AndroidInteractive({
           <FileButton accept="application/zip,.zip" onChange={importModel}>
             {(props) => (
               <Button {...props} leftSection={<IconUpload size={18} />}>
-                导入 Live2D ZIP
+                {t('导入 Live2D ZIP')}
               </Button>
             )}
           </FileButton>
@@ -677,7 +695,7 @@ export function AndroidInteractive({
           >
             {(props) => (
               <Button {...props} variant="light">
-                更换交互背景
+                {t('更换交互背景')}
               </Button>
             )}
           </FileButton>

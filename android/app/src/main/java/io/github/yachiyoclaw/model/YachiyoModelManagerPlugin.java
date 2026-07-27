@@ -11,6 +11,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
 import android.content.Intent;
+import androidx.core.content.ContextCompat;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Set;
@@ -33,6 +34,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     // Generous overall ceiling for a slow device loading a large model; the process must at least appear quickly.
     private static final long INFERENCE_TIMEOUT_MS = 30L * 60L * 1000L;
     private static final long STARTUP_TIMEOUT_MS = 20L * 1000L;
+    private static final long HEARTBEAT_STALE_MS = 15L * 1000L;
     private static final long STALE_INFERENCE_FILE_MS = 2L * 60L * 60L * 1000L;
     private final ExecutorService inferenceExecutor = Executors.newSingleThreadExecutor();
     // Request ids the caller asked to cancel; observed by the polling loop for a clean cancelled state.
@@ -225,7 +227,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         String requestId = call.getString("requestId", "");
         JSArray messages = call.getArray("messages", new JSArray());
         JSObject tools = call.getObject("tools", new JSObject());
-        int maxTokens = call.getInt("maxTokens", 2048);
+        int maxTokens = call.getInt("maxTokens", 128);
         inferenceExecutor.execute(() -> {
             try {
                 JSONObject job = store.findCompletedModel(modelId);
@@ -235,8 +237,51 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 JSONObject payload = new JSONObject().put("op", "chat").put("modelPath", modelPath)
                     .put("messages", new JSONArray(messages.toString()))
                     .put("tools", new JSONObject(tools.toString())).put("requestId", requestId).put("maxTokens", maxTokens);
-                JSObject result = runInIsolatedProcess(payload, requestId);
+                JSObject result = runInIsolatedProcess(payload, requestId, modelId);
                 if (!requestId.isBlank()) result.put("requestId", requestId);
+                call.resolve(result);
+            } catch (Throwable error) {
+                Exception cause = error instanceof Exception ? (Exception) error : new RuntimeException(error);
+                call.reject(safeError(error), cause);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void loadModel(PluginCall call) {
+        String modelId = call.getString("modelId", "");
+        String requestId = "load-" + java.util.UUID.randomUUID();
+        inferenceExecutor.execute(() -> {
+            try {
+                JSONObject job = store.findCompletedModel(modelId);
+                if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
+                String modelPath = store.resolveRuntimeFile(job).getPath();
+                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath);
+                JSONObject payload = new JSONObject().put("op", "load").put("modelId", modelId)
+                    .put("modelPath", modelPath).put("requestId", requestId);
+                JSObject result = runInIsolatedProcess(payload, requestId, modelId);
+                result.put("modelId", modelId);
+                call.resolve(result);
+            } catch (Throwable error) {
+                Exception cause = error instanceof Exception ? (Exception) error : new RuntimeException(error);
+                call.reject(safeError(error), cause);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void runtimeState(PluginCall call) {
+        String modelId = call.getString("modelId", "");
+        String requestId = "status-" + java.util.UUID.randomUUID();
+        inferenceExecutor.execute(() -> {
+            try {
+                JSONObject job = store.findCompletedModel(modelId);
+                if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
+                String modelPath = store.resolveRuntimeFile(job).getPath();
+                JSONObject payload = new JSONObject().put("op", "status").put("modelId", modelId)
+                    .put("modelPath", modelPath).put("requestId", requestId);
+                JSObject result = runInIsolatedProcess(payload, requestId, modelId);
+                result.put("modelId", modelId);
                 call.resolve(result);
             } catch (Throwable error) {
                 Exception cause = error instanceof Exception ? (Exception) error : new RuntimeException(error);
@@ -250,7 +295,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         String requestId = call.getString("requestId", "");
         // Flag the request so the polling loop reports a clean cancellation, then stop the native work.
         if (requestId != null && !requestId.isEmpty()) cancelledRequests.add(requestId);
-        getContext().startService(new Intent(getContext(), LocalInferenceService.class)
+        startInferenceService(new Intent(getContext(), LocalInferenceService.class)
             .setAction(LocalInferenceService.ACTION_CANCEL)
             .putExtra(LocalInferenceService.EXTRA_REQUEST_ID, requestId));
         call.resolve(new JSObject().put("cancelled", true));
@@ -278,7 +323,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 String requestId = java.util.UUID.randomUUID().toString();
                 JSONObject payload = new JSONObject().put("op", "embed").put("modelPath", modelPath)
                     .put("texts", new JSONArray(texts.toString())).put("requestId", requestId);
-                JSObject result = runInIsolatedProcess(payload, requestId);
+                JSObject result = runInIsolatedProcess(payload, requestId, modelId);
                 call.resolve(new JSObject().put("modelId", modelId).put("embeddings", result.getJSONArray("embeddings")));
             } catch (Exception error) {
                 call.reject(safeError(error), error);
@@ -292,31 +337,48 @@ public final class YachiyoModelManagerPlugin extends Plugin {
      * after being observed (native SIGSEGV), an explicit user cancellation, and the overall timeout.
      * Temporary files are always removed.
      */
-    private JSObject runInIsolatedProcess(JSONObject payload, String requestId) throws Exception {
+    private JSObject runInIsolatedProcess(JSONObject payload, String requestId, String modelId) throws Exception {
         File directory = new File(getContext().getCacheDir(), "local-inference");
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("local_inference_storage_unavailable");
         String safeId = requestId != null && requestId.matches("[A-Za-z0-9._-]{1,100}") ? requestId : java.util.UUID.randomUUID().toString();
         File request = new File(directory, safeId + ".json");
         File resultFile = new File(request.getPath() + ".result");
         File errorFile = new File(request.getPath() + ".error");
+        File heartbeatFile = new File(request.getPath() + ".heartbeat");
+        File progressFile = new File(request.getPath() + ".progress");
         Files.deleteIfExists(resultFile.toPath());
         Files.deleteIfExists(errorFile.toPath());
+        Files.deleteIfExists(heartbeatFile.toPath());
+        Files.deleteIfExists(progressFile.toPath());
         boolean track = requestId != null && !requestId.isEmpty();
         if (track) cancelledRequests.remove(requestId); // clear any stale flag before a fresh run
         try {
             Files.write(request.toPath(), payload.toString().getBytes(StandardCharsets.UTF_8));
-            getContext().startService(new Intent(getContext(), LocalInferenceService.class).putExtra(LocalInferenceService.EXTRA_REQUEST, request.getAbsolutePath()));
+            startInferenceService(new Intent(getContext(), LocalInferenceService.class).putExtra(LocalInferenceService.EXTRA_REQUEST, request.getAbsolutePath()));
             long startedAt = System.currentTimeMillis();
             long deadline = startedAt + INFERENCE_TIMEOUT_MS;
-            boolean processSeen = false;
+            boolean heartbeatSeen = false;
+            long progressModified = 0L;
             while (!resultFile.isFile() && !errorFile.isFile()) {
                 if (track && cancelledRequests.remove(requestId)) throw new IllegalStateException("local_inference_cancelled");
-                boolean running = isInferenceProcessRunning();
-                processSeen |= running;
-                if (processSeen && !running) throw new IllegalStateException("local_inference_process_crashed");
                 long now = System.currentTimeMillis();
-                // Fast-fail when the isolated process never even appears (e.g. it crashed on spawn).
-                if (!processSeen && now - startedAt > STARTUP_TIMEOUT_MS) throw new IllegalStateException("local_inference_start_timeout");
+                if (heartbeatFile.isFile()) {
+                    heartbeatSeen = true;
+                    if (now - heartbeatFile.lastModified() > HEARTBEAT_STALE_MS) {
+                        throw new IllegalStateException("local_inference_process_crashed");
+                    }
+                }
+                if (progressFile.isFile() && progressFile.lastModified() != progressModified) {
+                    progressModified = progressFile.lastModified();
+                    try {
+                        JSObject progress = new JSObject(new String(Files.readAllBytes(progressFile.toPath()), StandardCharsets.UTF_8));
+                        progress.put("modelId", modelId);
+                        notifyListeners("loadProgress", progress);
+                    } catch (Exception ignored) {
+                        // The service may be replacing the small progress file while it is read.
+                    }
+                }
+                if (!heartbeatSeen && now - startedAt > STARTUP_TIMEOUT_MS) throw new IllegalStateException("local_inference_start_timeout");
                 if (now > deadline) throw new IllegalStateException("local_inference_timeout");
                 Thread.sleep(100);
             }
@@ -326,6 +388,8 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             if (track) cancelledRequests.remove(requestId);
             resultFile.delete();
             errorFile.delete();
+            heartbeatFile.delete();
+            progressFile.delete();
             request.delete();
         }
     }
@@ -333,7 +397,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     @PluginMethod
     public void unload(PluginCall call) {
         inferenceExecutor.execute(() -> {
-            getContext().startService(new Intent(getContext(), LocalInferenceService.class).setAction(LocalInferenceService.ACTION_UNLOAD));
+            startInferenceService(new Intent(getContext(), LocalInferenceService.class).setAction(LocalInferenceService.ACTION_UNLOAD));
             call.resolve();
         });
     }
@@ -341,7 +405,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     @PluginMethod
     public void deleteModel(PluginCall call) {
         try {
-            getContext().startService(new Intent(getContext(), LocalInferenceService.class).setAction(LocalInferenceService.ACTION_UNLOAD));
+            startInferenceService(new Intent(getContext(), LocalInferenceService.class).setAction(LocalInferenceService.ACTION_UNLOAD));
             store.deleteModel(call.getString("modelId", ""));
             call.resolve();
         } catch (Exception error) {
@@ -470,6 +534,10 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         String expected = getContext().getPackageName() + ":local_model";
         for (ActivityManager.RunningAppProcessInfo process : processes) if (expected.equals(process.processName)) return true;
         return false;
+    }
+
+    private void startInferenceService(Intent intent) {
+        ContextCompat.startForegroundService(getContext(), intent);
     }
 
     private static String safeError(Throwable error) {

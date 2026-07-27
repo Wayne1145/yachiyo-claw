@@ -3,6 +3,7 @@
 import { MantineProvider } from '@mantine/core'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@/i18n'
 import { applyActiveTheme, useThemeStore } from '@/stores/themeStore'
 import { ThemeCenter } from './ThemeCenter'
 
@@ -33,7 +34,8 @@ beforeAll(() => {
   })
 })
 
-beforeEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage('zh-Hans')
   localStorage.clear()
   useThemeStore.setState({ installed: [], activeThemeId: null, previewingTheme: null })
   applyActiveTheme()
@@ -43,7 +45,7 @@ function renderCenter() {
   return render(
     <MantineProvider>
       <ThemeCenter />
-    </MantineProvider>,
+    </MantineProvider>
   )
 }
 

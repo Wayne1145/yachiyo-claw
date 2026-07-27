@@ -572,8 +572,8 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                       <Text c="dimmed" size="md" ta="center">
                         {inAndroidAppShell
                           ? mobileAgentConfig.deviceControlEnabled
-                            ? '描述你希望手机完成的事情，Agent 会观察界面并调用设备工具。'
-                            : '描述你希望完成的任务，Agent 可使用内部工具、Skills、MCP 和 Linux 沙箱。'
+                            ? t('描述你希望手机完成的事情，Agent 会观察界面并调用设备工具。')
+                            : t('描述你希望完成的任务，Agent 可使用内部工具、Skills、MCP 和 Linux 沙箱。')
                           : t('Send a message to start working in this directory.')}
                       </Text>
                       <Text c="dimmed" size="xs" ta="center" className="font-mono">
@@ -608,12 +608,12 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
               {inAndroidAppShell ? (
                 <Text size="xs" c="dimmed">
                   {!mobileAgentConfig.deviceControlEnabled
-                    ? '内部工具 Agent'
+                    ? t('内部工具 Agent')
                     : mobileAgentBackend === 'accessibility'
-                      ? '无障碍设备 Agent'
+                      ? t('无障碍设备 Agent')
                       : mobileAgentBackend === 'shizuku'
-                        ? 'Shizuku 设备 Agent'
-                        : 'Root 设备 Agent'}
+                        ? t('Shizuku 设备 Agent')
+                        : t('Root 设备 Agent')}
                 </Text>
               ) : (
                 <DirectoryMenu currentDirectory={session.workingDirectory} onSelect={handleSelectDirectory} />
@@ -652,7 +652,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                 {providerModelInfo && !providerModelInfo.capabilities?.includes('tool_use') && (
                   <Text size="xs" c="dimmed">
                     {inAndroidAppShell
-                      ? '仅聊天：当前模型未声明 Agent 工具调用能力'
+                      ? t('仅聊天：当前模型未声明 Agent 工具调用能力')
                       : `${t('Chat only')}: ${t('This model does not support Agent tools')}`}
                   </Text>
                 )}

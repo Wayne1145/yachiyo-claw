@@ -1,11 +1,13 @@
 import { Alert, Button, Group, Paper, Stack, Text, Title } from '@mantine/core'
 import { IconDownload, IconFolderOpen, IconRefresh, IconShare, IconUpload } from '@tabler/icons-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import platform from '@/platform'
 
 type WorkspaceState = Awaited<ReturnType<NonNullable<typeof platform.externalWorkspaceStatus>>>
 
 export function AndroidWorkspaceDeliveryPanel() {
+  const { t } = useTranslation()
   const [workspace, setWorkspace] = useState<WorkspaceState>({ available: false })
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState('')
@@ -42,7 +44,8 @@ export function AndroidWorkspaceDeliveryPanel() {
 
   const choose = () =>
     run('choose', async () => {
-      if (!platform.pickExternalWorkspace || !platform.syncExternalWorkspace) throw new Error('external_workspace_unavailable')
+      if (!platform.pickExternalWorkspace || !platform.syncExternalWorkspace)
+        throw new Error('external_workspace_unavailable')
       const selected = await platform.pickExternalWorkspace()
       if (selected.canceled || !selected.workspaceKey) return
       const imported = await platform.syncExternalWorkspace('in')
@@ -52,14 +55,14 @@ export function AndroidWorkspaceDeliveryPanel() {
     })
 
   return (
-    <Paper component="section" withBorder p="md" radius="md" aria-label="外部工作区与交付">
+    <Paper component="section" withBorder p="md" radius="md" aria-label={t('外部工作区与交付')}>
       <Stack gap="sm">
         <div>
           <Title order={2} size="h4">
-            外部工作区与交付
+            {t('外部工作区与交付')}
           </Title>
           <Text size="sm" c="dimmed">
-            {workspace.available ? workspace.displayName || '已授权目录' : '尚未选择外部项目目录'}
+            {workspace.available ? workspace.displayName || t('已授权目录') : t('尚未选择外部项目目录')}
           </Text>
         </div>
         <Group gap="xs" wrap="wrap">
@@ -69,7 +72,7 @@ export function AndroidWorkspaceDeliveryPanel() {
             loading={busy === 'choose'}
             onClick={() => void choose()}
           >
-            选择并导入
+            {t('选择并导入')}
           </Button>
           <Button
             variant="light"
@@ -78,7 +81,7 @@ export function AndroidWorkspaceDeliveryPanel() {
             loading={busy === 'in'}
             onClick={() => void run('in', async () => platform.syncExternalWorkspace?.('in'))}
           >
-            重新导入
+            {t('重新导入')}
           </Button>
           <Button
             variant="light"
@@ -87,7 +90,7 @@ export function AndroidWorkspaceDeliveryPanel() {
             loading={busy === 'out'}
             onClick={() => void run('out', async () => platform.syncExternalWorkspace?.('out'))}
           >
-            写回目录
+            {t('写回目录')}
           </Button>
           <Button
             variant="light"
@@ -96,13 +99,13 @@ export function AndroidWorkspaceDeliveryPanel() {
             loading={busy === 'export'}
             onClick={() => void run('export', async () => platform.exportWorkspaceZip?.({ share: true }))}
           >
-            导出 ZIP
+            {t('导出 ZIP')}
           </Button>
-          <Button variant="subtle" aria-label="刷新工作区状态" onClick={() => void refresh()}>
+          <Button variant="subtle" aria-label={t('刷新工作区状态')} onClick={() => void refresh()}>
             <IconRefresh size={16} />
           </Button>
         </Group>
-        {message && <Alert color="red">{message}</Alert>}
+        {message && <Alert color="red">{t(message)}</Alert>}
       </Stack>
     </Paper>
   )

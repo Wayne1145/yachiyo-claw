@@ -24,6 +24,12 @@ export interface NativeModelProgressEvent {
   errorCode?: string
 }
 
+export interface NativeModelLoadProgressEvent {
+  modelId: string
+  stage: 'starting' | 'loading' | 'generating' | 'embedding' | 'ready' | 'idle' | string
+  percent: number
+}
+
 interface NativeModelManagerPlugin {
   list(): Promise<{ schemaVersion: 1; jobs: DownloadJob[] }>
   enqueue(options: { job: DownloadJob }): Promise<{ accepted: boolean; jobId: string }>
@@ -50,11 +56,17 @@ interface NativeModelManagerPlugin {
       | { type: 'status'; status: string }
     >
   }>
+  loadModel(options: { modelId: string }): Promise<{ modelId: string; loaded: boolean; runtime?: string }>
+  runtimeState(options: { modelId: string }): Promise<{ modelId: string; loaded: boolean; runtime?: string }>
   cancelInference(options: { requestId: string }): Promise<{ cancelled: boolean }>
   embed(options: { modelId: string; texts: string[] }): Promise<{ modelId: string; embeddings: number[][] }>
   unload(options?: { modelId?: string }): Promise<void>
   deleteModel(options: { modelId: string }): Promise<void>
   addListener(eventName: 'progress', listener: (event: NativeModelProgressEvent) => void): Promise<PluginListenerHandle>
+  addListener(
+    eventName: 'loadProgress',
+    listener: (event: NativeModelLoadProgressEvent) => void,
+  ): Promise<PluginListenerHandle>
 }
 
 export const yachiyoModelManagerNative = createFeatureGatedPlugin(
@@ -208,9 +220,17 @@ export class NativeMobileRagEmbeddingProvider {
 export const getNativeModelDeviceProfile = () => yachiyoModelManagerNative.deviceProfile()
 export const listNativeModelJobs = () => yachiyoModelManagerNative.list()
 export const deleteNativeModel = (modelId: string) => yachiyoModelManagerNative.deleteModel({ modelId })
+export const loadNativeModel = (modelId: string) => yachiyoModelManagerNative.loadModel({ modelId })
+export const getNativeModelRuntimeState = (modelId: string) => yachiyoModelManagerNative.runtimeState({ modelId })
 
 export function subscribeNativeModelProgress(
   listener: (event: NativeModelProgressEvent) => void,
 ): Promise<PluginListenerHandle> {
   return yachiyoModelManagerNative.addListener('progress', listener)
+}
+
+export function subscribeNativeModelLoadProgress(
+  listener: (event: NativeModelLoadProgressEvent) => void,
+): Promise<PluginListenerHandle> {
+  return yachiyoModelManagerNative.addListener('loadProgress', listener)
 }

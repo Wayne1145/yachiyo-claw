@@ -11,7 +11,7 @@ describe('AgentSessionControls UI contract', () => {
   })
 
   it('makes the disabled and enabled states visually and semantically distinct', () => {
-    expect(componentSource).toContain("enabled ? 'Agent 已启用' : 'Agent 能力未启用'")
+    expect(componentSource).toContain("enabled ? t('Agent 已启用') : t('Agent 能力未启用')")
     expect(componentSource).toContain("variant={enabled ? 'filled' : 'outline'}")
     expect(componentSource).toContain("color={enabled ? undefined : 'gray'}")
     expect(componentSource).toContain('aria-pressed={enabled}')
@@ -21,13 +21,13 @@ describe('AgentSessionControls UI contract', () => {
 
   it('keeps both controls shrinkable on narrow portrait screens', () => {
     expect(shellStyles).toMatch(
-      /\.yachiyo-agent-header-controls\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(0,\s*1fr\)/s
+      /\.yachiyo-agent-header-controls\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(0,\s*1fr\)/s,
     )
     expect(shellStyles).toMatch(
-      /\.yachiyo-agent-header-controls button\s*{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s
+      /\.yachiyo-agent-header-controls button\s*{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s,
     )
     expect(shellStyles).toMatch(
-      /\.yachiyo-agent-header-controls \.mantine-Button-label\s*{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/s
+      /\.yachiyo-agent-header-controls \.mantine-Button-label\s*{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/s,
     )
   })
 })

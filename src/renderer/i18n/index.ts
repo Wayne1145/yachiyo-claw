@@ -19,17 +19,18 @@ import ru from './locales/ru/translation.json'
 import sv from './locales/sv/translation.json'
 import zhHans from './locales/zh-Hans/translation.json'
 import zhHant from './locales/zh-Hant/translation.json'
+import { yachiyoResources } from './yachiyo-resources'
 
 i18n.use(initReactI18next).init({
   resources: {
     'zh-Hans': {
-      translation: { ...zhHans, ...authErrorOverrides['zh-Hans'] },
+      translation: { ...zhHans, ...authErrorOverrides['zh-Hans'], ...yachiyoResources['zh-Hans'] },
     },
     'zh-Hant': {
-      translation: { ...zhHant, ...authErrorOverrides['zh-Hant'] },
+      translation: { ...zhHant, ...authErrorOverrides['zh-Hant'], ...yachiyoResources['zh-Hant'] },
     },
     en: {
-      translation: { ...en, ...authErrorOverrides.en },
+      translation: { ...en, ...authErrorOverrides.en, ...yachiyoResources.en },
     },
     ja: {
       translation: ja,
@@ -65,6 +66,7 @@ i18n.use(initReactI18next).init({
       translation: nbNO,
     },
   },
+
   fallbackLng: 'en',
 
   interpolation: {

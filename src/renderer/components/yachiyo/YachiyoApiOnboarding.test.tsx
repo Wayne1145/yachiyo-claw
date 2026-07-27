@@ -3,11 +3,16 @@
  */
 import { MantineProvider } from '@mantine/core'
 import { ApiError, NetworkError } from '@shared/models/errors'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@/i18n'
+import { yachiyoInteractiveEnglish } from '@/i18n/yachiyo-resources-interactive'
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
 
 beforeAll(() => {
+  const simplifiedChinese = Object.fromEntries(Object.keys(yachiyoInteractiveEnglish).map((key) => [key, key]))
+  i18n.addResourceBundle('en', 'translation', yachiyoInteractiveEnglish, true, true)
+  i18n.addResourceBundle('zh-Hans', 'translation', simplifiedChinese, true, true)
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -21,6 +26,10 @@ beforeAll(() => {
       dispatchEvent: vi.fn(),
     })),
   })
+})
+
+beforeEach(async () => {
+  await i18n.changeLanguage('zh-Hans')
 })
 
 function renderOnboarding(onSubmit = vi.fn(), onOpenProviders = vi.fn()) {
@@ -82,5 +91,23 @@ describe('YachiyoApiOnboarding', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '使用其他 API 服务' }))
     expect(onOpenProviders).toHaveBeenCalledOnce()
+  })
+
+  it('updates the complete onboarding surface when English is selected', async () => {
+    renderOnboarding()
+
+    await act(async () => {
+      await i18n.changeLanguage('en')
+    })
+
+    expect(screen.getByRole('heading', { name: 'Connect to Yachiyo API' })).toBeTruthy()
+    expect(screen.getByLabelText('Default connection details')).toBeTruthy()
+    expect(screen.getByText('Service')).toBeTruthy()
+    expect(screen.getByText('Model')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Save and continue' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Use another API service' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save and continue' }))
+    expect(screen.getByText('Enter an API Key')).toBeTruthy()
   })
 })

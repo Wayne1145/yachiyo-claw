@@ -119,12 +119,11 @@ export const BUILTIN_FEATURES: readonly FeatureManifest[] = [
     id: 'plugins',
     displayName: 'Third-party plugins',
     description: 'Installs and runs consent-gated third-party extensions in an isolated runtime.',
-    // Android WebView cannot currently start a Worker from the opaque sandbox frame used by the
-    // plugin runtime. Keep the unfinished platform out of Android release UI until that boundary
-    // has a tested native-compatible transport.
-    platforms: ['desktop', 'web'],
+    // The opaque data-document Worker bridge is compatible with Android WebView while preserving
+    // the same no-storage/no-egress CSP and Host-call authorization boundary on every platform.
+    platforms: ALL_PLATFORMS,
     trust: 'sandboxed',
-    enabledByDefault: false,
+    enabledByDefault: true,
     nativePlugins: ['YachiyoPluginNetwork', 'YachiyoSecureStorage', 'YachiyoDownloads'],
   },
   {

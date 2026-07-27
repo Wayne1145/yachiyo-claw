@@ -9,6 +9,7 @@ import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import { queryClient } from '@/stores/queryClient'
 import { settingsStore } from '@/stores/settingsStore'
 import { TASK_SESSION_LIST_QUERY_KEY, TASK_SESSION_QUERY_KEY, updateTaskSession } from '@/stores/taskSessionStore'
+import { fallbackSessionName, normalizeGeneratedSessionName } from './session-name'
 
 const pendingNameGenerations = new Map<string, ReturnType<typeof setTimeout>>()
 const activeNameGenerations = new Set<string>()
@@ -44,7 +45,7 @@ async function _generateTaskName(taskId: string) {
         ?.filter((c) => c.type === 'text')
         .map((c) => c.text)
         .join('') || ''
-    name = name.replace(/['""\u201C\u201D]/g, '').replace(/<think>.*?<\/think>/g, '')
+    name = normalizeGeneratedSessionName(name, fallbackSessionName(session.messages))
     const updated = await updateTaskSession(taskId, { name })
     if (updated) {
       queryClient.setQueryData([TASK_SESSION_QUERY_KEY, taskId], updated)

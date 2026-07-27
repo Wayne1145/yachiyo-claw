@@ -3,6 +3,7 @@
 import { MantineProvider } from '@mantine/core'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n from '@/i18n'
 import type { InstalledPluginRecord } from '@/plugins/installer'
 import { PluginCenter } from './PluginCenter'
 
@@ -88,7 +89,8 @@ beforeAll(() => {
   })
 })
 
-beforeEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage('zh-Hans')
   mocks.installed = []
   mocks.refresh.mockClear()
   mocks.setEnabled.mockClear()

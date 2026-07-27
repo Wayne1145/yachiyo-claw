@@ -1,15 +1,60 @@
 import { type PluginRuntimeOptions, PluginRuntime } from './plugin-runtime'
 import { PLUGIN_RPC_PROTOCOL_VERSION, type Transport } from './rpc-protocol'
 
+export const BLOCKED_PLUGIN_AMBIENT_GLOBALS = [
+  'fetch',
+  'fetchLater',
+  'XMLHttpRequest',
+  'WebSocket',
+  'WebSocketStream',
+  'EventSource',
+  'WebTransport',
+  'indexedDB',
+  'importScripts',
+  'Worker',
+  'SharedWorker',
+  'BroadcastChannel',
+  'MessageChannel',
+  'MessagePort',
+  'caches',
+  'openDatabase',
+  'cookieStore',
+  'FontFace',
+  'fonts',
+  'navigator',
+  'setTimeout',
+  'clearTimeout',
+  'setInterval',
+  'clearInterval',
+  'queueMicrotask',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'requestIdleCallback',
+  'cancelIdleCallback',
+  'scheduler',
+  'AbortController',
+  'AbortSignal',
+  'SharedArrayBuffer',
+  'Atomics',
+  'FileReader',
+  'postMessage',
+  'addEventListener',
+  'removeEventListener',
+  'dispatchEvent',
+  'onmessage',
+  'onmessageerror',
+  'MessageEvent',
+] as const
+
 /**
  * Opaque-origin Blob-Worker transport for the plugin runtime (platform-21).
  *
  * A main-frame Blob Worker inherits `https://localhost` and can open the app's IndexedDB even when its
- * global reference is overwritten (the WebIDL property is inherited). Instead, a sandboxed srcdoc
- * iframe without `allow-same-origin` creates the Worker. The Worker therefore gets an opaque origin;
- * its inherited CSP also blocks every ambient network/subresource channel. The iframe only forwards
- * typed RPC messages and never evaluates plugin code itself, so even a legacy WebView frame bridge is
- * not reachable from the Worker.
+ * global reference is overwritten (the WebIDL property is inherited). Instead, a trusted `data:`
+ * document creates the Worker. Data documents and their Blob Workers have opaque origins, while this
+ * form still works on Android WebView versions that cannot start a Worker from a sandboxed `srcdoc`
+ * frame. Its inherited CSP blocks every ambient network/subresource channel. The frame only forwards
+ * typed RPC messages and never evaluates plugin code itself, so the plugin cannot reach its DOM.
  *
  * The protocol implemented inline below mirrors `plugin-sandbox.ts` (which the unit tests exercise);
  * a Blob Worker must be self-contained, so it cannot import the bundled TS module. Requires the
@@ -18,7 +63,7 @@ import { PLUGIN_RPC_PROTOCOL_VERSION, type Transport } from './rpc-protocol'
 export const WORKER_BOOTSTRAP_SOURCE = `(function () {
   var protocolVersion = ${PLUGIN_RPC_PROTOCOL_VERSION};
   var hostPostMessage = self.postMessage.bind(self); var hostAddEventListener = self.addEventListener.bind(self); var objectKeys = Object.keys; var HostPromise = Promise;
-  var blockedAmbient = ['fetch','fetchLater','XMLHttpRequest','WebSocket','WebSocketStream','EventSource','WebTransport','indexedDB','importScripts','Worker','SharedWorker','BroadcastChannel','caches','openDatabase','cookieStore','FontFace','fonts','navigator','postMessage','addEventListener','removeEventListener','dispatchEvent','onmessage','onmessageerror','MessageEvent'];
+  var blockedAmbient = ${JSON.stringify(BLOCKED_PLUGIN_AMBIENT_GLOBALS)};
   function removeAmbient(name) {
     var cursor = self;
     while (cursor) {
@@ -34,8 +79,9 @@ export const WORKER_BOOTSTRAP_SOURCE = `(function () {
     catch (error) { return false; }
     return self[name] === undefined;
   }
+  var isolationError = '';
   for (var ambientIndex = 0; ambientIndex < blockedAmbient.length; ambientIndex++) {
-    if (!removeAmbient(blockedAmbient[ambientIndex])) { hostPostMessage({ type: 'load-error', error: 'worker_isolation_unavailable' }); self.close(); return; }
+    if (!removeAmbient(blockedAmbient[ambientIndex])) { isolationError = 'worker_isolation_unavailable:' + blockedAmbient[ambientIndex]; break; }
   }
   var tools = Object.create(null); var pendingHost = Object.create(null); var hostSeq = 0; var toolCount = 0; var currentInvocationId = '';
   function post(m) { hostPostMessage(m); }
@@ -48,6 +94,7 @@ export const WORKER_BOOTSTRAP_SOURCE = `(function () {
   hostAddEventListener('message', async function (ev) {
     var msg = ev.data; if (!msg) return;
     if (msg.type === 'load') {
+      if (isolationError) { post({ type: 'load-error', error: isolationError }); self.close(); return; }
       if (msg.protocolVersion !== protocolVersion) { post({ type: 'load-error', error: 'plugin_protocol_incompatible' }); return; }
       try { var fn = new Function('yachiyo', msg.entry); await fn(api); post({ type: 'ready', protocolVersion: protocolVersion, tools: objectKeys(tools).map(function (n) { return { name: n, description: n }; }) }); }
       catch (e) { post({ type: 'load-error', error: safe(e) }); }
@@ -92,20 +139,27 @@ export function buildOpaquePluginFrameDocument(channelId: string): string {
   var channelId = ${serializeInline(channelId)};
   var workerSource = ${serializeInline(WORKER_BOOTSTRAP_SOURCE)};
   var worker;
+  var workerUrl;
+  function revokeWorkerUrl() {
+    if (!workerUrl) return;
+    URL.revokeObjectURL(workerUrl);
+    workerUrl = '';
+  }
   function send(type, payload) {
     parent.postMessage({ channelId: channelId, type: type, payload: payload }, '*');
   }
   try {
-    var workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
+    workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
     worker = new Worker(workerUrl);
-    URL.revokeObjectURL(workerUrl);
-    worker.onmessage = function (event) { send('worker-message', event.data); };
-    worker.onerror = function (event) { send('bridge-error', event.message || 'worker_error'); };
+    // Android WebView can read a larger Blob Worker lazily. Revoking immediately after the
+    // constructor leaves the Worker silent, so release the URL only after startup is observable.
+    worker.onmessage = function (event) { revokeWorkerUrl(); send('worker-message', event.data); };
+    worker.onerror = function (event) { revokeWorkerUrl(); send('bridge-error', event.message || 'worker_error'); };
     worker.onmessageerror = function () { send('bridge-error', 'worker_message_error'); };
     addEventListener('message', function (event) {
       var data = event.data;
       if (event.source !== parent || !data || data.channelId !== channelId) return;
-      if (data.type === 'terminate') { worker.terminate(); return; }
+      if (data.type === 'terminate') { worker.terminate(); revokeWorkerUrl(); return; }
       if (data.type === 'host-message') worker.postMessage(data.payload);
     });
     send('bridge-ready', null);
@@ -114,6 +168,14 @@ export function buildOpaquePluginFrameDocument(channelId: string): string {
   }
 })();
 <\/script>`
+}
+
+export function buildOpaquePluginFrameDataUrl(channelId: string): string {
+  const documentSource = buildOpaquePluginFrameDocument(channelId)
+  const bytes = new TextEncoder().encode(documentSource)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return `data:text/html;base64,${btoa(binary)}`
 }
 
 function createOpaqueFrameTransport(onError?: (message: string) => void): Transport {
@@ -125,7 +187,6 @@ function createOpaqueFrameTransport(onError?: (message: string) => void): Transp
   let ready = false
   let terminated = false
 
-  iframe.setAttribute('sandbox', 'allow-scripts')
   iframe.setAttribute('aria-hidden', 'true')
   iframe.setAttribute('tabindex', '-1')
   iframe.referrerPolicy = 'no-referrer'
@@ -159,7 +220,9 @@ function createOpaqueFrameTransport(onError?: (message: string) => void): Transp
   }
 
   window.addEventListener('message', receive)
-  iframe.srcdoc = buildOpaquePluginFrameDocument(channelId)
+  // `data:` itself supplies the opaque origin. Adding a sandbox attribute here breaks nested Blob
+  // Workers on Android System WebView 120-140, even though the frame script still starts.
+  iframe.src = buildOpaquePluginFrameDataUrl(channelId)
   ;(document.body ?? document.documentElement).appendChild(iframe)
 
   return {

@@ -122,8 +122,10 @@ export async function createTaskSession(params: Omit<TaskSession, 'id' | 'create
     ...params,
   }
   await getStorage().create(record)
-  // Invalidate paginated list cache so sidebar shows the new session
-  queryClient.invalidateQueries({ queryKey: [TASK_SESSION_LIST_QUERY_KEY] })
+  // The Android shell and task route mount together after navigation. Seed the detail cache before
+  // either observer can issue a read, while the paginated history refreshes in the background.
+  queryClient.setQueryData([TASK_SESSION_QUERY_KEY, record.id], record)
+  void queryClient.invalidateQueries({ queryKey: [TASK_SESSION_LIST_QUERY_KEY] })
   log.debug('Created task session:', record.id)
   return record
 }

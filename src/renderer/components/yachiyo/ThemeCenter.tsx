@@ -1,4 +1,16 @@
-import { ActionIcon, Badge, Button, FileButton, Group, Modal, Stack, Text, Textarea, TextInput, Title } from '@mantine/core'
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  FileButton,
+  Group,
+  Modal,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  Title,
+} from '@mantine/core'
 import {
   MAX_THEME_MANIFEST_BYTES,
   parseThemeManifestText,
@@ -16,13 +28,15 @@ import {
   IconTrash,
   IconUpload,
 } from '@tabler/icons-react'
+import type { TFunction } from 'i18next'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { router } from '@/router'
 import { useThemeStore } from '@/stores/themeStore'
 import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
 
-const MODE_LABELS: Record<ThemeManifest['mode'], string> = { light: '浅色', dark: '深色', both: '浅色 / 深色' }
+const MODE_LABEL_KEYS: Record<ThemeManifest['mode'], string> = { light: '浅色', dark: '深色', both: '浅色 / 深色' }
 
 function swatches(theme: ThemeManifest): string[] {
   const scheme = theme.mode === 'dark' ? 'dark' : 'light'
@@ -38,23 +52,24 @@ function swatches(theme: ThemeManifest): string[] {
   return (picked.length ? picked : Object.values(variables)).slice(0, 6)
 }
 
-function themeErrorMessage(cause: unknown): string {
-  if (!(cause instanceof Error)) return '主题清单无效，请检查文件后重试'
+function themeErrorMessage(cause: unknown, t: TFunction): string {
+  if (!(cause instanceof Error)) return t('主题清单无效，请检查文件后重试')
   const message = cause.message
-  if (/exceeds/i.test(message)) return `主题文件不能超过 ${MAX_THEME_MANIFEST_BYTES / 1024} KB`
-  if (/not valid JSON|JSON-serializable/i.test(message)) return '主题文件不是有效的 JSON'
-  if (/not a valid CSS color|unsafe/i.test(message)) return '主题包含无效或不安全的颜色值'
-  if (/Unknown theme token/i.test(message)) return '主题包含当前版本不支持的颜色项目'
-  if (/schemaVersion/i.test(message)) return '主题清单版本不受支持'
-  if (/dual-mode|light tokens|dark tokens/i.test(message)) return '主题缺少对应的浅色或深色配色'
-  if (/public_https|private_network|Invalid URL/i.test(message)) return '仅支持不含账号信息的公开 HTTPS 主题地址'
+  if (/exceeds/i.test(message)) return t('主题文件不能超过 {{size}} KB', { size: MAX_THEME_MANIFEST_BYTES / 1024 })
+  if (/not valid JSON|JSON-serializable/i.test(message)) return t('主题文件不是有效的 JSON')
+  if (/not a valid CSS color|unsafe/i.test(message)) return t('主题包含无效或不安全的颜色值')
+  if (/Unknown theme token/i.test(message)) return t('主题包含当前版本不支持的颜色项目')
+  if (/schemaVersion/i.test(message)) return t('主题清单版本不受支持')
+  if (/dual-mode|light tokens|dark tokens/i.test(message)) return t('主题缺少对应的浅色或深色配色')
+  if (/public_https|private_network|Invalid URL/i.test(message)) return t('仅支持不含账号信息的公开 HTTPS 主题地址')
   if (/size_invalid|exceeds|too_large|size_mismatch/i.test(message))
-    return `主题文件不能超过 ${MAX_THEME_MANIFEST_BYTES / 1024} KB`
-  if (/download_http|probe_http/i.test(message)) return '主题下载失败，请检查地址或网络后重试'
-  return '主题清单无效，请检查名称、标识、版本和配色内容'
+    return t('主题文件不能超过 {{size}} KB', { size: MAX_THEME_MANIFEST_BYTES / 1024 })
+  if (/download_http|probe_http/i.test(message)) return t('主题下载失败，请检查地址或网络后重试')
+  return t('主题清单无效，请检查名称、标识、版本和配色内容')
 }
 
 export function ThemeCenter() {
+  const { t } = useTranslation()
   const inAndroidAppShell = useInAndroidAppShell()
   const installed = useThemeStore((state) => state.installed)
   const activeThemeId = useThemeStore((state) => state.activeThemeId)
@@ -80,9 +95,9 @@ export function ThemeCenter() {
       setDraft(recovered)
       preview(parsed)
     } catch (recoveryError) {
-      setError(themeErrorMessage(recoveryError))
+      setError(themeErrorMessage(recoveryError, t))
     }
-  }, [preview])
+  }, [preview, t])
 
   const installFromText = (text: string) => {
     setError(null)
@@ -92,7 +107,7 @@ export function ThemeCenter() {
       setActive(theme.id)
       setDraft('')
     } catch (installError) {
-      setError(themeErrorMessage(installError))
+      setError(themeErrorMessage(installError, t))
     }
   }
 
@@ -102,7 +117,7 @@ export function ThemeCenter() {
       preview(parseThemeManifestText(text))
     } catch (previewError) {
       clearPreview()
-      setError(themeErrorMessage(previewError))
+      setError(themeErrorMessage(previewError, t))
     }
   }
 
@@ -110,7 +125,7 @@ export function ThemeCenter() {
     if (!file) return
     setError(null)
     if (file.size > MAX_THEME_MANIFEST_BYTES) {
-      setError(`主题文件不能超过 ${MAX_THEME_MANIFEST_BYTES / 1024} KB`)
+      setError(t('主题文件不能超过 {{size}} KB', { size: MAX_THEME_MANIFEST_BYTES / 1024 }))
       return
     }
     try {
@@ -120,7 +135,7 @@ export function ThemeCenter() {
       preview(parsed)
     } catch (fileError) {
       clearPreview()
-      setError(themeErrorMessage(fileError))
+      setError(themeErrorMessage(fileError, t))
     }
   }
 
@@ -135,7 +150,7 @@ export function ThemeCenter() {
       preview(parsed)
     } catch (downloadError) {
       clearPreview()
-      setError(themeErrorMessage(downloadError))
+      setError(themeErrorMessage(downloadError, t))
     } finally {
       setRemoteLoading(false)
     }
@@ -155,7 +170,7 @@ export function ThemeCenter() {
             variant="subtle"
             color="gray"
             size={38}
-            aria-label="返回设置"
+            aria-label={t('返回设置')}
             onClick={() => void router.navigate({ to: '/settings' })}
           >
             <IconArrowLeft size={21} />
@@ -165,9 +180,9 @@ export function ThemeCenter() {
           <IconPalette size={22} />
         </span>
         <div>
-          <Title order={2}>主题外观</Title>
+          <Title order={2}>{t('主题外观')}</Title>
           <Text size="sm" c="dimmed">
-            导入声明式配色，不加载脚本或外部样式
+            {t('导入声明式配色，不加载脚本或外部样式')}
           </Text>
         </div>
       </header>
@@ -175,16 +190,20 @@ export function ThemeCenter() {
       <section className="yachiyo-settings-panel yachiyo-theme-import">
         <Stack gap="sm">
           <div>
-            <Text fw={650}>导入主题</Text>
+            <Text fw={650}>{t('导入主题')}</Text>
             <Text size="xs" c="dimmed">
-              支持不超过 64 KB 的 JSON 主题清单，可先预览再安装
+              {t('支持不超过 64 KB 的 JSON 主题清单，可先预览再安装')}
             </Text>
           </div>
           <Textarea
             value={draft}
             onChange={(event) => handleDraftChange(event.currentTarget.value)}
-            placeholder='例如 {"schemaVersion":1,"id":"sakura","name":"樱色","version":"1.0.0","mode":"light","tokens":{"tint-brand":"#d87597"}}'
-            aria-label="主题 JSON"
+            placeholder={String(
+              t(
+                '例如 {"schemaVersion":1,"id":"sakura","name":"樱色","version":"1.0.0","mode":"light","tokens":{"tint-brand":"#d87597"}}'
+              )
+            )}
+            aria-label={String(t('主题 JSON'))}
             autosize
             minRows={4}
             maxRows={9}
@@ -193,14 +212,14 @@ export function ThemeCenter() {
             <TextInput
               value={remoteUrl}
               onChange={(event) => setRemoteUrl(event.currentTarget.value)}
-              label="从网址导入"
-              description="Android 下载会显示在统一下载管理中"
+              label={t('从网址导入')}
+              description={t('Android 下载会显示在统一下载管理中')}
               placeholder="https://example.com/yachiyo-theme.json"
               leftSection={<IconLink size={16} />}
               inputMode="url"
               autoCapitalize="none"
               autoCorrect="off"
-              aria-label="远程主题地址"
+              aria-label={String(t('远程主题地址'))}
               className="yachiyo-theme-remote-input"
             />
             <Button
@@ -210,7 +229,7 @@ export function ThemeCenter() {
               disabled={!remoteUrl.trim()}
               onClick={() => void loadFromUrl()}
             >
-              下载并预览
+              {t('下载并预览')}
             </Button>
           </Group>
           {error && (
@@ -225,15 +244,15 @@ export function ThemeCenter() {
               disabled={!draft.trim()}
               onClick={() => (previewingTheme ? clearPreview() : previewFromText(draft))}
             >
-              {previewingTheme ? '结束预览' : '预览'}
+              {previewingTheme ? t('结束预览') : t('预览')}
             </Button>
             <Button disabled={!draft.trim()} onClick={() => installFromText(draft)}>
-              安装并使用
+              {t('安装并使用')}
             </Button>
             <FileButton accept="application/json,.json" onChange={(file) => void loadFromFile(file)}>
               {(props) => (
                 <Button variant="default" leftSection={<IconUpload size={16} />} {...props}>
-                  选择文件
+                  {t('选择文件')}
                 </Button>
               )}
             </FileButton>
@@ -244,15 +263,15 @@ export function ThemeCenter() {
       {previewingTheme && (
         <div className="yachiyo-theme-preview-notice" role="status">
           <IconEye size={17} />
-          <span>正在临时预览“{previewingTheme.name}”，离开此页会自动恢复。</span>
+          <span>{t('正在临时预览“{{name}}”，离开此页会自动恢复。', { name: previewingTheme.name })}</span>
           <Button size="compact-xs" variant="subtle" onClick={clearPreview}>
-            结束
+            {t('结束')}
           </Button>
         </div>
       )}
 
-      <section className="yachiyo-theme-library" aria-label="已安装主题">
-        <Text className="yachiyo-section-label">主题库</Text>
+      <section className="yachiyo-theme-library" aria-label={String(t('已安装主题'))}>
+        <Text className="yachiyo-section-label">{t('主题库')}</Text>
         <div className="yachiyo-theme-grid">
           <article className="yachiyo-theme-card" data-active={activeThemeId === null ? 'true' : 'false'}>
             <div className="yachiyo-theme-card-preview yachiyo-theme-card-preview-default">
@@ -263,20 +282,20 @@ export function ThemeCenter() {
             </div>
             <div className="yachiyo-theme-card-heading">
               <div>
-                <Text fw={650}>Yachiyo 浅粉</Text>
+                <Text fw={650}>{t('Yachiyo 浅粉')}</Text>
                 <Text size="xs" c="dimmed">
-                  内置 · 浅色
+                  {t('内置 · 浅色')}
                 </Text>
               </div>
               {activeThemeId === null && !previewingTheme && (
                 <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
-                  使用中
+                  {t('使用中')}
                 </Badge>
               )}
             </div>
             {activeThemeId !== null && (
               <Button size="compact-sm" variant="default" onClick={() => setActive(null)}>
-                恢复默认
+                {t('恢复默认')}
               </Button>
             )}
           </article>
@@ -300,17 +319,18 @@ export function ThemeCenter() {
                   <div>
                     <Text fw={650}>{theme.name}</Text>
                     <Text size="xs" c="dimmed">
-                      {theme.author?.name ? `${theme.author.name} · ` : ''}v{theme.version} · {MODE_LABELS[theme.mode]}
+                      {theme.author?.name ? `${theme.author.name} · ` : ''}v{theme.version} ·{' '}
+                      {t(MODE_LABEL_KEYS[theme.mode])}
                     </Text>
                   </div>
                   {isActive && !previewingTheme && (
                     <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
-                      使用中
+                      {t('使用中')}
                     </Badge>
                   )}
                   {isPreviewing && (
                     <Badge variant="light" leftSection={<IconEye size={12} />}>
-                      预览中
+                      {t('预览中')}
                     </Badge>
                   )}
                 </div>
@@ -321,18 +341,18 @@ export function ThemeCenter() {
                       variant="default"
                       onClick={() => (isPreviewing ? clearPreview() : preview(theme))}
                     >
-                      {isPreviewing ? '结束预览' : '预览'}
+                      {isPreviewing ? t('结束预览') : t('预览')}
                     </Button>
                     {!isActive && (
                       <Button size="compact-sm" onClick={() => setActive(theme.id)}>
-                        使用
+                        {t('使用')}
                       </Button>
                     )}
                   </Group>
                   <ActionIcon
                     color="red"
                     variant="subtle"
-                    aria-label={`删除主题 ${theme.name}`}
+                    aria-label={t('删除主题 {{name}}', { name: theme.name })}
                     onClick={() => setRemoveTarget(theme)}
                   >
                     <IconTrash size={17} />
@@ -344,7 +364,7 @@ export function ThemeCenter() {
         </div>
         {installed.length === 0 && (
           <Text c="dimmed" ta="center" py="md">
-            尚未安装第三方主题
+            {t('尚未安装第三方主题')}
           </Text>
         )}
       </section>
@@ -352,21 +372,21 @@ export function ThemeCenter() {
       <Modal
         opened={Boolean(removeTarget)}
         onClose={() => setRemoveTarget(null)}
-        title="删除主题"
+        title={t('删除主题')}
         centered
         radius="lg"
         withCloseButton={false}
       >
         <Stack gap="md">
-          <Text size="sm">确定删除主题“{removeTarget?.name}”？此操作无法撤销。</Text>
+          <Text size="sm">{t('确定删除主题“{{name}}”？此操作无法撤销。', { name: removeTarget?.name ?? '' })}</Text>
           {removeTarget && activeThemeId === removeTarget.id && (
             <Text size="xs" c="dimmed">
-              当前正在使用此主题，删除后将恢复 Yachiyo 浅粉主题。
+              {t('当前正在使用此主题，删除后将恢复 Yachiyo 浅粉主题。')}
             </Text>
           )}
           <Group justify="flex-end" gap="xs">
             <Button variant="default" onClick={() => setRemoveTarget(null)}>
-              取消
+              {t('取消')}
             </Button>
             <Button
               color="red"
@@ -376,7 +396,7 @@ export function ThemeCenter() {
                 setRemoveTarget(null)
               }}
             >
-              确认删除
+              {t('确认删除')}
             </Button>
           </Group>
         </Stack>
