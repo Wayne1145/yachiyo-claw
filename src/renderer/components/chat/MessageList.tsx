@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next'
 import { type StateSnapshot, Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { platformTypeAtom } from '@/hooks/useNeedRoomForWinControls'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
+import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { cn } from '@/lib/utils'
 import * as atoms from '@/stores/atoms'
 import {
@@ -104,6 +105,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
   const { t } = useTranslation()
   const isSmallScreen = useIsSmallScreen()
   const widthFull = useUIStore((s) => s.widthFull)
+  const inAndroidAppShell = useInAndroidAppShell()
 
   const { currentSession } = props
 
@@ -111,7 +113,10 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
     () => currentSession && getCurrentThreadHistoryHash(currentSession),
     [currentSession]
   )
-  const currentMessageList = useMemo(() => getAllMessageList(currentSession), [currentSession])
+  const currentMessageList = useMemo(() => {
+    const messages = getAllMessageList(currentSession)
+    return inAndroidAppShell ? messages.filter((message) => message.role !== 'system') : messages
+  }, [currentSession, inAndroidAppShell])
 
   const latestSummaryMessageId = useMemo(() => {
     for (let i = currentMessageList.length - 1; i >= 0; i--) {

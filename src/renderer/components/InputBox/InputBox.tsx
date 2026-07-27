@@ -1359,7 +1359,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
           {currentSessionId && <CompactionStatus sessionId={currentSessionId} />}
           <Stack
             className={cn(
-              'rounded-md bg-chatbox-background-secondary justify-between px-3 py-2',
+              'yachiyo-chat-composer-surface rounded-md bg-chatbox-background-secondary justify-between px-3 py-2',
               !isSmallScreen && 'min-h-[92px]',
             )}
             style={{ border: '1px solid var(--chatbox-border-primary)' }}

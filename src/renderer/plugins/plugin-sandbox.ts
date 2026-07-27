@@ -9,6 +9,7 @@ import {
 
 /**
  * Worker-side plugin sandbox (platform-21).
+ * 运行在 Worker 侧的插件沙箱。
  *
  * Runs inside the isolate. The only thing the plugin entry receives is `PluginApi` — a small set of
  * pure-data functions. It registers tools and may call whitelisted host methods; every host call is
@@ -94,6 +95,7 @@ export function createPluginSandbox(transport: Transport, evaluate: PluginEntryE
         try {
           currentInvocationId = message.callId
           // Host-call ordinals restart per model tool call so Broker checkpoint ids remain stable on retry.
+          // 每次模型工具调用都重置宿主调用序号，确保重试时 Broker 检查点 ID 保持稳定。
           hostCallSeq = 0
           const value = await handler(message.args)
           post({ type: 'result', callId: message.callId, value })

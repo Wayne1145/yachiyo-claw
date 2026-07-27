@@ -11,6 +11,7 @@ import {
 export type PluginInstallRecoveryResult = 'none' | 'waiting' | 'restored' | 'failed'
 
 /** Rehydrates a downloaded package into the normal verification and user-consent flow. */
+/** 将已下载的安装包恢复到常规校验与用户确认流程。 */
 export async function resumePendingPluginInstall(): Promise<PluginInstallRecoveryResult> {
   if (!Capacitor.isNativePlatform()) return 'none'
   const pending = readPendingPluginInstall()

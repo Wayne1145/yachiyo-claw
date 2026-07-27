@@ -1,7 +1,7 @@
 {
   "name": "yachiyo-claw",
   "productName": "Yachiyo Claw",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22.12.0 <25.0.0",
@@ -45,7 +45,7 @@
     "start:renderer": "electron-vite",
     "serve:web": "npx serve ./release/app/dist/renderer",
     "test": "vitest run",
-    "test:android-foundation": "vitest run src/shared/agent/contracts.test.ts src/renderer/native/stream-http.test.ts src/renderer/mobile/agent-broker.test.ts src/renderer/mobile/scheduled-agent-tasks.test.ts src/renderer/platform/mobile_deep_link.test.ts src/renderer/platform/storages.mobile-secure.test.ts src/renderer/setup/mobile_telemetry_init.test.ts src/renderer/setup/telemetry_policy.test.ts src/renderer/stores/authInfoStorage.mobile-secure.test.ts src/renderer/stores/authInfoStore.mobile-secure.test.ts src/renderer/stores/settingsStore.persist.test.ts src/renderer/utils/mobile-request.test.ts src/renderer/utils/request.mobile.test.ts src/renderer/hooks/useVersion.test.ts src/renderer/mobile/android-app-shell.test.ts src/renderer/mobile/yachiyo-api.test.ts src/renderer/components/yachiyo/AndroidBottomNavigation.test.tsx src/renderer/components/yachiyo/YachiyoApiOnboarding.test.tsx",
+    "test:android-foundation": "vitest run src/shared/agent/contracts.test.ts src/renderer/native/stream-http.test.ts src/renderer/mobile/agent-broker.test.ts src/renderer/mobile/scheduled-agent-tasks.test.ts src/renderer/platform/mobile_deep_link.test.ts src/renderer/platform/storages.mobile-secure.test.ts src/renderer/setup/mobile_telemetry_init.test.ts src/renderer/setup/telemetry_policy.test.ts src/renderer/stores/authInfoStorage.mobile-secure.test.ts src/renderer/stores/authInfoStore.mobile-secure.test.ts src/renderer/stores/settingsStore.persist.test.ts src/renderer/utils/mobile-request.test.ts src/renderer/utils/request.mobile.test.ts src/renderer/hooks/useVersion.test.ts src/renderer/mobile/android-app-shell.test.ts src/renderer/mobile/yachiyo-api.test.ts src/renderer/components/yachiyo/AndroidBottomNavigation.test.tsx src/renderer/components/yachiyo/AndroidConversationChrome.ui.test.ts src/renderer/components/yachiyo/YachiyoApiOnboarding.test.tsx",
     "test:ui": "vitest --ui",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

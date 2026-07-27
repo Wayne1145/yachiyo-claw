@@ -53,6 +53,10 @@ export default function Header(props: { session: Session }) {
     NiceModal.show('session-settings', { session: currentSession })
   }
 
+  // Android owns the conversation chrome in AndroidAppShell. Keep this component mounted so
+  // title generation still runs, but do not render Chatbox's duplicate white header.
+  if (inAndroidAppShell) return null
+
   return (
     <>
       <Flex
@@ -61,7 +65,7 @@ export default function Header(props: { session: Session }) {
         px="md"
         className={clsx('flex-none title-bar', isSmallScreen ? 'bg-chatbox-background-primary' : '')}
       >
-        {!inAndroidAppShell && (!showSidebar || isSmallScreen) && (
+        {(!showSidebar || isSmallScreen) && (
           <Flex align="center" className={needRoomForMacWindowControls ? 'pl-20' : ''}>
             <ActionIcon
               className="controls"

@@ -32,7 +32,7 @@ import type { TFunction } from 'i18next'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { router } from '@/router'
-import { useThemeStore } from '@/stores/themeStore'
+import { BUILT_IN_LIQUID_GLASS_THEME_ID, useThemeStore } from '@/stores/themeStore'
 import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
 
@@ -296,6 +296,36 @@ export function ThemeCenter() {
             {activeThemeId !== null && (
               <Button size="compact-sm" variant="default" onClick={() => setActive(null)}>
                 {t('恢复默认')}
+              </Button>
+            )}
+          </article>
+
+          <article
+            className="yachiyo-theme-card"
+            data-active={activeThemeId === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'true' : 'false'}
+          >
+            <div className="yachiyo-theme-card-preview yachiyo-theme-card-preview-liquid">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="yachiyo-theme-card-heading">
+              <div>
+                <Text fw={650}>{t('Yachiyo 液态玻璃')}</Text>
+                <Text size="xs" c="dimmed">
+                  {t('内置 · ChatGPT 简约布局与半透明玻璃控件')}
+                </Text>
+              </div>
+              {activeThemeId === BUILT_IN_LIQUID_GLASS_THEME_ID && !previewingTheme && (
+                <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
+                  {t('使用中')}
+                </Badge>
+              )}
+            </div>
+            {activeThemeId !== BUILT_IN_LIQUID_GLASS_THEME_ID && (
+              <Button size="compact-sm" onClick={() => setActive(BUILT_IN_LIQUID_GLASS_THEME_ID)}>
+                {t('使用')}
               </Button>
             )}
           </article>

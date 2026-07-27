@@ -80,6 +80,7 @@ async function probePackageSize(url: string, fetchImpl: typeof fetch): Promise<n
 }
 
 /** Accepts a direct HTTPS package URL or a GitHub repository/release page. */
+/** 支持直接 HTTPS 安装包地址，以及 GitHub 仓库或 Release 页面。 */
 export async function resolvePluginPackageSource(
   input: string,
   fetchImpl: typeof fetch = fetch
@@ -167,6 +168,7 @@ async function waitForNativeDownload(id: string): Promise<NativeDownloadTask> {
 }
 
 /** Uses the persistent unified Android downloader; browser builds retain a bounded HTTPS fallback. */
+/** Android 使用可持久化统一下载器，浏览器版本保留受限 HTTPS 兜底。 */
 export async function downloadPluginPackage(
   source: ResolvedPluginPackage,
   title: string,
@@ -181,6 +183,7 @@ export async function downloadPluginPackage(
     await waitForNativeDownload(request.id)
     const bytes = await readCompletedDownload(request.id)
     // The installer no longer needs the package bytes after verification, but the completed row
+    // 校验后安装器不再需要安装包字节，但完成记录仍应保留在下载历史中。
     // remains useful in the unified download history.
     return {
       bytes,
@@ -222,6 +225,7 @@ export function marketplacePackage(entry: PluginMarketplaceEntry): ResolvedPlugi
 }
 
 /** Stable request identity lets a killed WebView re-enqueue the same native transfer safely. */
+/** 稳定请求标识让被终止的 WebView 可以安全地重新入队同一原生下载任务。 */
 export async function pluginPackageDownloadRequest(
   source: ResolvedPluginPackage,
   title: string,

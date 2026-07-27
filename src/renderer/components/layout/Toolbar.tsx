@@ -28,7 +28,7 @@ import { ScalableIcon } from '../common/ScalableIcon'
  * 顶部标题工具栏（右侧）
  * @returns
  */
-export default function Toolbar({ sessionId }: { sessionId: string }) {
+export default function Toolbar({ sessionId, androidShell = false }: { sessionId?: string; androidShell?: boolean }) {
   const { t } = useTranslation()
   const isSmallScreen = useIsSmallScreen()
   const isLargeScreen = useIsLargeScreen()
@@ -39,12 +39,15 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
   const setWidthFull = useUIStore((s) => s.setWidthFull)
 
   const handleExportAndSave = () => {
+    if (!sessionId) return
     NiceModal.show('export-chat')
   }
   const handleSessionClean = () => {
+    if (!sessionId) return
     void clearSession(sessionId)
   }
   const handleSessionDelete = async () => {
+    if (!sessionId) return
     try {
       await deleteSession(sessionId)
       router.navigate({ to: '/', replace: true })
@@ -54,6 +57,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
   }
 
   const handleViewSessionJson = useCallback(async () => {
+    if (!sessionId) return
     const session = await getSession(sessionId)
     if (session) {
       await NiceModal.show('json-viewer', { title: t('Session Raw JSON'), data: session })
@@ -71,12 +75,17 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
           color="chatbox-tertiary"
           leftSection={<ScalableIcon icon={IconSearch} size={16} strokeWidth={1.8} />}
           className="border-chatbox-border-primary"
-          onClick={() => setOpenSearchDialog(true)}
+          onClick={() => setOpenSearchDialog(true, !sessionId)}
         >
           {t('Search')}...
         </Button>
       ) : (
-        <ActionIcon variant="subtle" size={28} color="chatbox-secondary" onClick={() => setOpenSearchDialog(true)}>
+        <ActionIcon
+          variant="subtle"
+          size={28}
+          color="chatbox-secondary"
+          onClick={() => setOpenSearchDialog(true, !sessionId)}
+        >
           <IconSearch strokeWidth={1.8} />
         </ActionIcon>
       )}
@@ -115,6 +124,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
           {
             text: t('Export Chat'),
             icon: IconDeviceFloppy,
+            disabled: !sessionId,
             onClick: handleExportAndSave,
           },
           ...(process.env.NODE_ENV === 'development'
@@ -122,6 +132,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
                 {
                   text: t('View Session JSON'),
                   icon: IconCode,
+                  disabled: !sessionId,
                   onClick: handleViewSessionJson,
                 },
               ]
@@ -136,6 +147,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
             text: t('Clear All Messages'),
             icon: Broom,
             color: 'chatbox-primary',
+            disabled: !sessionId,
             onClick: handleSessionClean,
           },
           {
@@ -145,6 +157,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
             text: t('Delete Current Session'),
             icon: IconTrash,
             color: 'chatbox-primary',
+            disabled: !sessionId,
             onClick: handleSessionDelete,
           },
         ]}
@@ -156,21 +169,31 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
     </Flex>
   ) : (
     <Flex align="center" gap="xs">
-      <ActionIcon variant="subtle" size={24} color="chatbox-secondary" onClick={() => setOpenSearchDialog(true)}>
+      <ActionIcon
+        variant="subtle"
+        size={24}
+        color="chatbox-secondary"
+        onClick={() => setOpenSearchDialog(true, !sessionId)}
+      >
         <IconSearch strokeWidth={1.8} />
       </ActionIcon>
       <ActionMenu
         position="bottom-end"
         items={[
-          {
-            text: t('Thread History'),
-            icon: IconHistory,
-            onClick: () => setThreadHistoryDrawerOpen(true),
-          },
+          ...(!androidShell
+            ? [
+                {
+                  text: t('Thread History'),
+                  icon: IconHistory,
+                  onClick: () => setThreadHistoryDrawerOpen(true),
+                },
+              ]
+            : []),
 
           {
             text: t('Export Chat'),
             icon: IconDeviceFloppy,
+            disabled: !sessionId,
             onClick: handleExportAndSave,
           },
           ...(process.env.NODE_ENV === 'development'
@@ -178,6 +201,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
                 {
                   text: t('View Session JSON'),
                   icon: IconCode,
+                  disabled: !sessionId,
                   onClick: handleViewSessionJson,
                 },
               ]
@@ -192,6 +216,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
             text: t('Clear All Messages'),
             icon: IconClearAll,
             color: 'chatbox-primary',
+            disabled: !sessionId,
             onClick: handleSessionClean,
           },
           {
@@ -201,6 +226,7 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
             text: t('Delete Current Session'),
             icon: IconTrash,
             color: 'chatbox-primary',
+            disabled: !sessionId,
             onClick: handleSessionDelete,
           },
         ]}

@@ -17,6 +17,7 @@ import {
 
 /**
  * Capacitor-backed implementations of the installer seams (platform-27/28).
+ * 基于 Capacitor 的插件安装器存储实现。
  *
  * - Files live under Directory.Data (app-private, no external-storage permission surface).
  *   `Filesystem.rename` on Android maps to `File.renameTo` within the same volume — atomic there.
@@ -55,7 +56,7 @@ async function ensureParentDir(path: string): Promise<void> {
   try {
     await Filesystem.mkdir({ path: parent, directory: Directory.Data, recursive: true })
   } catch {
-    // Already exists.
+    // Already exists. 目录已存在，无需处理。
   }
 }
 
@@ -72,10 +73,11 @@ export const capacitorPluginFileStore: PluginFileStore = {
   },
   async rename(from, to) {
     // Replace-on-rename: drop any existing target first so renameTo cannot fail on a non-empty dir.
+    // 重命名前先删除已有目标，避免非空目录导致 renameTo 失败。
     try {
       await Filesystem.rmdir({ path: `${PLUGIN_ROOT}/${to}`, directory: Directory.Data, recursive: true })
     } catch {
-      // Target did not exist.
+      // Target did not exist. 目标目录不存在，符合预期。
     }
     await ensureParentDir(`${PLUGIN_ROOT}/${to}`)
     await Filesystem.rename({ from: `${PLUGIN_ROOT}/${from}`, to: `${PLUGIN_ROOT}/${to}`, directory: Directory.Data })
@@ -84,7 +86,7 @@ export const capacitorPluginFileStore: PluginFileStore = {
     try {
       await Filesystem.rmdir({ path: `${PLUGIN_ROOT}/${path}`, directory: Directory.Data, recursive: true })
     } catch {
-      // Best-effort: absent is fine.
+      // Best-effort: absent is fine. 尽力删除；目录不存在也视为成功。
     }
   },
   async exists(path) {
@@ -141,6 +143,7 @@ export async function listInstalledPlugins(): Promise<InstalledPluginRecord[]> {
       records.push(parseInstalledPluginRecord(record))
     } catch {
       // Invalid registry rows are invisible and cannot influence code paths.
+      // 无效注册表记录不可见，且不得影响后续代码路径。
       invalidKeys.push(key)
     }
   })
@@ -149,6 +152,7 @@ export async function listInstalledPlugins(): Promise<InstalledPluginRecord[]> {
 }
 
 /** Grant persistence (plat-23). Keyed `<pluginId>:<capability>`. Never exposed via the host API. */
+/** 授权持久化，以插件 ID 和能力为键，绝不通过宿主 API 暴露。 */
 export const pluginGrantStore = {
   async get(pluginId: string, capability: string): Promise<PluginGrant | null> {
     const key = `${pluginId}:${capability}`
@@ -174,6 +178,7 @@ export const pluginGrantStore = {
           return parsed
         }
         // One-time migration for pre-Keystore builds. Parsing happens before rewriting.
+        // 旧版非 Keystore 数据只迁移一次，重写前必须先完成解析。
         const legacy = parseBoundGrant(stored)
         await this.put(legacy)
         return legacy
@@ -181,6 +186,7 @@ export const pluginGrantStore = {
       return parseBoundGrant(stored)
     } catch {
       // Corrupt, undecryptable, or downgraded data is unauthorized.
+      // 损坏、无法解密或版本降级的数据一律视为未授权。
       await grantStorage.removeItem(key).catch(() => {})
       return null
     }
@@ -205,6 +211,7 @@ export const pluginGrantStore = {
 }
 
 /** Namespaced plugin key-value data (plat-28), used by the `storage` host API. */
+/** 命名空间隔离的插件键值数据，供 `storage` 宿主 API 使用。 */
 export const pluginDataStore = {
   async get(storageKey: string): Promise<string | null> {
     const stored = await dataStorage.getItem<unknown>(storageKey)
@@ -228,7 +235,7 @@ export const pluginDataStore = {
         return value
       }
       if (typeof stored !== 'string') throw new Error('plugin_data_invalid')
-      // Encrypt legacy plaintext on first access.
+      // Encrypt legacy plaintext on first access. 首次访问时加密旧版明文数据。
       await this.set(storageKey, stored)
       return stored
     } catch {
@@ -268,6 +275,7 @@ export const pluginDataStore = {
 }
 
 /** Per-plugin health/failure counters (plat-29). Cleared on uninstall; audit is NOT stored here. */
+/** 插件健康度与失败计数；卸载时清除，审计记录不存放在此。 */
 export const pluginHealthStore = {
   async get(pluginId: string): Promise<import('@shared/plugins/lifecycle').PluginHealth | null> {
     return (await healthStorage.getItem<import('@shared/plugins/lifecycle').PluginHealth>(pluginId)) ?? null

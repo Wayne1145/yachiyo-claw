@@ -9,6 +9,7 @@ import {
 
 /**
  * Host-side plugin runtime (platform-21).
+ * 运行在宿主侧的插件运行时。
  *
  * Owns the trusted half of the boundary. It loads a plugin into the isolate, invokes its tools with a
  * timeout, and — crucially — is the single place a plugin's host call is authorized (default-deny) and
@@ -26,17 +27,20 @@ export interface PluginInvocationContext {
 
 export interface PluginHostCallContext extends Omit<PluginInvocationContext, 'abortSignal'> {
   /** Stable within one plugin invocation and included in Broker checkpoint derivation. */
+  /** 在单次插件调用内稳定，并参与 Broker 检查点派生。 */
   hostCallId: string
   signal: AbortSignal
 }
 
 /** Explicit, named host method whitelist. Values receive/return pure data only. */
+/** 显式列出的宿主方法白名单；仅接收和返回纯数据。 */
 export type HostApi = Record<
   string,
   (args: JsonValue, context: PluginHostCallContext) => JsonValue | Promise<JsonValue>
 >
 
 /** Capability gate for a host method. Returns allow/deny; anything uncertain must deny. */
+/** 宿主方法的能力门禁；不确定时必须拒绝。 */
 export type HostCallAuthorizer = (
   method: string,
   args: JsonValue,
@@ -92,6 +96,7 @@ export class PluginRuntime {
         return
       }
       // Preserve Worker message order while a host call awaits native I/O. Otherwise a plugin that
+      // 宿主调用等待原生 I/O 时仍须保持 Worker 消息顺序，避免未 await 的调用抢先结束。
       // forgets to await host.call() can finish its invocation before that call is authorized.
       if (++this.queuedMessages > 256) {
         this.dispose()
@@ -118,6 +123,7 @@ export class PluginRuntime {
         this.loadWaiter = null
         reject(new Error('load_timeout'))
         // A timed-out evaluator may still be running. Terminate the isolate instead of abandoning it.
+        // 超时的执行器可能仍在运行，必须终止隔离环境而非放任其继续。
         this.dispose()
       }, this.options.loadTimeoutMs ?? 10_000)
       this.loadWaiter = { resolve, reject, timer }
@@ -167,6 +173,7 @@ export class PluginRuntime {
         pending.controller.abort()
         reject(new Error('timeout'))
         // Do not let a timed-out handler keep consuming CPU or issuing host calls.
+        // 不允许超时处理器继续占用 CPU 或发起宿主调用。
         this.dispose()
       }, timeoutMs)
       this.invocations.set(callId, { resolve, reject, timer, controller, context, detachAbort })

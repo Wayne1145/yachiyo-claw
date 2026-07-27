@@ -23,6 +23,7 @@ function declaredDomains(manifest: PluginManifest): Set<string> {
 }
 
 /** Computes the authority-relevant changes shown before a user confirms an update. */
+/** 计算更新确认前展示给用户的权限相关变更。 */
 export function describePluginUpdate(
   current: InstalledPluginRecord,
   candidate: PluginManifest,
@@ -51,6 +52,7 @@ export function isNewerPluginVersion(currentVersion: string, candidateVersion: s
 }
 
 /** Metadata-only batch check for verified marketplace plugins; it never downloads or runs code. */
+/** 仅检查已验证市场插件的元数据，绝不下载或运行代码。 */
 export function findMarketplacePluginUpdates(
   installed: InstalledPluginRecord[],
   entries: PluginMarketplaceEntry[],

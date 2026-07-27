@@ -1,7 +1,8 @@
-import { Badge, Button, Flex, Loader, Stack, Text, TextInput } from '@mantine/core'
+import { Badge, Button, Flex, Loader, Modal, Stack, Text, TextInput } from '@mantine/core'
 import {
   IconGitFork,
   IconMessageCircle,
+  IconPencil,
   IconPlus,
   IconSearch,
   IconStar,
@@ -27,7 +28,12 @@ import {
   useSessionList,
 } from '@/stores/chatStore'
 import { createEmpty, switchCurrentSession } from '@/stores/sessionActions'
-import { deleteTaskSession, taskSessionStore, useTaskSessionHistory } from '@/stores/taskSessionStore'
+import {
+  deleteTaskSession,
+  taskSessionStore,
+  updateTaskSession,
+  useTaskSessionHistory,
+} from '@/stores/taskSessionStore'
 
 type ConversationMode = 'chat' | 'agent'
 
@@ -47,6 +53,9 @@ export function AndroidConversationHistory({
   const { t, i18n } = useTranslation()
   const [search, setSearch] = useState('')
   const [openingId, setOpeningId] = useState<string>()
+  const [renameTarget, setRenameTarget] = useState<HistoryRecord | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renaming, setRenaming] = useState(false)
   const chats = useSessionList()
   const tasks = useTaskSessionHistory(50)
   const taskItems = useMemo(() => tasks.data?.pages.flatMap((page) => page.items) || [], [tasks.data?.pages])
@@ -54,7 +63,7 @@ export function AndroidConversationHistory({
   useEffect(() => {
     if (!opened) return
     const protectedIds = new Set(
-      taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+      taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
     )
     void pruneAbandonedEmptySessions(60_000, protectedIds)
   }, [opened, taskItems])
@@ -119,7 +128,7 @@ export function AndroidConversationHistory({
     setOpeningId('new')
     try {
       const protectedIds = new Set(
-        taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+        taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
       )
       await pruneAbandonedEmptySessions(0, protectedIds)
       const session = await createEmpty('chat')
@@ -178,6 +187,29 @@ export function AndroidConversationHistory({
     }
   }
 
+  const openRename = (record: HistoryRecord) => {
+    setRenameTarget(record)
+    setRenameValue(record.name)
+  }
+
+  const renameRecord = async () => {
+    const record = renameTarget
+    const name = renameValue.trim()
+    if (!record || !name || renaming) return
+    setRenaming(true)
+    try {
+      if (record.kind === 'task') {
+        await updateTaskSession(record.id, { name })
+      } else {
+        await updateSession(record.id, { name })
+        if (record.linkedTaskId) await updateTaskSession(record.linkedTaskId, { name })
+      }
+      setRenameTarget(null)
+    } finally {
+      setRenaming(false)
+    }
+  }
+
   return (
     <AdaptiveModal opened={opened} onClose={onClose} title={t('会话记录')} centered size="lg">
       <Stack gap="md" className="yachiyo-history-dialog">
@@ -212,11 +244,13 @@ export function AndroidConversationHistory({
               <SwipeHistoryItem
                 key={`${record.kind}:${record.id}`}
                 record={record}
+                opened={opened}
                 active={record.id === currentId || record.linkedTaskId === currentId}
                 loading={openingId === record.id}
                 disabled={Boolean(openingId)}
                 onOpen={() => void openRecord(record)}
                 onFavorite={() => void favoriteRecord(record)}
+                onRename={() => openRename(record)}
                 onFork={() => void forkRecord(record)}
                 onDelete={() => void deleteRecord(record)}
                 locale={i18n.resolvedLanguage || i18n.language}
@@ -238,6 +272,34 @@ export function AndroidConversationHistory({
           </Button>
         )}
       </Stack>
+      <Modal
+        opened={Boolean(renameTarget)}
+        onClose={() => setRenameTarget(null)}
+        title={t('重命名会话')}
+        centered
+        radius="lg"
+      >
+        <Stack gap="md">
+          <TextInput
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.currentTarget.value)}
+            label={t('会话名称')}
+            autoFocus
+            maxLength={120}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void renameRecord()
+            }}
+          />
+          <Flex justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setRenameTarget(null)}>
+              {t('取消')}
+            </Button>
+            <Button loading={renaming} disabled={!renameValue.trim()} onClick={() => void renameRecord()}>
+              {t('保存')}
+            </Button>
+          </Flex>
+        </Stack>
+      </Modal>
     </AdaptiveModal>
   )
 }
@@ -254,21 +316,25 @@ type HistoryRecord = {
 
 function SwipeHistoryItem({
   record,
+  opened,
   active,
   loading,
   disabled,
   onOpen,
   onFavorite,
+  onRename,
   onFork,
   onDelete,
   locale,
 }: {
   record: HistoryRecord
+  opened: boolean
   active: boolean
   loading: boolean
   disabled: boolean
   onOpen: () => void
   onFavorite: () => void
+  onRename: () => void
   onFork: () => void
   onDelete: () => void
   locale: string
@@ -276,6 +342,11 @@ function SwipeHistoryItem({
   const { t } = useTranslation()
   const [offset, setOffset] = useState(0)
   const drag = useRef<{ x: number; y: number; startOffset: number; horizontal?: boolean } | null>(null)
+
+  useEffect(() => {
+    drag.current = null
+    setOffset(0)
+  }, [opened, active])
 
   const pointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     drag.current = { x: event.clientX, y: event.clientY, startOffset: offset }
@@ -291,14 +362,14 @@ function SwipeHistoryItem({
     }
     if (!drag.current.horizontal) return
     event.preventDefault()
-    setOffset(Math.max(-198, Math.min(0, drag.current.startOffset + dx)))
+    setOffset(Math.max(-264, Math.min(0, drag.current.startOffset + dx)))
   }
 
   const pointerUp = () => {
     if (!drag.current) return
     const wasHorizontal = drag.current.horizontal
     drag.current = null
-    if (wasHorizontal) setOffset((current) => (current < -48 ? -198 : 0))
+    if (wasHorizontal) setOffset((current) => (current < -56 ? -264 : 0))
   }
 
   const runAction = (action: () => void) => {
@@ -312,6 +383,10 @@ function SwipeHistoryItem({
         <button type="button" data-action="favorite" disabled={offset === 0} onClick={() => runAction(onFavorite)}>
           {record.starred ? <IconStarFilled size={19} /> : <IconStar size={19} />}
           <span>{record.starred ? t('取消收藏') : t('收藏')}</span>
+        </button>
+        <button type="button" data-action="rename" disabled={offset === 0} onClick={() => runAction(onRename)}>
+          <IconPencil size={19} />
+          <span>{t('重命名')}</span>
         </button>
         <button type="button" data-action="fork" disabled={offset === 0} onClick={() => runAction(onFork)}>
           <IconGitFork size={19} />

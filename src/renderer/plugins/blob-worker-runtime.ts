@@ -48,6 +48,7 @@ export const BLOCKED_PLUGIN_AMBIENT_GLOBALS = [
 
 /**
  * Opaque-origin Blob-Worker transport for the plugin runtime (platform-21).
+ * 插件运行时使用不透明源 Blob Worker 的传输层。
  *
  * A main-frame Blob Worker inherits `https://localhost` and can open the app's IndexedDB even when its
  * global reference is overwritten (the WebIDL property is inherited). Instead, a trusted `data:`
@@ -152,6 +153,7 @@ export function buildOpaquePluginFrameDocument(channelId: string): string {
     workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
     worker = new Worker(workerUrl);
     // Android WebView can read a larger Blob Worker lazily. Revoking immediately after the
+    // Android WebView 会延迟读取较大的 Blob Worker；构造后立即回收 URL 会使 Worker 无响应。
     // constructor leaves the Worker silent, so release the URL only after startup is observable.
     worker.onmessage = function (event) { revokeWorkerUrl(); send('worker-message', event.data); };
     worker.onerror = function (event) { revokeWorkerUrl(); send('bridge-error', event.message || 'worker_error'); };
@@ -221,6 +223,7 @@ function createOpaqueFrameTransport(onError?: (message: string) => void): Transp
 
   window.addEventListener('message', receive)
   // `data:` itself supplies the opaque origin. Adding a sandbox attribute here breaks nested Blob
+  // `data:` 已提供不透明源；在此添加 sandbox 会破坏嵌套 Blob Worker。
   // Workers on Android System WebView 120-140, even though the frame script still starts.
   iframe.src = buildOpaquePluginFrameDataUrl(channelId)
   ;(document.body ?? document.documentElement).appendChild(iframe)
@@ -253,6 +256,7 @@ function createOpaqueFrameTransport(onError?: (message: string) => void): Transp
 }
 
 /** Creates a plugin runtime backed by an opaque-origin Worker. No same-origin fallback is allowed. */
+/** 创建由不透明源 Worker 支撑的插件运行时，禁止回退到同源 Worker。 */
 export function createBlobWorkerRuntime(
   options: PluginRuntimeOptions & { onWorkerError?: (message: string) => void }
 ): PluginRuntime {

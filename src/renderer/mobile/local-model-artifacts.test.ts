@@ -4,6 +4,7 @@ import {
   buildSelectedLocalModel,
   listRunnableLocalModelArtifacts,
   localModelRuntimeForArtifact,
+  preferredRunnableLocalModelDownloadBytes,
   resolveLocalModelArtifactGroup,
 } from './local-model-artifacts'
 
@@ -36,7 +37,7 @@ describe('local model artifact selection', () => {
         artifact('split-Q4_K_M-00001-of-00002.gguf', 2000),
         artifact('split-Q4_K_M-00002-of-00002.gguf', 2000),
       ],
-      10_000,
+      10_000
     )
 
     expect(result.map((item) => item.filename)).toEqual([
@@ -57,6 +58,15 @@ describe('local model artifact selection', () => {
 
   it('maps GGUF downloads to llama.cpp', () => {
     expect(localModelRuntimeForArtifact(artifact('model.gguf'))).toBe('llama.cpp')
+  })
+
+  it('reports the exact preferred downloadable file or shard-group size', () => {
+    const first = artifact('gemma-Q4_K_M-00001-of-00002.gguf', 2_000)
+    const second = artifact('gemma-Q4_K_M-00002-of-00002.gguf', 3_000)
+    const larger = artifact('gemma-Q8_0.gguf', 12_000)
+
+    expect(preferredRunnableLocalModelDownloadBytes([larger, first, second], 20_000)).toBe(5_000)
+    expect(preferredRunnableLocalModelDownloadBytes([first], 20_000)).toBeUndefined()
   })
 
   it('assesses only the selected quantization or complete shard group', () => {
