@@ -37,6 +37,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import io.github.yachiyoclaw.NativeCallValues;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -429,12 +430,14 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
     /** Direct PackageManager launch used by the local app index. */
     @PluginMethod
     public void launchApp(PluginCall call) {
+        if (!consumeBoundApprovalIfRequired(call)) return;
         launchPackage(call, call.getString("packageName", ""), call.getString("activityName", ""));
     }
 
     @PluginMethod
     public void accessibilityAction(PluginCall call) {
         String action = call.getString("action", "");
+        if (!consumeBoundApprovalIfRequired(call)) return;
 
         // PackageManager launching does not require an active accessibility
         // service. Keep this old action usable during permission setup.
@@ -504,7 +507,7 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
                         call.getFloat("startY", 0f),
                         call.getFloat("endX", 0f),
                         call.getFloat("endY", 0f),
-                        call.getLong("duration", 350L)
+                        NativeCallValues.getLong(call, "duration", 350L)
                     )
                 );
                 break;
@@ -550,6 +553,18 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
         result.put("success", started);
         result.put("packageName", packageName);
         call.resolve(result);
+    }
+
+    /** Plugin-originated mutations opt into a one-use digest-bound native approval. */
+    private boolean consumeBoundApprovalIfRequired(PluginCall call) {
+        if (!Boolean.TRUE.equals(call.getBoolean("approvalRequired", false))) return true;
+        String nonce = call.getString("approvalNonce", "");
+        String digest = call.getString("approvalDigest", "");
+        if (!digest.matches("^[a-f0-9]{64}$") || !SkillScriptApprovalStore.consume(nonce, digest)) {
+            call.reject("operation_native_approval_required");
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -832,7 +847,13 @@ public class YachiyoDeviceAccessPlugin extends Plugin {
                 call.reject("approval_already_pending");
                 return;
             }
+            String bindingDigest = call.getString("bindingDigest", "");
+            if (!bindingDigest.isEmpty() && !bindingDigest.matches("^[a-f0-9]{64}$")) {
+                call.reject("invalid_operation_binding_digest");
+                return;
+            }
             pendingApprovalCall = call;
+            pendingSkillApprovalDigest = bindingDigest.isEmpty() ? null : bindingDigest;
             showApprovalInternal(
                 call.getString("title", "Agent operation"),
                 call.getString("detail", ""),

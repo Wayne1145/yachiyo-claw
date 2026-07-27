@@ -8,7 +8,7 @@ import {
   IconStarFilled,
   IconTrash,
 } from '@tabler/icons-react'
-import { type PointerEvent, useMemo, useRef, useState } from 'react'
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import {
   ensureChatSessionForTask,
@@ -21,6 +21,7 @@ import {
   createSession,
   deleteSession,
   getSession,
+  pruneAbandonedEmptySessions,
   updateSession,
   useSessionList,
 } from '@/stores/chatStore'
@@ -46,7 +47,13 @@ export function AndroidConversationHistory({
   const [openingId, setOpeningId] = useState<string>()
   const chats = useSessionList()
   const tasks = useTaskSessionHistory(50)
-  const taskItems = tasks.data?.pages.flatMap((page) => page.items) || []
+  const taskItems = useMemo(() => tasks.data?.pages.flatMap((page) => page.items) || [], [tasks.data?.pages])
+
+  useEffect(() => {
+    if (!opened) return
+    const protectedIds = new Set(taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)))
+    void pruneAbandonedEmptySessions(60_000, protectedIds)
+  }, [opened, taskItems])
 
   const records = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase()
@@ -107,6 +114,8 @@ export function AndroidConversationHistory({
   const createConversation = async () => {
     setOpeningId('new')
     try {
+      const protectedIds = new Set(taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)))
+      await pruneAbandonedEmptySessions(0, protectedIds)
       const session = await createEmpty('chat')
       if (onSelectSession) {
         await onSelectSession(session.id)

@@ -176,7 +176,7 @@ async function recognizeRemoteSpeech(callbacks: SpeechRecognitionCallbacks): Pro
   form.append('language', settings.language.split('-')[0])
   const response = await fetch(resolveSpeechEndpoint(settings.asrBaseUrl, '/audio/transcriptions'), {
     method: 'POST',
-    headers: authorizationHeaders(credentials.asrApiKey, settings.asrHeaders),
+    headers: authorizationHeaders(credentials.asrApiKey, credentials.asrHeaders || settings.asrHeaders),
     body: form,
   })
   if (!response.ok) throw new Error(`speech_asr_http_${response.status}`)
@@ -346,7 +346,7 @@ async function speakWithRemote(text: string, callbacks: SpeechPlaybackCallbacks,
   const endpoint = resolveSpeechEndpoint(settings.ttsBaseUrl, isGptSoVits ? '/tts' : '/audio/speech')
   const headers = {
     'Content-Type': 'application/json',
-    ...authorizationHeaders(credentials.ttsApiKey, settings.ttsHeaders),
+    ...authorizationHeaders(credentials.ttsApiKey, credentials.ttsHeaders || settings.ttsHeaders),
   }
   const body = isGptSoVits
     ? {

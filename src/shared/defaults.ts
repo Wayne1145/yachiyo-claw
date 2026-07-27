@@ -8,6 +8,9 @@ export function defaultAllowReportingAndTracking(_buildTarget = process.env.CHAT
 
 export function settings(): Settings {
   return {
+    featureOverrides: {},
+    featureSettings: {},
+    reasoningStrength: 'medium',
     // aiProvider: ModelProviderEnum.OpenAI,
     // openaiKey: '',
     // apiHost: 'https://api.openai.com',
@@ -172,6 +175,7 @@ export function chatSessionSettings(): SessionSettings {
     provider: ModelProviderEnum.Yachiyo,
     modelId: 'gpt-5.6',
     maxContextMessageCount: Number.MAX_SAFE_INTEGER,
+    reasoningStrength: 'medium',
   }
 }
 

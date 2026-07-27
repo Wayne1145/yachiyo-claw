@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "children": [
+    { "type": "heading", "key": "title", "content": "Hello Yachiyo", "level": 2 },
+    { "type": "text", "key": "intro", "content": "This view is validated and rendered by the host." },
+    {
+      "type": "button",
+      "key": "increment",
+      "label": "Increment",
+      "action": { "type": "invoke", "handler": "increment" }
+    }
+  ]
+}

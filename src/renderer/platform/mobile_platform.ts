@@ -2,6 +2,7 @@ import { App } from '@capacitor/app'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
 import { Device } from '@capacitor/device'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import * as defaults from '@shared/defaults'
 import type { Config, Settings, ShortcutSetting } from '@shared/types'
 import { getLatestYachiyoAndroidRelease, type YachiyoAndroidRelease } from '@shared/releases/yachiyo'
@@ -49,7 +50,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   private pendingUpdate: YachiyoAndroidRelease | null = null
   private updateCheckRunning = false
   private readonly updaterCheckingListeners = new Set<() => void>()
-  private readonly updaterAvailableListeners = new Set<(data: { version: string }) => void>()
+  private readonly updaterAvailableListeners = new Set<(data: { version: string; notes?: string; releaseUrl?: string }) => void>()
   private readonly updaterNotAvailableListeners = new Set<() => void>()
   private readonly updaterProgressListeners = new Set<
     (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void
@@ -151,7 +152,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     this.updaterCheckingListeners.add(callback)
     return () => this.updaterCheckingListeners.delete(callback)
   }
-  public onUpdaterAvailable(callback: (data: { version: string }) => void): () => void {
+  public onUpdaterAvailable(callback: (data: { version: string; notes?: string; releaseUrl?: string }) => void): () => void {
     this.updaterAvailableListeners.add(callback)
     return () => this.updaterAvailableListeners.delete(callback)
   }
@@ -316,7 +317,9 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
       if (!this.pendingUpdate) {
         for (const listener of this.updaterNotAvailableListeners) listener()
       } else {
-        for (const listener of this.updaterAvailableListeners) listener({ version: this.pendingUpdate.version })
+        for (const listener of this.updaterAvailableListeners) {
+          listener({ version: this.pendingUpdate.version, notes: this.pendingUpdate.notes, releaseUrl: this.pendingUpdate.releaseUrl })
+        }
       }
       return { started: true }
     } catch (error) {
@@ -330,7 +333,12 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async downloadUpdate(): Promise<void> {
     const update = this.pendingUpdate
-    if (!update) throw new Error('update_metadata_missing')
+    if (!update) {
+      const status = await yachiyoUpdateNative.getDownloadStatus()
+      if (!status.version) throw new Error('update_metadata_missing')
+      await yachiyoUpdateNative.resumeDownload({ version: status.version })
+      return
+    }
     await yachiyoUpdateNative.downloadUpdate({
       version: update.version,
       url: update.apk.url,
@@ -342,6 +350,27 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async openUpdateInstallPermissionSettings(): Promise<void> {
     await yachiyoUpdateNative.openInstallPermissionSettings()
+  }
+
+  public async getUpdateDownloadStatus(): Promise<import('./native/yachiyo_update').NativeUpdateDownloadStatus> {
+    try {
+      const result = await yachiyoUpdateNative.getDownloadStatus()
+      return result
+    } catch {
+      return { ready: false, version: '', status: 'idle', progress: 0 }
+    }
+  }
+
+  public async pauseUpdate(version: string): Promise<void> {
+    await yachiyoUpdateNative.pauseDownload({ version })
+  }
+
+  public async resumeUpdate(version: string): Promise<void> {
+    await yachiyoUpdateNative.resumeDownload({ version })
+  }
+
+  public async cancelUpdate(version: string): Promise<void> {
+    await yachiyoUpdateNative.cancelDownload({ version })
   }
 
   public async installUpdate(): Promise<void> {
@@ -395,12 +424,15 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async sandboxExec(params: { command: string; timeout?: number }) {
     const approved = await requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       title: '执行 Linux 沙箱命令',
       detail: params.command,
       risk: 'dangerous',
     })
     if (!approved) return { stdout: '', stderr: '用户拒绝了此操作', exitCode: 126 }
     return executeAgentAction({
+      featureId: 'sandbox',
+      principal: CORE_AGENT_PRINCIPAL,
       toolId: 'sandbox.command.exec',
       backend: 'sandbox',
       parameters: params,
@@ -414,12 +446,15 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async sandboxStartBackground(params: { command: string; timeout?: number }) {
     const approved = await requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       title: '启动 Linux 沙箱后台任务',
       detail: params.command,
       risk: 'dangerous',
     })
     if (!approved) throw new Error('sandbox_background_approval_denied')
     return executeAgentAction({
+      featureId: 'sandbox',
+      principal: CORE_AGENT_PRINCIPAL,
       toolId: 'sandbox.command.start_background',
       backend: 'sandbox',
       parameters: params,
@@ -446,12 +481,15 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async sandboxStopJob(params: { jobId: string }) {
     const approved = await requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       title: '停止 Linux 沙箱后台任务',
       detail: params.jobId,
       risk: 'safe',
     })
     if (!approved) throw new Error('sandbox_stop_approval_denied')
     return executeAgentAction({
+      featureId: 'sandbox',
+      principal: CORE_AGENT_PRINCIPAL,
       toolId: 'sandbox.command.stop_background',
       backend: 'sandbox',
       parameters: params,
@@ -465,12 +503,15 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async sandboxInstallAndroidToolchain() {
     const approved = await requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       title: '安装 Android SDK 与 Gradle 工具链',
       detail: '将在 Linux 沙箱中下载并安装 JDK、Gradle、Android SDK Platform 35 和 Build Tools 35。',
       risk: 'dangerous',
     })
     if (!approved) return { accepted: false, reason: 'android_toolchain_approval_denied' }
     return executeAgentAction({
+      featureId: 'sandbox',
+      principal: CORE_AGENT_PRINCIPAL,
       toolId: 'sandbox.toolchain.install_android',
       backend: 'sandbox',
       parameters: { version: 1 },

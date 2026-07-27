@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest'
+import type { DownloadJob } from '@shared/models/model-catalog'
+import { reconcileInstalledLocalModels } from './local-model-provider-sync'
+
+function functionGemmaJob(): DownloadJob {
+  return {
+    id: 'job-1',
+    modelId: 'qa-functiongemma-270m-v011',
+    source: 'huggingface',
+    repository: 'google/functiongemma-270m-it',
+    revision: 'a'.repeat(40),
+    status: 'completed',
+    artifactIds: ['model'],
+    artifacts: [
+      {
+        id: 'model',
+        modelId: 'qa-functiongemma-270m-v011',
+        source: 'huggingface',
+        path: 'mobile-actions_q8_ekv1024.litertlm',
+        filename: 'mobile-actions_q8_ekv1024.litertlm',
+        url: 'https://example.test/model',
+        downloadUrl: 'https://example.test/model',
+        revision: 'a'.repeat(40),
+        format: 'litertlm',
+        required: true,
+        companion: false,
+      },
+    ],
+    bytesTotal: 1,
+    bytesDownloaded: 1,
+    maxConcurrentSegments: 1,
+    segments: [],
+    allowUnpinnedRevision: false,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+}
+
+describe('installed local model provider reconciliation', () => {
+  it('adds tool-use capability to migrated FunctionGemma records', () => {
+    const result = reconcileInstalledLocalModels(
+      [{ modelId: 'qa-functiongemma-270m-v011', type: 'chat', capabilities: [] }],
+      [functionGemmaJob()],
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].capabilities).toContain('tool_use')
+  })
+
+  it('adds a completed model only once', () => {
+    const once = reconcileInstalledLocalModels([], [functionGemmaJob()])
+    const twice = reconcileInstalledLocalModels(once, [functionGemmaJob()])
+    expect(twice).toEqual(once)
+  })
+})

@@ -31,6 +31,7 @@ import Markdown, { BlockCodeCollapsedStateProvider } from '@/components/Markdown
 import DirectoryMenu from '@/components/task/DirectoryMenu'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { getAgentBackend } from '@/mobile/agent-broker'
+import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import useNeedRoomForWinControls from '@/hooks/useNeedRoomForWinControls'
 import { useProviders } from '@/hooks/useProviders'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
@@ -357,6 +358,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
   const modelRegistryVersion = useModelRegistryVersion()
   const inAndroidAppShell = useInAndroidAppShell()
   const mobileAgentBackend = getAgentBackend()
+  const mobileAgentConfig = getAgentSessionConfig(session.id)
 
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -569,7 +571,9 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                       </Box>
                       <Text c="dimmed" size="md" ta="center">
                         {inAndroidAppShell
-                          ? '描述你希望手机完成的事情，Agent 会观察界面并调用设备工具。'
+                          ? mobileAgentConfig.deviceControlEnabled
+                            ? '描述你希望手机完成的事情，Agent 会观察界面并调用设备工具。'
+                            : '描述你希望完成的任务，Agent 可使用内部工具、Skills、MCP 和 Linux 沙箱。'
                           : t('Send a message to start working in this directory.')}
                       </Text>
                       <Text c="dimmed" size="xs" ta="center" className="font-mono">
@@ -603,11 +607,13 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
             <Flex align="center" justify="space-between">
               {inAndroidAppShell ? (
                 <Text size="xs" c="dimmed">
-                  {mobileAgentBackend === 'accessibility'
-                    ? '无障碍设备 Agent'
-                    : mobileAgentBackend === 'shizuku'
-                      ? 'Shizuku 设备 Agent'
-                      : 'Root 设备 Agent'}
+                  {!mobileAgentConfig.deviceControlEnabled
+                    ? '内部工具 Agent'
+                    : mobileAgentBackend === 'accessibility'
+                      ? '无障碍设备 Agent'
+                      : mobileAgentBackend === 'shizuku'
+                        ? 'Shizuku 设备 Agent'
+                        : 'Root 设备 Agent'}
                 </Text>
               ) : (
                 <DirectoryMenu currentDirectory={session.workingDirectory} onSelect={handleSelectDirectory} />
@@ -645,7 +651,9 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                 </TokenCountMenu>
                 {providerModelInfo && !providerModelInfo.capabilities?.includes('tool_use') && (
                   <Text size="xs" c="dimmed">
-                    {t('Chat only')}: {t('This model does not support Agent tools')}
+                    {inAndroidAppShell
+                      ? '仅聊天：当前模型未声明 Agent 工具调用能力'
+                      : `${t('Chat only')}: ${t('This model does not support Agent tools')}`}
                   </Text>
                 )}
               </Flex>

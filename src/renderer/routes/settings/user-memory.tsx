@@ -128,7 +128,7 @@ function UserMemorySettingsPage() {
         {lastDeleted && (
           <Group justify="space-between" p="sm" style={{ borderRadius: 12, background: '#fff2f6' }}>
             <Text size="sm">已删除一条记忆</Text>
-            <Button size="compact-sm" variant="subtle" color="pink" onClick={() => void undoDelete()}>
+            <Button size="compact-sm" variant="subtle" color="chatbox-brand" onClick={() => void undoDelete()}>
               撤销
             </Button>
           </Group>
@@ -139,7 +139,7 @@ function UserMemorySettingsPage() {
           </Text>
         )}
         {loadingRecords ? (
-          <Loader color="pink" size="sm" />
+          <Loader color="chatbox-brand" size="sm" />
         ) : records.length === 0 ? (
           <Text size="sm" c="dimmed">还没有自动长期记忆。</Text>
         ) : (
@@ -148,7 +148,7 @@ function UserMemorySettingsPage() {
               <section key={record.id} style={{ border: '1px solid #e4e7e9', borderRadius: 14, padding: 14 }}>
                 <Group justify="space-between" mb="xs">
                   <Group gap={6}>
-                    <Badge color="pink" variant="light">{record.kind}</Badge>
+                    <Badge color="chatbox-brand" variant="light">{record.kind}</Badge>
                     {record.tags.map((tag) => (
                       <Badge key={tag} color="gray" variant="light">{tag}</Badge>
                     ))}
@@ -172,7 +172,7 @@ function UserMemorySettingsPage() {
                     {record.sourceSessionId ? `来源对话 ${record.sourceSessionId.slice(0, 8)} · ` : ''}
                     {new Date(record.updatedAt).toLocaleString()}
                   </Text>
-                  <Button size="compact-sm" radius="xl" variant="light" color="pink" onClick={() => void updateRecord(record)}>
+                  <Button size="compact-sm" radius="xl" variant="light" color="chatbox-brand" onClick={() => void updateRecord(record)}>
                     保存修改
                   </Button>
                 </Group>

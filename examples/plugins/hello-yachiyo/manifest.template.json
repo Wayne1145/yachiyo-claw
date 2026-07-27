@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "hello-yachiyo",
+  "version": "1.0.0",
+  "displayName": "Hello Yachiyo",
+  "description": "Minimal declarative view, isolated storage, and Agent tool example.",
+  "author": { "name": "NewDreamStudio" },
+  "license": "GPL-3.0-only",
+  "mode": "script-enabled",
+  "entry": "main.js",
+  "capabilities": [
+    { "name": "ui", "reason": "Render the bundled example page inside Yachiyo Claw." },
+    { "name": "storage", "reason": "Persist the example counter in an isolated namespace." },
+    { "name": "tools", "reason": "Expose the namespaced echo example to the Agent." }
+  ],
+  "contributions": {
+    "view": "ui/main.json",
+    "settingsEntries": [
+      {
+        "group": "app",
+        "label": "Hello Yachiyo",
+        "detail": "Open the plugin example.",
+        "route": "/plugin/hello-yachiyo",
+        "order": 900
+      }
+    ],
+    "tools": [{ "name": "hello-yachiyo_echo", "description": "Echo pure JSON data from the isolated plugin Worker." }]
+  }
+}

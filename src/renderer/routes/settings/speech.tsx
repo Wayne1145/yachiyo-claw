@@ -34,13 +34,26 @@ const TTS_PROVIDERS = [
 
 function SpeechSettingsPage() {
   const [value, setValue] = useState(getSpeechSettings)
-  const [credentials, setCredentials] = useState<SpeechCredentials>({ asrApiKey: '', ttsApiKey: '' })
+  const [credentials, setCredentials] = useState<SpeechCredentials>({
+    asrApiKey: '',
+    ttsApiKey: '',
+    asrHeaders: '',
+    ttsHeaders: '',
+  })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const patch = (next: Partial<SpeechSettings>) => setValue((current) => ({ ...current, ...next }))
 
   useEffect(() => {
-    void getSpeechCredentials().then(setCredentials)
+    void getSpeechCredentials().then((stored) => {
+      // Versions before 0.0.11 stored custom headers in plaintext settings. Keep them visible until
+      // the next save, which moves them into the context-bound Keystore envelope.
+      setCredentials({
+        ...stored,
+        asrHeaders: stored.asrHeaders || value.asrHeaders,
+        ttsHeaders: stored.ttsHeaders || value.ttsHeaders,
+      })
+    })
   }, [])
 
   const changeAsrProvider = (provider: ASRProvider) => {
@@ -104,10 +117,12 @@ function SpeechSettingsPage() {
             <TextInput label="ASR 模型" value={value.asrModel} onChange={(event) => patch({ asrModel: event.currentTarget.value })} />
             <Textarea
               label="ASR 附加请求头（JSON，可选）"
-              value={value.asrHeaders}
+              value={credentials.asrHeaders}
               autosize
               minRows={2}
-              onChange={(event) => patch({ asrHeaders: event.currentTarget.value })}
+              onChange={(event) =>
+                setCredentials((current) => ({ ...current, asrHeaders: event.currentTarget.value }))
+              }
             />
           </>
         )}
@@ -136,10 +151,12 @@ function SpeechSettingsPage() {
             />
             <Textarea
               label="TTS 附加请求头（JSON，可选）"
-              value={value.ttsHeaders}
+              value={credentials.ttsHeaders}
               autosize
               minRows={2}
-              onChange={(event) => patch({ ttsHeaders: event.currentTarget.value })}
+              onChange={(event) =>
+                setCredentials((current) => ({ ...current, ttsHeaders: event.currentTarget.value }))
+              }
             />
           </>
         )}

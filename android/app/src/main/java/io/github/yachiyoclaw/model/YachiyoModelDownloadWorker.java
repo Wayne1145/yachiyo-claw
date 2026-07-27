@@ -12,12 +12,18 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.Proxy;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin;
+import io.github.yachiyoclaw.download.DownloadTransfer;
+import io.github.yachiyoclaw.download.DownloadTaskStore;
+import io.github.yachiyoclaw.download.DownloadNotifications;
 
 public final class YachiyoModelDownloadWorker extends Worker {
     static final String KEY_JOB_ID = "job_id";
@@ -38,9 +44,11 @@ public final class YachiyoModelDownloadWorker extends Worker {
             JSONObject job = store.read(jobId);
             if (job == null) return Result.failure();
             long total = validateJob(job);
+            String title = job.optString("repository", "本地模型");
+            DownloadTaskStore.update(getApplicationContext(), jobId, "model", title, "downloading", completedBytes(job), total, 0, null);
             ensureFreeSpace(total - job.optLong("bytesDownloaded", 0));
             if (!store.updateIfWorkerActive(jobId, "downloading", completedBytes(job), null, null)) return Result.success();
-            setForegroundAsync(YachiyoModelNotification.foreground(getApplicationContext(), jobId, progress(completedBytes(job), total)));
+            setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), jobId, "正在下载本地模型", completedBytes(job), total));
 
             File modelDirectory = store.modelDirectory(job);
             JSONArray artifacts = job.getJSONArray("artifacts");
@@ -56,6 +64,8 @@ public final class YachiyoModelDownloadWorker extends Worker {
             }
             if (runtimePath == null) throw new IllegalArgumentException("runnable_model_artifact_missing");
             if (!store.updateIfWorkerActive(jobId, "completed", total, null, runtimePath)) return Result.success();
+            DownloadTaskStore.update(getApplicationContext(), jobId, "model", job.optString("repository", "本地模型"), "completed", total, total, 0, null);
+            DownloadNotifications.complete(getApplicationContext(), jobId, job.optString("repository", "本地模型"));
             setProgressAsync(new Data.Builder().putLong("bytesDownloaded", total).putLong("bytesTotal", total).putString("status", "completed").build());
             return Result.success();
         } catch (Exception error) {
@@ -63,12 +73,38 @@ public final class YachiyoModelDownloadWorker extends Worker {
                 try {
                     JSONObject job = store.read(jobId);
                     if (job != null) {
-                        store.updateIfWorkerActive(jobId, "paused", completedBytes(job), null, null);
+                        if (DownloadTaskStore.shouldIgnoreStoppedWorkerResult(job.optString("status"), isStopped())) {
+                            return Result.success();
+                        }
+                        long bytes = completedBytes(job);
+                        long total = job.optLong("bytesTotal", 0);
+                        String finalStatus = "cancelled".equals(job.optString("status")) ? "cancelled" : "paused";
+                        store.updateIfWorkerActive(jobId, finalStatus, bytes, null, null);
+                        if ("cancelled".equals(finalStatus)) {
+                            discardArtifacts(job);
+                            bytes = 0;
+                        }
+                        DownloadTaskStore.update(getApplicationContext(), jobId, "model", job.optString("repository", "本地模型"), finalStatus, bytes, total, 0, null);
                     }
                 } catch (Exception ignored) {}
+                DownloadNotifications.cancel(getApplicationContext(), jobId);
                 return Result.success();
             }
             try { store.updateIfWorkerActive(jobId, "failed", currentDownloaded(jobId), safeError(error), null); } catch (Exception ignored) {}
+            JSONObject failed = null;
+            try { failed = store.read(jobId); } catch (Exception ignored) {}
+            DownloadTaskStore.update(
+                getApplicationContext(),
+                jobId,
+                "model",
+                failed == null ? "本地模型" : failed.optString("repository", "本地模型"),
+                "failed",
+                currentDownloaded(jobId),
+                failed == null ? 0 : failed.optLong("bytesTotal", 0),
+                0,
+                safeError(error)
+            );
+            DownloadNotifications.failed(getApplicationContext(), jobId, "本地模型下载失败");
             return Result.failure(new Data.Builder().putString("error", safeError(error)).build());
         }
     }
@@ -96,71 +132,35 @@ public final class YachiyoModelDownloadWorker extends Worker {
     }
 
     private void downloadArtifact(String jobId, JSONObject job, JSONObject artifact, File output, long total) throws Exception {
-        output.getParentFile().mkdirs();
-        File temporary = new File(output.getPath() + ".part");
         long expected = artifact.getLong("sizeBytes");
-        if (output.isFile() && output.length() == expected && verifySha256(output, artifact.getString("sha256"))) return;
-        if (output.exists()) Files.delete(output.toPath());
-        long offset = temporary.isFile() ? temporary.length() : 0;
-        if (offset > expected) {
-            Files.delete(temporary.toPath());
-            offset = 0;
-        }
-
-        HttpURLConnection connection = open(artifact.getString("downloadUrl"), offset);
-        int status = connection.getResponseCode();
-        boolean append = offset > 0 && status == HttpURLConnection.HTTP_PARTIAL;
-        if (status != HttpURLConnection.HTTP_OK && status != HttpURLConnection.HTTP_PARTIAL) {
-            connection.disconnect();
-            throw new IllegalStateException("model_download_http_" + status);
-        }
-        if (!append) offset = 0;
-        long lastUpdate = 0;
-        try (BufferedInputStream input = new BufferedInputStream(connection.getInputStream(), BUFFER_SIZE);
-             FileOutputStream file = new FileOutputStream(temporary, append)) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int read;
-            long written = offset;
-            while ((read = input.read(buffer)) >= 0) {
-                if (isStopped()) throw new InterruptedException("model_download_paused");
-                if (read == 0) continue;
-                written += read;
-                if (written > expected) throw new IllegalStateException("model_download_size_mismatch");
-                file.write(buffer, 0, read);
+        long before = completedBytes(job) - artifact.optLong("completedBytes", 0);
+        DownloadTransfer.download(output, expected, artifact.getString("sha256"), YachiyoDownloadSettingsPlugin.threads(getApplicationContext()),
+            YachiyoDownloadSettingsPlugin.retryCount(getApplicationContext()),
+            (start, end) -> open(artifact.getString("downloadUrl"), start, end),
+            (written, ignored, speed) -> {
                 artifact.put("completedBytes", written);
+                long downloaded = before + written;
                 long now = System.currentTimeMillis();
-                if (now - lastUpdate >= 500) {
-                    lastUpdate = now;
-                    long downloaded = completedBytes(job);
-                    job.put("bytesDownloaded", downloaded).put("status", "downloading").put("updatedAt", now);
-                    if (!store.saveIfWorkerActive(job)) throw new InterruptedException("model_download_inactive");
-                    int progress = progress(downloaded, total);
-                    setProgressAsync(new Data.Builder().putLong("bytesDownloaded", downloaded).putLong("bytesTotal", total).putInt("progress", progress).build());
-                    setForegroundAsync(YachiyoModelNotification.foreground(getApplicationContext(), jobId, progress));
-                }
-            }
-            file.getFD().sync();
-        } finally {
-            connection.disconnect();
-        }
-        if (temporary.length() != expected) throw new IllegalStateException("model_download_size_mismatch");
-        if (!verifySha256(temporary, artifact.getString("sha256"))) {
-            Files.deleteIfExists(temporary.toPath());
-            throw new SecurityException("model_download_hash_mismatch");
-        }
-        Files.move(temporary.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                job.put("bytesDownloaded", downloaded).put("bytesPerSecond", speed).put("status", "downloading").put("updatedAt", now);
+                DownloadTaskStore.update(getApplicationContext(), jobId, "model", job.optString("repository", "本地模型"), "downloading", downloaded, total, speed, null);
+                if (!store.saveIfWorkerActive(job)) throw new InterruptedException("model_download_inactive");
+                int percentage = progress(downloaded, total);
+                setProgressAsync(new Data.Builder().putLong("bytesDownloaded", downloaded).putLong("bytesTotal", total).putLong("bytesPerSecond", speed).putInt("progress", percentage).build());
+                DownloadNotifications.show(getApplicationContext(), jobId, "正在下载本地模型", downloaded, total);
+                setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), jobId, "正在下载本地模型", downloaded, total));
+            }, this::isStopped);
     }
 
-    private HttpURLConnection open(String value, long offset) throws Exception {
+    private HttpURLConnection open(String value, long start, long end) throws Exception {
         URL current = ModelDownloadPolicy.requireInitialUrl(value);
         for (int redirects = 0; redirects <= ModelDownloadPolicy.MAX_REDIRECTS; redirects++) {
-            HttpURLConnection connection = (HttpURLConnection) current.openConnection();
+            HttpURLConnection connection = (HttpURLConnection) current.openConnection(resolveProxy());
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(20_000);
             connection.setReadTimeout(30_000);
             connection.setRequestProperty("Accept-Encoding", "identity");
             connection.setRequestProperty("User-Agent", "Yachiyo-Claw-Android");
-            if (offset > 0) connection.setRequestProperty("Range", "bytes=" + offset + "-");
+            connection.setRequestProperty("Range", "bytes=" + start + "-" + end);
             int status = connection.getResponseCode();
             if (status < 300 || status >= 400) return connection;
             String location = connection.getHeaderField("Location");
@@ -172,9 +172,42 @@ public final class YachiyoModelDownloadWorker extends Worker {
         throw new IllegalStateException("model_redirect_limit");
     }
 
+    private Proxy resolveProxy() {
+        try {
+            String value = YachiyoDownloadSettingsPlugin.proxy(getApplicationContext());
+            if (value == null || value.isBlank()) return Proxy.NO_PROXY;
+            URL url = new URL(value);
+            int port = url.getPort() > 0 ? url.getPort() : ("https".equalsIgnoreCase(url.getProtocol()) ? 443 : 80);
+            return new Proxy(Proxy.Type.HTTP, new InetSocketAddress(url.getHost(), port));
+        } catch (Exception ignored) { return Proxy.NO_PROXY; }
+    }
+
     private Result paused(String jobId, JSONObject job) throws Exception {
-        store.updateIfWorkerActive(jobId, "paused", completedBytes(job), null, null);
+        long bytes = completedBytes(job);
+        JSONObject persisted = store.read(jobId);
+        String finalStatus = persisted != null && "cancelled".equals(persisted.optString("status")) ? "cancelled" : "paused";
+        store.updateIfWorkerActive(jobId, finalStatus, bytes, null, null);
+        if ("cancelled".equals(finalStatus)) {
+            discardArtifacts(job);
+            bytes = 0;
+        }
+        DownloadTaskStore.update(getApplicationContext(), jobId, "model", job.optString("repository", "本地模型"), finalStatus, bytes, job.optLong("bytesTotal", 0), 0, null);
+        DownloadNotifications.cancel(getApplicationContext(), jobId);
         return Result.success();
+    }
+
+    private void discardArtifacts(JSONObject job) throws Exception {
+        File directory = store.modelDirectory(job);
+        JSONArray artifacts = job.optJSONArray("artifacts");
+        if (artifacts == null) return;
+        for (int index = 0; index < artifacts.length(); index++) {
+            JSONObject artifact = artifacts.optJSONObject(index);
+            if (artifact == null) continue;
+            DownloadTransfer.discard(ModelDownloadPolicy.resolveArtifact(directory, artifact.optString("path")));
+            artifact.put("completedBytes", 0);
+        }
+        job.put("bytesDownloaded", 0).put("status", "cancelled").put("updatedAt", System.currentTimeMillis());
+        store.save(job);
     }
 
     private long currentDownloaded(String jobId) {

@@ -103,6 +103,12 @@
                 android:value="User-requested local builds and development servers" />
         </service>
 
+        <service
+            android:name=".model.LocalInferenceService"
+            android:exported="false"
+            android:process=":local_model"
+            android:stopWithTask="false" />
+
         <meta-data
             android:name="io.github.yachiyoclaw.AUTHOR"
             android:value="NewDreamStudio" />

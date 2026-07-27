@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import { WorkspaceAgentPlanSchema, type WorkspaceRoot } from '@shared/agent/workspace'
 import { requestAgentApproval } from '@/mobile/agent-approval'
 import { createWorkspaceAgent } from '@/mobile/workspace-agent'
@@ -66,6 +67,7 @@ export function createWorkspaceAgentToolSet(sessionId?: string) {
     adapter,
     approve: ({ action, detail }) =>
       requestAgentApproval({
+        principal: CORE_AGENT_PRINCIPAL,
         sessionId,
         title: `工作区${action === 'command' ? '命令' : '修改'}`,
         detail,
@@ -103,5 +105,3 @@ export function createWorkspaceAgentToolSet(sessionId?: string) {
     },
   }
 }
-
-export default createWorkspaceAgentToolSet()

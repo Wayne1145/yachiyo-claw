@@ -47,5 +47,3 @@ export function createLongTermMemoryToolSet(sessionId?: string) {
     },
   }
 }
-
-export default createLongTermMemoryToolSet()

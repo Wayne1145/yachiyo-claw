@@ -1,4 +1,5 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 import type {
   ScheduleBeginForegroundInput,
   ScheduleOutboxEvent,
@@ -72,7 +73,10 @@ interface YachiyoSchedulerPlugin {
 
 export type YachiyoSchedulerUpsertResult = ScheduleUpsertResult
 
-export const yachiyoSchedulerNative = registerPlugin<YachiyoSchedulerPlugin>('YachiyoScheduler')
+export const yachiyoSchedulerNative = createFeatureGatedPlugin(
+  'tasks',
+  registerPlugin<YachiyoSchedulerPlugin>('YachiyoScheduler'),
+)
 
 export function listNativeSchedules(): Promise<SchedulerListResult> {
   return yachiyoSchedulerNative.list()

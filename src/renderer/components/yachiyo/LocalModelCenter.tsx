@@ -20,8 +20,7 @@ import type {
   ModelCatalogSource,
   RemoteModel,
 } from '@shared/models/model-catalog'
-import { providerCapabilitiesForLocalRuntime } from '@shared/models/local-capabilities'
-import { ModelProviderEnum, type ProviderModelInfo } from '@shared/types'
+import { ModelProviderEnum } from '@shared/types'
 import {
   IconArrowLeft,
   IconCheck,
@@ -36,6 +35,7 @@ import {
 } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type DownloadSample, updateDownloadEstimate } from '@/mobile/model-download-metrics'
+import { reconcileInstalledLocalModels } from '@/mobile/local-model-provider-sync'
 import {
   buildSelectedLocalModel,
   listRunnableLocalModelArtifacts,
@@ -50,6 +50,7 @@ import {
   yachiyoModelManagerNative,
 } from '@/platform/native/yachiyo_model_manager'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
+import { router } from '@/router'
 import './local-model-center.css'
 
 type SourceFilter = 'all' | ModelCatalogSource
@@ -186,23 +187,15 @@ export function LocalModelCenter() {
   }, [refreshJobs])
 
   useEffect(() => {
-    const completed = jobs.filter((job) => job.status === 'completed')
     const current = providers?.[ModelProviderEnum.Local]?.models || []
-    const additions: ProviderModelInfo[] = completed
-      .filter((job) => !current.some((model) => model.modelId === job.modelId))
-      .map((job) => ({
-        modelId: job.modelId,
-        nickname: job.repository.split('/').at(-1) || job.repository,
-        type: job.artifacts.some((artifact) => artifact.format === 'tflite') ? 'embedding' : 'chat',
-        capabilities: providerCapabilitiesForLocalRuntime(job.runtimeCapabilities),
-      }))
-    if (!additions.length) return
+    const reconciled = reconcileInstalledLocalModels(current, jobs)
+    if (JSON.stringify(reconciled) === JSON.stringify(current)) return
     void persistSettingsPatch({
       providers: {
         ...(providers || {}),
         [ModelProviderEnum.Local]: {
           ...(providers?.[ModelProviderEnum.Local] || {}),
-          models: [...current, ...additions],
+          models: reconciled,
         },
       },
     })
@@ -354,7 +347,7 @@ export function LocalModelCenter() {
         allowIncompatible: false,
       })
       await refreshJobs()
-      setDownloadQueueOpened(true)
+      void router.navigate({ to: '/settings/downloads' })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '无法创建下载任务')
     }
@@ -402,7 +395,7 @@ export function LocalModelCenter() {
             radius="xl"
             variant="default"
             aria-label="打开下载队列"
-            onClick={() => setDownloadQueueOpened(true)}
+            onClick={() => void router.navigate({ to: '/settings/downloads' })}
           >
             <IconDownload size={21} />
             {activeDownloadCount > 0 && (
@@ -432,7 +425,7 @@ export function LocalModelCenter() {
             <Text size="sm" c="dimmed">
               从模型社区选择 GGUF、LiteRT-LM 或嵌入模型并完成下载。
             </Text>
-            <Button radius="xl" color="pink" onClick={() => setView('community')}>
+            <Button radius="xl" color="chatbox-brand" onClick={() => setView('community')}>
               浏览模型社区
             </Button>
           </section>
@@ -461,7 +454,7 @@ export function LocalModelCenter() {
                       </Text>
                     </div>
                     <Group gap={6}>
-                      {isDefault && <Badge color="pink" variant="light">默认</Badge>}
+                      {isDefault && <Badge color="chatbox-brand" variant="light">默认</Badge>}
                       <Badge
                         color={health?.status === 'supported' ? 'green' : health?.status === 'warning' ? 'yellow' : health?.status === 'unsupported' ? 'red' : 'gray'}
                         variant="light"
@@ -492,7 +485,7 @@ export function LocalModelCenter() {
                       <Button
                         size="compact-sm"
                         radius="xl"
-                        color="pink"
+                        color="chatbox-brand"
                         variant={isDefault ? 'light' : 'filled'}
                         disabled={isDefault || health?.status === 'unsupported'}
                         onClick={() => void setInstalledAsDefault(job.modelId)}
@@ -550,7 +543,7 @@ export function LocalModelCenter() {
               </Text>
             </div>
           </Group>
-          <Badge color={activeDownloadCount ? 'pink' : 'gray'} variant="light" radius="xl">
+          <Badge color={activeDownloadCount ? 'chatbox-brand' : 'gray'} variant="light" radius="xl">
             {activeDownloadCount ? `${activeDownloadCount} 个正在下载` : '当前无下载'}
           </Badge>
         </header>
@@ -595,7 +588,7 @@ export function LocalModelCenter() {
                               ? 'yellow'
                               : job.status === 'cancelled'
                                 ? 'gray'
-                                : 'pink'
+                                : 'chatbox-brand'
                       }
                       variant="light"
                       radius="xl"
@@ -605,7 +598,7 @@ export function LocalModelCenter() {
                   </div>
                   <Progress
                     value={progress}
-                    color={job.status === 'failed' ? 'red' : job.status === 'completed' ? 'green' : 'pink'}
+                    color={job.status === 'failed' ? 'red' : job.status === 'completed' ? 'green' : 'chatbox-brand'}
                     radius="xl"
                     animated={job.status === 'downloading'}
                   />
@@ -712,7 +705,7 @@ export function LocalModelCenter() {
           </div>
         </Group>
         {detailLoading ? (
-          <Loader color="pink" className="local-model-loader" />
+          <Loader color="chatbox-brand" className="local-model-loader" />
         ) : (
           <Stack gap="md">
             <section className="local-model-summary-grid">
@@ -808,7 +801,7 @@ export function LocalModelCenter() {
                   </Text>
                   <Text size="sm">{progress.toFixed(1)}%</Text>
                 </Group>
-                <Progress value={progress} color="pink" radius="xl" animated={activeJob.status === 'downloading'} />
+                <Progress value={progress} color="chatbox-brand" radius="xl" animated={activeJob.status === 'downloading'} />
                 <Text size="xs" c="dimmed">
                   {formatBytes(activeJob.bytesDownloaded)} / {formatBytes(activeJob.bytesTotal)}
                 </Text>
@@ -842,7 +835,7 @@ export function LocalModelCenter() {
                 {artifact?.format !== 'tflite' && (
                   <Button
                     radius="xl"
-                    color="pink"
+                    color="chatbox-brand"
                     leftSection={<IconCheck size={18} />}
                     onClick={() => void setAsDefault()}
                   >
@@ -863,7 +856,7 @@ export function LocalModelCenter() {
             ) : (
               <Button
                 radius="xl"
-                color="pink"
+                color="chatbox-brand"
                 size="md"
                 leftSection={<IconDownload size={19} />}
                 disabled={
@@ -901,7 +894,7 @@ export function LocalModelCenter() {
           radius="xl"
           variant="default"
           aria-label="打开下载队列"
-          onClick={() => setDownloadQueueOpened(true)}
+          onClick={() => void router.navigate({ to: '/settings/downloads' })}
         >
           <IconDownload size={21} />
           {activeDownloadCount > 0 && (
@@ -931,7 +924,7 @@ export function LocalModelCenter() {
           radius="xl"
           size="md"
         />
-        <Button radius="xl" color="pink" onClick={() => void search()} loading={loading}>
+        <Button radius="xl" color="chatbox-brand" onClick={() => void search()} loading={loading}>
           搜索
         </Button>
       </div>
@@ -976,7 +969,7 @@ export function LocalModelCenter() {
                     {formatParameters(model.parameterCount)}
                   </Badge>
                   {model.formats.slice(0, 2).map((format) => (
-                    <Badge key={format} size="xs" variant="light" color={format === 'litertlm' ? 'pink' : 'gray'}>
+                    <Badge key={format} size="xs" variant="light" color={format === 'litertlm' ? 'chatbox-brand' : 'gray'}>
                       {format}
                     </Badge>
                   ))}
@@ -996,7 +989,7 @@ export function LocalModelCenter() {
             </button>
           )
         })}
-        {loading && <Loader color="pink" className="local-model-loader" />}
+        {loading && <Loader color="chatbox-brand" className="local-model-loader" />}
       </div>
     </main>
   )

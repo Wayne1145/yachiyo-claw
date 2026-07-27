@@ -1,4 +1,5 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 export interface NativeSpeechRecognitionStatus {
   recognitionAvailable: boolean
@@ -44,4 +45,7 @@ interface YachiyoVoicePlugin {
   ): Promise<PluginListenerHandle>
 }
 
-export const yachiyoVoiceNative = registerPlugin<YachiyoVoicePlugin>('YachiyoVoice')
+export const yachiyoVoiceNative = createFeatureGatedPlugin(
+  'speech',
+  registerPlugin<YachiyoVoicePlugin>('YachiyoVoice'),
+)

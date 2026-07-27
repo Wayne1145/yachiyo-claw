@@ -12,6 +12,8 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.Proxy;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.StandardCopyOption;
@@ -22,6 +24,10 @@ import java.util.List;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin;
+import io.github.yachiyoclaw.download.DownloadTransfer;
+import io.github.yachiyoclaw.download.DownloadTaskStore;
+import io.github.yachiyoclaw.download.DownloadNotifications;
 
 final class AlpineSandboxInstaller {
     interface ProgressListener {
@@ -65,12 +71,12 @@ final class AlpineSandboxInstaller {
             return;
         }
         if (!sandboxDirectory.exists() && !sandboxDirectory.mkdirs()) throw new IOException("sandbox_storage_unavailable");
-        File archive = new File(context.getCacheDir(), "alpine-" + distribution.alpineArch() + ".tar.gz.partial");
+        File archive = YachiyoSandboxDownloadWorker.archiveFile(context, distribution);
         File staging = new File(sandboxDirectory, "rootfs.installing");
         deleteRecursively(staging);
         if (!staging.mkdirs()) throw new IOException("sandbox_staging_unavailable");
         try {
-            download(archive, listener);
+            archive = YachiyoSandboxDownloadWorker.await(context, distribution, listener);
             listener.onProgress("extracting", 0, 0, 0);
             extract(archive, staging, listener);
             File marker = new File(staging, readyMarker.getName());
@@ -81,9 +87,8 @@ final class AlpineSandboxInstaller {
         } catch (Exception error) {
             deleteRecursively(staging);
             throw error;
-        } finally {
-            Files.deleteIfExists(archive.toPath());
         }
+        Files.deleteIfExists(archive.toPath());
     }
 
     private void prepareRuntimeFiles() throws Exception {
@@ -103,57 +108,6 @@ final class AlpineSandboxInstaller {
         }
         Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
         Os.chmod(talloc.getAbsolutePath(), 0400);
-    }
-
-    private void download(File archive, ProgressListener listener) throws Exception {
-        URL current = new URI(distribution.url()).toURL();
-        for (int redirects = 0; redirects <= 4; redirects++) {
-            requireAllowedUrl(current);
-            HttpURLConnection connection = (HttpURLConnection) current.openConnection();
-            connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(20_000);
-            connection.setReadTimeout(30_000);
-            connection.setRequestProperty("User-Agent", "Yachiyo-Claw-Android-Sandbox");
-            int status = connection.getResponseCode();
-            if (status >= 300 && status < 400) {
-                String location = connection.getHeaderField("Location");
-                connection.disconnect();
-                if (location == null) throw new IOException("sandbox_redirect_invalid");
-                current = new URI(current.toString()).resolve(location).toURL();
-                continue;
-            }
-            if (status != HttpURLConnection.HTTP_OK) {
-                connection.disconnect();
-                throw new IOException("sandbox_download_http_" + status);
-            }
-            long declared = connection.getContentLengthLong();
-            if (declared > SandboxDistribution.MAX_ARCHIVE_BYTES || (declared > 0 && declared != distribution.size())) {
-                connection.disconnect();
-                throw new IOException("sandbox_archive_size_invalid");
-            }
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            long transferred = 0;
-            try (InputStream input = new DigestInputStream(new BufferedInputStream(connection.getInputStream()), digest);
-                 FileOutputStream rawOutput = new FileOutputStream(archive);
-                 BufferedOutputStream output = new BufferedOutputStream(rawOutput)) {
-                byte[] buffer = new byte[64 * 1024];
-                int read;
-                while ((read = input.read(buffer)) != -1) {
-                    transferred += read;
-                    if (transferred > SandboxDistribution.MAX_ARCHIVE_BYTES) throw new IOException("sandbox_archive_too_large");
-                    output.write(buffer, 0, read);
-                    listener.onProgress("downloading", (int) Math.min(99, transferred * 100 / distribution.size()), transferred, distribution.size());
-                }
-                output.flush();
-                rawOutput.getFD().sync();
-            } finally {
-                connection.disconnect();
-            }
-            if (transferred != distribution.size()) throw new IOException("sandbox_archive_size_invalid");
-            if (!hex(digest.digest()).equals(distribution.sha256())) throw new IOException("sandbox_archive_digest_mismatch");
-            return;
-        }
-        throw new IOException("sandbox_redirect_limit");
     }
 
     private void extract(File archive, File destination, ProgressListener listener) throws Exception {
@@ -240,12 +194,6 @@ final class AlpineSandboxInstaller {
             if (!resolved.equals(root) && !resolved.getPath().startsWith(root.getPath() + File.separator)) {
                 throw new IllegalArgumentException("sandbox_archive_link_escape");
             }
-        }
-    }
-
-    private static void requireAllowedUrl(URL url) {
-        if (!"https".equalsIgnoreCase(url.getProtocol()) || !"dl-cdn.alpinelinux.org".equalsIgnoreCase(url.getHost()) || url.getUserInfo() != null) {
-            throw new IllegalArgumentException("sandbox_download_url_rejected");
         }
     }
 

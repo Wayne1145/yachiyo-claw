@@ -6,6 +6,10 @@ const componentSource = fs.readFileSync(path.join(__dirname, 'AgentSessionContro
 const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'), 'utf8')
 
 describe('AgentSessionControls UI contract', () => {
+  it('does not turn a per-session phone toggle into the global shell full-access grant', () => {
+    expect(componentSource).not.toContain('setAgentFullAccessEnabled')
+  })
+
   it('makes the disabled and enabled states visually and semantically distinct', () => {
     expect(componentSource).toContain("enabled ? 'Agent 已启用' : 'Agent 能力未启用'")
     expect(componentSource).toContain("variant={enabled ? 'filled' : 'outline'}")

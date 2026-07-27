@@ -63,10 +63,11 @@ function DeveloperEnvironmentPage() {
   }, [refresh])
 
   useEffect(() => {
-    if (!jobs.some((job) => job.state === 'queued' || job.state === 'running')) return
+    const sandboxInstalling = status?.state === 'installing' || status?.state === 'installing_toolchain'
+    if (!sandboxInstalling && !jobs.some((job) => job.state === 'queued' || job.state === 'running')) return
     const timer = window.setInterval(() => void refresh(), 1_500)
     return () => window.clearInterval(timer)
-  }, [jobs, refresh])
+  }, [jobs, refresh, status?.state])
 
   const install = async () => {
     setBusy('install')
@@ -146,6 +147,14 @@ function DeveloperEnvironmentPage() {
     installing_toolchain: '安装 Python、Node.js 和 Git',
     ready: '开发环境已就绪',
   }
+  const sandboxInstalling = status?.state === 'installing' || status?.state === 'installing_toolchain'
+  const sandboxStatusLabel = status?.toolchainReady
+    ? '可用'
+    : sandboxInstalling
+      ? '正在安装'
+      : status?.installed
+        ? '基础环境已安装'
+        : '未安装'
 
   return (
     <Page title="本地开发环境">
@@ -160,8 +169,8 @@ function DeveloperEnvironmentPage() {
               </div>
             </Group>
             <Group gap="xs">
-              <Badge color={status?.toolchainReady ? 'green' : 'gray'} variant="light" radius="xl">
-                {status?.toolchainReady ? '可用' : '未安装'}
+              <Badge color={status?.toolchainReady ? 'green' : sandboxInstalling ? 'pink' : 'gray'} variant="light" radius="xl">
+                {sandboxStatusLabel}
               </Badge>
               <Button variant="subtle" color="gray" px="xs" aria-label="刷新状态" onClick={() => void refresh()}>
                 <IconRefresh size={18} />
@@ -169,21 +178,38 @@ function DeveloperEnvironmentPage() {
             </Group>
           </Flex>
 
-          {progress && busy === 'install' && (
+          {(progress || sandboxInstalling) && !status?.toolchainReady && (
             <Stack gap={6}>
               <Flex justify="space-between">
-                <Text size="sm" fw={600}>{stageNames[progress.stage] || progress.stage}</Text>
-                {progress.total > 0 && <Text size="xs" c="dimmed">{progress.percent}%</Text>}
+                <Text size="sm" fw={600}>
+                  {progress
+                    ? stageNames[progress.stage] || progress.stage
+                    : status?.state === 'installing_toolchain'
+                      ? stageNames.installing_toolchain
+                      : '恢复安装状态'}
+                </Text>
+                {progress && progress.total > 0 && <Text size="xs" c="dimmed">{progress.percent}%</Text>}
               </Flex>
-              <Progress value={progress.total > 0 ? progress.percent : 100} animated={progress.total <= 0} color="pink" radius="xl" />
+              <Progress
+                value={progress && progress.total > 0 ? progress.percent : 100}
+                animated={!progress || progress.total <= 0}
+                color="chatbox-brand"
+                radius="xl"
+              />
             </Stack>
           )}
 
           {error && <Alert color="red" radius="md">{error}</Alert>}
 
           {!status?.toolchainReady && (
-            <Button color="pink" radius="xl" loading={busy === 'install'} onClick={() => void install()}>
-              安装开发环境
+            <Button
+              color="chatbox-brand"
+              radius="xl"
+              loading={busy === 'install' || sandboxInstalling}
+              disabled={sandboxInstalling || busy !== null}
+              onClick={() => void install()}
+            >
+              {status?.installed ? '继续安装开发工具' : '安装开发环境'}
             </Button>
           )}
 
@@ -209,7 +235,7 @@ function DeveloperEnvironmentPage() {
                   size="xs"
                   radius="xl"
                   variant="light"
-                  color="pink"
+                  color="chatbox-brand"
                   leftSection={<IconDownload size={16} />}
                   loading={busy === 'android-toolchain'}
                   disabled={!status.androidToolchainSupported || busy !== null}
@@ -238,7 +264,7 @@ function DeveloperEnvironmentPage() {
               leftSection={<IconPlayerPlay size={18} />}
               radius="xl"
               variant="light"
-              color="pink"
+              color="chatbox-brand"
               loading={busy === 'run'}
               disabled={!status?.toolchainReady || busy !== null}
               onClick={() => void run()}

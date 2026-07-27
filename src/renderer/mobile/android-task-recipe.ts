@@ -1,4 +1,4 @@
-import { GoalSpecSchema } from '@shared/agent'
+import { CORE_AGENT_PRINCIPAL, GoalSpecSchema } from '@shared/agent'
 import { requestAgentApproval } from './agent-approval'
 import { getAgentBackend } from './agent-broker'
 import { createDefaultRecipeHost, tryRunStoredAndroidRecipe, type RecipeRunResult } from './android-recipes'
@@ -32,6 +32,7 @@ export async function tryRunLocalAndroidRecipe(taskId: string, content: string):
     host: createDefaultRecipeHost(),
     confirm: (recipe) =>
       requestAgentApproval({
+        principal: CORE_AGENT_PRINCIPAL,
         sessionId: taskId,
         title: '运行本地 Android 流程',
         detail: recipe.id,
@@ -49,4 +50,3 @@ export async function tryRunLocalAndroidRecipe(taskId: string, content: string):
   }
   return { handled: true, result, message: `本地流程未完成：${result.summary}` }
 }
-

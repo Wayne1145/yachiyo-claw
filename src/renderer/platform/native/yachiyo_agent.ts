@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 export interface RootCommandResult {
   stdout: string
@@ -37,7 +38,10 @@ interface YachiyoAgentNativePlugin {
   pickWorkingDirectory(): Promise<WorkingDirectoryResult>
 }
 
-const nativeAgent = registerPlugin<YachiyoAgentNativePlugin>('YachiyoAgent')
+const nativeAgent = createFeatureGatedPlugin(
+  'android-device',
+  registerPlugin<YachiyoAgentNativePlugin>('YachiyoAgent'),
+)
 
 export const yachiyoAgentNative = {
   checkRoot: () => nativeAgent.checkRoot(),

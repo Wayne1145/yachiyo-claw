@@ -33,7 +33,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 角色卡支持头像、Soul 人格、用户画像、记忆、默认 LLM、TTS 和 Live2D 模型。
 - 独立本地模型中心可同时搜索 Hugging Face 与魔搭社区（ModelScope），按行展示模型，并提供详情、文件格式、参数、量化、许可证和基于设备 RAM/存储/ABI 的兼容性估算。
 - 模型文件下载到应用私有目录，支持空间限制、断点续传、暂停/恢复/取消、SHA-256 校验和下载状态持久化。
-- 本地模型页右上角提供独立下载队列；离开页面或通知消失后仍可查看任务状态、下载速度、预计剩余时间、已下载/总大小与失败原因，并可继续、取消或删除任务。
+- 本地模型页的下载入口统一跳转到设置中的下载管理；离开来源页面或通知消失后仍可查看任务状态、下载速度、预计剩余时间、已下载/总大小与失败原因，并可继续、取消或删除任务。
 - Android 原生接入 LiteRT-LM 与 llama.cpp，可分别加载 `.litertlm` 和单文件/完整分片的 `.gguf` 对话模型；接入 MediaPipe Text Embedder，可使用已下载的 `.tflite` 模型生成本地文本向量。
 
 ### 本地知识库与 Vibe Coding
@@ -60,6 +60,12 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - Soul 按角色保存；用户画像与长期记忆由普通聊天和 Agent 共享，并可从主设置页直接编辑。
 - Skills 页面直接展示 SkillHub 热门列表与搜索结果；Android 可从仓库地址、GitHub URL 或 `skills.sh` 技能链接定位并安装真实的 `SKILL.md` 目录。
 
+### 扩展与主题
+
+- 声明式主题中心支持粘贴 JSON、选择文件或公开 HTTPS 导入，可临时预览、安装、切换和删除；主题只能覆盖受支持的颜色 token，不能运行代码。
+- 第三方插件的 manifest、签名市场、安装事务、能力模型、声明式 UI、Host API 和隔离测试代码已进入开发者预览。
+- `v0.0.11` 的 Android 插件入口默认隐藏：当前目标 WebView 中 opaque sandbox iframe 可以运行引导脚本，但其中的 Blob Worker 无法可靠启动并触发 `load_timeout`。第三方插件运行时不作为本版本可用功能，待替代执行容器完成实机矩阵后再开放。
+
 ### Live2D 实时交互
 
 - 独立“交互式”页面，可继承任意聊天上下文并切换聊天或 Agent 模式。
@@ -77,19 +83,24 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 定时任务通过 Room、WorkManager 和开机/应用升级恢复接收器持久化并可靠唤醒；当前仍由前台应用接续实际模型与工具执行。
 - API Key、登录令牌及敏感设置使用 Android Keystore 支持的加密存储。
 - 可在启动时检查本项目的 GitHub Release；Android 更新器将 APK 下载到应用私有缓存，验证 HTTPS 来源、SHA-256 与包名后交给系统安装器，并支持未知来源安装权限引导。
+- 模型、更新、Linux 环境、插件/Skills 包体、远程主题和应用资源共用设置中的下载管理，支持 1-64 个分段、断点续传、代理、仅 Wi-Fi、独立通知和进程重建后的调度恢复。
 - Android CI 包含 TypeScript 检查、基础测试、原生日志隐私检查、Gradle 单测和 Debug APK 构建。
 
 ## 尚未完成与已知边界
 
 - LiteRT-LM、llama.cpp 与 MediaPipe 的下载、加载和调用链路已经接通，但尚未对不同厂商 SoC、1B-4B 真实权重的首 token 延迟、持续生成速度、内存峰值、温升和长会话稳定性完成系统性能验证；兼容性估算不等同于运行保证。
-- GGUF 当前为 CPU 推理并在生成完成后一次性返回文本，尚未提供逐 token 流式事件和本地 Agent 工具调用；本地 embedding 仍仅面向 MediaPipe Text Embedder 兼容的 `.tflite` 模型。
+- GGUF 当前为 CPU 推理并在生成完成后一次性返回文本；本地 Agent 工具调用依赖模型稳定遵循受限结构化协议，尚未提供逐 token 原生流式工具事件。本地 embedding 仍仅面向 MediaPipe Text Embedder 兼容的 `.tflite` 模型。
 - 模型仓库中的权重、Tokenizer、配置和衍生内容继续受各自许可证、访问限制及使用条款约束。下载或运行前由用户确认相关许可证，Yachiyo Claw 的 GPLv3 不会覆盖第三方模型权重。
 - PRoot 沙箱尚未提供内核级隔离；Skill 脚本已统一进入该沙箱，但复杂 Python/Node 依赖仍由具体 Skill 或项目自行安装和管理。
 - WorkManager 已提供持久化唤醒和恢复，但应用进程不存在时的完整无界面 Agent 推理与工具执行尚未实现。
 - 应用内更新代码和自动化验证已完成，仍需用正式同签名 APK 完成从已发布版本升级、拒绝篡改包以及 Android 11/13/15-16 设备矩阵验收。
-- 更完整的设备工具、长期记忆检索、Skill 市场和 MCP 移动端管理体验仍在继续完善。
+- Android 第三方插件运行时因目标 WebView 中 Blob Worker 启动超时而默认隐藏；插件 SDK 和平台代码仅供开发/审计，不代表本版本 APK 能运行第三方插件。
+- Skill 更新目前只检查远端 revision 并提示，不会静默替换安装内容；更完整的设备工具、长期记忆检索和 MCP 移动端管理体验仍在继续完善。
 
 开发计划与验收条件见 [ROADMAP](docs/ROADMAP.md)，权限和执行边界见 [SECURITY_MODEL](docs/SECURITY_MODEL.md)。
+使用与发布资料见 [统一下载管理](docs/downloads.md)、[主题](docs/themes.md)、[Skills](docs/skills.md)、
+[插件开发者预览](docs/plugins/README.md)、[隐私说明](PRIVACY.md)、[安全政策](SECURITY.md) 和
+[v0.0.11 发布说明](docs/releases/v0.0.11.md)。
 
 ## Agent 执行结构
 
@@ -202,16 +213,16 @@ Yachiyo Claw 是独立的开源项目，与影片制作方、发行方、Netflix
 
 ## License
 
-本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款。
+本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0-only](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## v0.0.10
+## v0.0.11
 
-- Local GGUF and LiteRT-LM chat models can request allowlisted Agent tools. Calls are schema-validated and continue through the shared Tool Broker; the native runtime never executes model-authored commands directly.
-- Interrupted Agent runs retain checkpoints, completed tool-step state, drafts, and pending approvals. Persistent sandbox commands are owned by a foreground service rather than the WebView lifecycle.
-- Vibe Coding includes SAF workspace import/export, write-back, ZIP sharing, localhost preview, explicit deployment commands, and a controlled WebView browser Skill. It is not a bundled Playwright Chromium binary.
-- The optional Android SDK/Gradle installation job uses Google command-line tools on x86_64 and a pinned, verified AAPT2 compatibility override on ARM64.
-- The interactive header has six responsive grid slots, preventing mode controls from being hidden at 1440x3200 portrait viewport sizes.
+- 软件更新、本地模型、Linux 环境、Skills、远程主题和应用资源包体进入统一的原生持久下载管理。
+- 新增声明式主题中心，并补全 SkillHub/GitHub Skills 的发现、下载恢复和真实更新检查。
+- 内置能力迁移到类型化 Feature 注册表；插件 manifest、签名市场、权限与隔离平台作为开发者预览保留。
+- Android 第三方插件入口在本版本默认隐藏，因为目标 WebView 的隔离 Worker 仍存在实机 `load_timeout`，不会把未可靠运行的能力作为已发布功能开放。
+- 更新弹窗显示 GitHub Release 日志，下载关闭弹窗后继续，完成后恢复安装提示。
 
-Known constraints: GGUF remains CPU inference and the local tool protocol relies on models following the documented structured call format. A full Snapdragon/Dimensity performance matrix, GGUF multimodal projector support, and a bundled Android Playwright runtime remain future work.
+完整变化、边界和发布门禁见 [v0.0.11 发布说明](docs/releases/v0.0.11.md)。
 
 Copyright (c) NewDreamStudio and contributors.

@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 export interface ExternalWorkspaceInfo {
   available?: boolean
@@ -49,7 +50,10 @@ interface YachiyoWorkspaceNative {
   browserScreenshot(): Promise<BrowserOperationResult>
 }
 
-export const yachiyoWorkspaceNative = registerPlugin<YachiyoWorkspaceNative>('YachiyoWorkspace')
+export const yachiyoWorkspaceNative = createFeatureGatedPlugin(
+  'workspace',
+  registerPlugin<YachiyoWorkspaceNative>('YachiyoWorkspace'),
+)
 
 export function parseBrowserEvaluation(value?: string): unknown {
   if (!value) return null

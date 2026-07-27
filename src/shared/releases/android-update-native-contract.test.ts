@@ -47,11 +47,16 @@ describe('Android in-app update native contract', () => {
       'android/app/src/main/java/io/github/yachiyoclaw/update/YachiyoUpdatePlugin.java',
       'utf8'
     )
+    const verifier = readFileSync(
+      'android/app/src/main/java/io/github/yachiyoclaw/update/UpdatePackageVerifier.java',
+      'utf8'
+    )
     expect(activity).toContain('registerPlugin(YachiyoUpdatePlugin.class)')
     expect(plugin).toContain('Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES')
     expect(plugin).toContain('new Intent(Intent.ACTION_VIEW)')
     expect(plugin).toContain('FileProvider.getUriForFile')
-    expect(plugin).toContain('PackageManager.GET_SIGNING_CERTIFICATES')
+    expect(plugin).toContain('UpdatePackageVerifier.requireTrusted')
+    expect(verifier).toContain('PackageManager.GET_SIGNING_CERTIFICATES')
   })
 
   it('allows WorkManager to run model downloads as data-sync foreground work', () => {

@@ -7,7 +7,6 @@ import {
   getAgentBackend,
   getCachedRootCapability,
   getRootCapability,
-  setAgentFullAccessEnabled,
   setAgentBackend,
 } from '@/mobile/agent-broker'
 import { type AgentApprovalMode, getAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
@@ -141,7 +140,6 @@ export function AgentSessionControls({
   const save = async () => {
     setSaving(true)
     try {
-      setAgentFullAccessEnabled(deviceControlEnabled)
       const next = saveAgentSessionConfig(sessionId, {
         backend,
         deviceControlEnabled,
@@ -302,7 +300,7 @@ export function AgentSessionControls({
         size="lg"
       >
         <Stack gap="md">
-          <Alert color="pink" title="此权限仅用于操作手机">
+          <Alert color="chatbox-brand" title="此权限仅用于操作手机">
             内部 Linux 沙箱、Skills、MCP 和文件工具不需要 Root、Shizuku 或无障碍权限。
           </Alert>
           <section className="yachiyo-agent-config-panel">

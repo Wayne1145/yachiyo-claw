@@ -24,7 +24,8 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final String ENVELOPE_PREFIX = "yachiyo-secure-storage:";
     private static final String ENVELOPE_ALGORITHM = "AES-256-GCM";
-    private static final int ENVELOPE_VERSION = 1;
+    private static final int LEGACY_ENVELOPE_VERSION = 1;
+    private static final int CONTEXT_BOUND_ENVELOPE_VERSION = 2;
     private static final int GCM_TAG_BITS = 128;
     private static final int GCM_IV_BYTES = 12;
     private static final byte[] SETTINGS_AAD = "io.github.yachiyoclaw/settings/v1".getBytes(StandardCharsets.UTF_8);
@@ -38,6 +39,7 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
         }
 
         try {
+            String protectionContext = normalizeProtectionContext(call.getString("protectionContext"));
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             // AndroidKeyStore creates a fresh random nonce. GCM on Android uses the required 96-bit IV.
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
@@ -45,11 +47,14 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
             if (iv == null || iv.length != GCM_IV_BYTES) {
                 throw new IllegalStateException("Unexpected GCM IV length");
             }
-            cipher.updateAAD(SETTINGS_AAD);
+            cipher.updateAAD(aadForContext(protectionContext));
             byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
 
             JSONObject payload = new JSONObject();
-            payload.put("version", ENVELOPE_VERSION);
+            payload.put(
+                "version",
+                protectionContext == null ? LEGACY_ENVELOPE_VERSION : CONTEXT_BOUND_ENVELOPE_VERSION
+            );
             payload.put("algorithm", ENVELOPE_ALGORITHM);
             payload.put("iv", Base64.encodeToString(iv, Base64.NO_WRAP));
             payload.put("ciphertext", Base64.encodeToString(ciphertext, Base64.NO_WRAP));
@@ -73,6 +78,18 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
 
         try {
             JSONObject payload = parseEnvelope(envelope);
+            int version = payload.getInt("version");
+            String protectionContext = normalizeProtectionContext(call.getString("protectionContext"));
+            if (version == CONTEXT_BOUND_ENVELOPE_VERSION && protectionContext == null) {
+                throw new IllegalArgumentException("Protection context is required");
+            }
+            if (
+                version == LEGACY_ENVELOPE_VERSION &&
+                protectionContext != null &&
+                !call.getBoolean("allowLegacyContextless", false)
+            ) {
+                throw new IllegalArgumentException("Legacy contextless envelope is not allowed");
+            }
             byte[] iv = Base64.decode(payload.getString("iv"), Base64.NO_WRAP);
             byte[] ciphertext = Base64.decode(payload.getString("ciphertext"), Base64.NO_WRAP);
             if (iv.length != GCM_IV_BYTES || ciphertext.length < GCM_TAG_BITS / Byte.SIZE) {
@@ -81,7 +98,9 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
 
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
-            cipher.updateAAD(SETTINGS_AAD);
+            cipher.updateAAD(
+                version == CONTEXT_BOUND_ENVELOPE_VERSION ? aadForContext(protectionContext) : SETTINGS_AAD
+            );
             byte[] plaintext = cipher.doFinal(ciphertext);
 
             JSObject result = new JSObject();
@@ -99,7 +118,8 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
 
         JSONObject payload = new JSONObject(envelope.substring(ENVELOPE_PREFIX.length()));
         if (
-            payload.getInt("version") != ENVELOPE_VERSION ||
+            (payload.getInt("version") != LEGACY_ENVELOPE_VERSION &&
+                payload.getInt("version") != CONTEXT_BOUND_ENVELOPE_VERSION) ||
             !ENVELOPE_ALGORITHM.equals(payload.getString("algorithm")) ||
             !payload.has("iv") ||
             !payload.has("ciphertext")
@@ -107,6 +127,21 @@ public final class YachiyoSecureStoragePlugin extends Plugin {
             throw new IllegalArgumentException("Unsupported encrypted envelope");
         }
         return payload;
+    }
+
+    static String normalizeProtectionContext(String value) {
+        if (value == null || value.isEmpty()) return null;
+        if (value.length() > 768 || !value.matches("[A-Za-z0-9._:/%+-]+")) {
+            throw new IllegalArgumentException("Invalid protection context");
+        }
+        return value;
+    }
+
+    static byte[] aadForContext(String protectionContext) {
+        if (protectionContext == null) return SETTINGS_AAD;
+        return (
+            "io.github.yachiyoclaw/protected/v2/" + protectionContext
+        ).getBytes(StandardCharsets.UTF_8);
     }
 
     private static synchronized SecretKey getOrCreateKey() throws Exception {

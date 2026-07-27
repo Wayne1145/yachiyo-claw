@@ -1,6 +1,9 @@
 import { t } from 'i18next'
+import { getRegisteredToolDisplay } from '@/features/toolset-registry'
 
 export function getToolName(toolName: string): string {
+  const registered = getRegisteredToolDisplay(toolName)
+  if (registered) return registered.label
   // Use translation keys that i18next cli can detect
   const toolNames: Record<string, string> = {
     query_knowledge_base: t('Query Knowledge Base'),

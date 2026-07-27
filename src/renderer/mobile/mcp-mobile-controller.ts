@@ -6,7 +6,11 @@ import {
   type MCPSecretRefValue,
   validateMobileMCPServerConfig,
 } from '@shared/types/mcp'
-import { decryptMobileProtectedValue, encryptMobileProtectedValue } from '@/platform/native/yachiyo_secure_storage'
+import {
+  decryptMobileProtectedValue,
+  encryptMobileProtectedValue,
+  yachiyoSecureStorageEnvelopeVersion,
+} from '@/platform/native/yachiyo_secure_storage'
 import { McpHttpService } from './mcp-http-service'
 import {
   beginMcpOAuth,
@@ -66,16 +70,21 @@ function getDefaultStorage(): MobileMcpConfigStorage {
 
 function defaultVault(storage: MobileMcpConfigStorage, isNativePlatform: () => boolean): MobileMcpSecretVault {
   const key = (ref: MCPSecretRefValue) => `${SECRET_STORAGE_PREFIX}${ref.id}`
+  const context = (ref: MCPSecretRefValue) => `mcp/secret/v1/${encodeURIComponent(ref.id)}`
   return {
     async set(ref, value) {
       if (!isNativePlatform()) throw new Error('mobile_secure_storage_required')
-      storage.setItem(key(ref), await encryptMobileProtectedValue(value))
+      storage.setItem(key(ref), await encryptMobileProtectedValue(value, context(ref)))
     },
-    get(ref) {
+    async get(ref) {
       const stored = storage.getItem(key(ref))
-      if (!stored) return Promise.resolve(null)
-      if (!isNativePlatform()) return Promise.reject(new Error('mobile_secure_storage_required'))
-      return decryptMobileProtectedValue(stored)
+      if (!stored) return null
+      if (!isNativePlatform()) throw new Error('mobile_secure_storage_required')
+      const plaintext = await decryptMobileProtectedValue(stored, context(ref), { allowLegacyContextless: true })
+      if (yachiyoSecureStorageEnvelopeVersion(stored) === 1) {
+        storage.setItem(key(ref), await encryptMobileProtectedValue(plaintext, context(ref)))
+      }
+      return plaintext
     },
     remove(ref) {
       storage.removeItem(key(ref))

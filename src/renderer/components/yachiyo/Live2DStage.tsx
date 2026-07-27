@@ -360,6 +360,7 @@ export const Live2DStage = forwardRef<
       ref={hostRef}
       className="yachiyo-live2d-stage"
       data-ready={ready && !error ? 'true' : 'false'}
+      data-error={error ? 'true' : 'false'}
       data-speaking={speaking && !muted ? 'true' : 'false'}
     >
       {error && <div className="yachiyo-live2d-error">{error}</div>}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelArtifact } from './model-catalog'
-import { resolveLocalRuntimeCapabilities } from './local-capabilities'
+import { providerCapabilitiesForLocalRuntime, resolveLocalRuntimeCapabilities } from './local-capabilities'
 
 const artifact = (format: ModelArtifact['format']): ModelArtifact => ({
   id: format,
@@ -36,5 +36,13 @@ describe('resolveLocalRuntimeCapabilities', () => {
     const result = resolveLocalRuntimeCapabilities({ capabilities: ['text-to-speech'], tags: [] }, [artifact('litertlm')])
     expect(result.speechOutput).toBe(false)
     expect(result.reasons).toContain('local_speech_decoder_not_bundled')
+  })
+
+  it('marks FunctionGemma artifacts as broker-capable tool models', () => {
+    const functionGemma = { ...artifact('litertlm'), filename: 'functiongemma-mobile-actions.litertlm' }
+    const result = resolveLocalRuntimeCapabilities({ capabilities: [], tags: [] }, [functionGemma])
+
+    expect(result.toolUse).toBe(true)
+    expect(providerCapabilitiesForLocalRuntime(result)).toContain('tool_use')
   })
 })

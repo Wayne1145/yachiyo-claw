@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import {
   type AgentApprovalRequest,
   assessShellRisk,
@@ -70,6 +71,7 @@ describe('Agent session configuration', () => {
       request = next
     })
     const result = requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       sessionId: 'manual-chat',
       title: '点击屏幕',
       detail: '(540, 960)',
@@ -85,6 +87,7 @@ describe('Agent session configuration', () => {
     saveAgentSessionConfig('smart-chat', { configured: true, approvalMode: 'smart' })
     await expect(
       requestAgentApproval({
+        principal: CORE_AGENT_PRINCIPAL,
         sessionId: 'smart-chat',
         title: '滑动屏幕',
         detail: 'scroll',

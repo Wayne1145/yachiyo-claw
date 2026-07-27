@@ -295,10 +295,13 @@ vi.mock('../platform/storages', () => ({
   },
 }))
 
-vi.mock('../../shared/defaults', () => ({
-  settings: vi.fn(() => ({})),
-  SystemProviders: vi.fn(() => []),
-}))
+vi.mock('../../shared/defaults', async (importOriginal) => {
+  const defaults = await importOriginal<typeof import('../../shared/defaults')>()
+  return {
+    ...defaults,
+    SystemProviders: vi.fn(() => []),
+  }
+})
 
 vi.mock('../lib/utils', () => ({
   getLogger: () => ({

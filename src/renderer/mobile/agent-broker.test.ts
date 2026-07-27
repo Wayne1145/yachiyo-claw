@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import {
   AgentActionAlreadyAppliedError,
   AgentActionRecoveryRequiredError,
@@ -6,10 +7,13 @@ import {
   clearCachedRootCapability,
   executeAgentAction,
   executeRootShell,
+  getAgentBackend,
   getAgentWorkingDirectory,
   getCachedRootCapability,
   isAgentFullAccessEnabled,
+  readAgentAudit,
   setAgentFullAccessEnabled,
+  setAgentBackend,
   setAgentWorkingDirectory,
   verifyAgentAction,
 } from './agent-broker'
@@ -47,12 +51,26 @@ describe('Android Agent Tool Broker', () => {
   it('keeps a successful Root capability across app reload state', () => {
     localStorage.setItem('yachiyo-agent-root-capability-v1', JSON.stringify({ available: true, detail: 'KernelSU' }))
     expect(getCachedRootCapability()).toEqual({ available: true, detail: 'KernelSU' })
+    expect(JSON.parse(localStorage.getItem('yachiyo:android-device:root-capability:v1') || 'null')).toEqual({
+      available: true,
+      detail: 'KernelSU',
+    })
   })
 
   it('persists the explicit full access setting', () => {
     expect(isAgentFullAccessEnabled()).toBe(false)
     setAgentFullAccessEnabled(true)
     expect(isAgentFullAccessEnabled()).toBe(true)
+    expect(localStorage.getItem('yachiyo:android-device:full-access:v1')).toBe('true')
+  })
+
+  it('migrates the legacy backend and writes future choices to the feature namespace', () => {
+    localStorage.setItem('yachiyo-agent-backend-v1', 'shizuku')
+    expect(getAgentBackend()).toBe('shizuku')
+    expect(localStorage.getItem('yachiyo:android-device:backend:v1')).toBe('"shizuku"')
+
+    setAgentBackend('accessibility')
+    expect(getAgentBackend()).toBe('accessibility')
   })
 
   it('denies root commands while full access is disabled', async () => {
@@ -61,10 +79,36 @@ describe('Android Agent Tool Broker', () => {
     expect(result.stderr).toContain('未启用')
   })
 
+  it('rejects a sandboxed feature claiming a privileged device tool and records a denial', async () => {
+    const execute = vi.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 })
+    await expect(
+      executeAgentAction({
+        featureId: 'sandbox',
+        principal: CORE_AGENT_PRINCIPAL,
+        toolId: 'device.shell.exec',
+        backend: 'root',
+        parameters: { command: 'id' },
+        taskId: 'privilege-test',
+        stepId: 'privilege-test',
+        callId: 'privilege-test',
+        execute,
+      }),
+    ).rejects.toThrow('broker_tool_feature_mismatch')
+    expect(execute).not.toHaveBeenCalled()
+    expect(readAgentAudit({ limit: 1 })[0]).toMatchObject({
+      status: 'denied',
+      toolId: 'device.shell.exec',
+      errorCode: 'broker_tool_feature_mismatch',
+    })
+  })
+
   it('persists a selected working directory and keeps the default as fallback', () => {
     expect(getAgentWorkingDirectory()).toBe(ANDROID_AGENT_WORKING_DIRECTORY)
     setAgentWorkingDirectory('/storage/emulated/0/Yachiyo Claw/')
     expect(getAgentWorkingDirectory()).toBe('/storage/emulated/0/Yachiyo Claw')
+    expect(localStorage.getItem('yachiyo:android-device:working-directory:v1')).toBe(
+      '"/storage/emulated/0/Yachiyo Claw"',
+    )
   })
 
   it('rejects non-absolute working directories', () => {
@@ -75,7 +119,9 @@ describe('Android Agent Tool Broker', () => {
     const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
     const execute = vi.fn().mockResolvedValue({ success: true })
     const request = {
-      toolId: 'device.ui.tap',
+      featureId: 'android-device',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'device.ui.tap' as const,
       backend: 'accessibility' as const,
       parameters: { selector: 'follow' },
       taskId: 'task-1',
@@ -100,7 +146,9 @@ describe('Android Agent Tool Broker', () => {
     const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
     const execute = vi.fn().mockResolvedValue({ screenSignature: 'screen-1' })
     const request = {
-      toolId: 'device.screen.observe',
+      featureId: 'android-device',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'device.screen.observe' as const,
       backend: 'accessibility' as const,
       parameters: { semantic: true },
       taskId: 'task-read',
@@ -120,7 +168,9 @@ describe('Android Agent Tool Broker', () => {
     const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
     const execute = vi.fn().mockResolvedValue({ success: true })
     const request = {
-      toolId: 'device.app.launch',
+      featureId: 'android-device',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'device.app.launch' as const,
       backend: 'accessibility' as const,
       parameters: { packageName: 'com.example.app' },
       taskId: 'task-digest',
@@ -151,7 +201,9 @@ describe('Android Agent Tool Broker', () => {
       return { success: true }
     })
     const base = {
-      toolId: 'device.app.launch',
+      featureId: 'android-device',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'device.app.launch' as const,
       backend: 'accessibility' as const,
       parameters: { packageName: 'com.example.concurrent' },
       taskId: 'task-concurrent',
@@ -176,7 +228,9 @@ describe('Android Agent Tool Broker', () => {
     const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
     const execute = vi.fn().mockResolvedValueOnce({ success: false }).mockResolvedValueOnce({ success: true })
     const request = {
-      toolId: 'device.ui.tap',
+      featureId: 'android-device',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'device.ui.tap' as const,
       backend: 'accessibility' as const,
       parameters: { selector: 'follow' },
       taskId: 'task-retry',
@@ -200,7 +254,9 @@ describe('Android Agent Tool Broker', () => {
     const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
     const execute = vi.fn().mockRejectedValue(new Error('transport_lost'))
     const request = {
-      toolId: 'device.app.launch',
+      featureId: 'android-device',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'device.app.launch' as const,
       backend: 'accessibility' as const,
       parameters: { packageName: 'com.example.app' },
       taskId: 'task-2',
@@ -233,7 +289,9 @@ describe('Android Agent Tool Broker', () => {
     const checkpointStore = new AgentCheckpointStore({ storage: new MemoryCheckpointStorage() })
     const execute = vi.fn().mockRejectedValue(new Error('activity_recreated'))
     const request = {
-      toolId: 'sandbox.command.start_background',
+      featureId: 'sandbox',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'sandbox.command.start_background' as const,
       backend: 'sandbox' as const,
       parameters: { command: 'npm run dev' },
       taskId: 'run-1',

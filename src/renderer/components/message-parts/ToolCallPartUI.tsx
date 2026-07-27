@@ -27,6 +27,7 @@ import { ChatboxAIErrorMessage } from '@/components/common/ChatboxAIErrorMessage
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { formatElapsedTime, useThinkingTimer } from '@/hooks/useThinkingTimer'
 import { getToolName } from '@/packages/tools'
+import { getRegisteredToolDisplay } from '@/features/toolset-registry'
 import type { SearchResultItem } from '@/packages/web-search'
 
 // ─── Tool Error Result ──────────────────────────────────────────────
@@ -90,7 +91,7 @@ const toolIconMap: Record<string, React.ElementType> = {
   read_file: IconFile,
 }
 
-const getToolIcon = (toolName: string) => toolIconMap[toolName] || IconCode
+const getToolIcon = (toolName: string) => getRegisteredToolDisplay(toolName)?.icon || toolIconMap[toolName] || IconCode
 
 // ─── Pill Header (shared) ───────────────────────────────────────────
 

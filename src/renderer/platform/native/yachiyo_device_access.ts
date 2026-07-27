@@ -1,4 +1,5 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 import {
   type SemanticBounds,
   SemanticSnapshotSchema,
@@ -89,6 +90,10 @@ export interface AccessibilityActionOptions {
   role?: string
   ancestorSignature?: string
   direction?: 'up' | 'down' | 'left' | 'right' | 'forward' | 'backward'
+  /** Third-party privileged calls must consume the exact native approval binding once. */
+  approvalRequired?: boolean
+  approvalNonce?: string
+  approvalDigest?: string
 }
 
 export interface AccessibilityActionResult {
@@ -198,7 +203,13 @@ interface YachiyoDeviceAccessNativePlugin {
   requestSkillScriptAuthorization(options: NativeSkillScriptOptions): Promise<{ approvalNonce?: string; expiresAt?: number }>
   cancelShizukuScript(options: { executionId: string }): Promise<{ killed: boolean }>
   accessibilityAction(options: AccessibilityActionOptions): Promise<AccessibilityActionResult>
-  launchApp?(options: { packageName: string; activityName?: string }): Promise<AccessibilityActionResult>
+  launchApp?(options: {
+    packageName: string
+    activityName?: string
+    approvalRequired?: boolean
+    approvalNonce?: string
+    approvalDigest?: string
+  }): Promise<AccessibilityActionResult>
   listLaunchableApps(): Promise<LaunchableAppsResult>
   resolveLaunchableApp(options: { query: string }): Promise<ResolveLaunchableAppResult>
   getLauncherContext?(): Promise<LauncherContext>
@@ -209,7 +220,8 @@ interface YachiyoDeviceAccessNativePlugin {
     title: string
     detail: string
     dangerous: boolean
-  }): Promise<{ decision: NativeApprovalDecision }>
+    bindingDigest?: string
+  }): Promise<{ decision: NativeApprovalDecision; approvalNonce?: string; expiresAt?: number }>
   cancelOperationApproval(): Promise<void>
   bringAppToForeground(): Promise<void>
   addListener(eventName: 'overlayStopRequested', listener: () => void): Promise<PluginListenerHandle>
@@ -219,7 +231,10 @@ interface YachiyoDeviceAccessNativePlugin {
   ): Promise<PluginListenerHandle>
 }
 
-const nativeAccess = registerPlugin<YachiyoDeviceAccessNativePlugin>('YachiyoDeviceAccess')
+const nativeAccess = createFeatureGatedPlugin(
+  'android-device',
+  registerPlugin<YachiyoDeviceAccessNativePlugin>('YachiyoDeviceAccess'),
+)
 
 export const yachiyoDeviceAccessNative = {
   getPermissionStatus: () => nativeAccess.getPermissionStatus(),
@@ -234,6 +249,15 @@ export const yachiyoDeviceAccessNative = {
     nativeAccess.launchApp
       ? nativeAccess.launchApp({ packageName, activityName })
       : nativeAccess.accessibilityAction({ action: 'launch', packageName, activityName }),
+  launchAppBound: (options: {
+    packageName: string
+    activityName?: string
+    approvalNonce: string
+    approvalDigest: string
+  }) =>
+    nativeAccess.launchApp
+      ? nativeAccess.launchApp({ ...options, approvalRequired: true })
+      : nativeAccess.accessibilityAction({ action: 'launch', ...options, approvalRequired: true }),
   observeSemantic: () => nativeAccess.accessibilityAction({ action: 'observeSemantic' }),
   findAccessibilityNode: (selector: AccessibilitySelector) =>
     nativeAccess.accessibilityAction({
@@ -286,8 +310,8 @@ export const yachiyoDeviceAccessNative = {
   showOperationOverlay: (text = '') => nativeAccess.showOperationOverlay({ text }),
   updateOperationOverlay: (text: string) => nativeAccess.updateOperationOverlay({ text }),
   hideOperationOverlay: () => nativeAccess.hideOperationOverlay(),
-  requestOperationApproval: (title: string, detail: string, dangerous: boolean) =>
-    nativeAccess.requestOperationApproval({ title, detail, dangerous }),
+  requestOperationApproval: (title: string, detail: string, dangerous: boolean, bindingDigest?: string) =>
+    nativeAccess.requestOperationApproval({ title, detail, dangerous, bindingDigest }),
   cancelOperationApproval: () => nativeAccess.cancelOperationApproval(),
   bringAppToForeground: () => nativeAccess.bringAppToForeground(),
   onOverlayStopRequested: (listener: () => void) => nativeAccess.addListener('overlayStopRequested', listener),

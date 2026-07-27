@@ -9,6 +9,7 @@ import { detectSkillsInRepo } from './github-fetcher'
 import { checkForUpdates, deleteSkill, installSkillFromGitHub, installSkillFromMarketplace } from './installer'
 import { parseSkillFile } from './parser'
 import { isValidSkillName } from './validation'
+import { getBuiltinSkill } from './builtin'
 
 const log = getLogger('skills:ipc-handlers')
 function getSkillsDir(): string {
@@ -34,6 +35,9 @@ export function registerSkillsHandlers() {
       if (!isValidSkillName(name)) {
         return null
       }
+
+      const builtin = getBuiltinSkill(name)
+      if (builtin) return { body: builtin.body, metadata: builtin.metadata }
 
       const skillsDir = getSkillsDir()
       if (!fs.existsSync(skillsDir)) {

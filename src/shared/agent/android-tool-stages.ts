@@ -24,6 +24,9 @@ export const ANDROID_TOOL_STAGE_FALLBACK = [
   'android_companion_action',
 ] as const
 
+/** Large observation payloads that may be pruned once newer observations exist. */
+export const ANDROID_PRUNABLE_TOOL_RESULTS = ['android_observe'] as const
+
 export type AndroidToolStage = 'initial' | 'stable' | 'fallback' | 'complete'
 
 function serializedToolMessages(messages: readonly ModelMessage[]): string {

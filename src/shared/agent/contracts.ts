@@ -6,6 +6,25 @@ export const PARAMETER_DIGEST_ALGORITHM = 'sha256-rfc8785' as const
 export type JsonPrimitive = boolean | number | string | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
+/** Identifies the trusted core or the exact third-party plugin code behind a Broker call. */
+export const AgentPrincipalSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('core') }).strict(),
+  z
+    .object({
+      kind: z.literal('plugin'),
+      pluginId: z
+        .string()
+        .trim()
+        .min(1)
+        .max(100)
+        .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+      entrySha256: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .strict(),
+])
+export type AgentPrincipal = z.infer<typeof AgentPrincipalSchema>
+export const CORE_AGENT_PRINCIPAL: AgentPrincipal = Object.freeze({ kind: 'core' })
+
 /** JSON-only values keep the bridge contract portable between TypeScript and Kotlin. */
 export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([

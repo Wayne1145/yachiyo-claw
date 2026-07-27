@@ -1,5 +1,19 @@
-import { type JsonValue, TOOL_IDS, ToolCallRequestSchema, type ToolId } from '@shared/agent'
+import {
+  AgentPrincipalSchema,
+  CORE_AGENT_PRINCIPAL,
+  type AgentPrincipal,
+  type JsonValue,
+  TOOL_IDS,
+  ToolCallRequestSchema,
+  type ToolId,
+} from '@shared/agent'
 import { type RootCommandResult, yachiyoAgentNative } from '@/platform/native/yachiyo_agent'
+import { createFeatureLocalStore } from '@/features/feature-settings'
+import {
+  type BrokerToolId,
+  registerCompanionBrokerTool,
+  requireBrokerToolAuthorization,
+} from '@/features/broker-tool-registry'
 import {
   type AccessibilityActionOptions,
   type AccessibilityActionResult,
@@ -13,6 +27,7 @@ const AUDIT_KEY = 'yachiyo-agent-audit-v1'
 const WORKING_DIRECTORY_KEY = 'yachiyo-agent-working-directory-v1'
 const BACKEND_KEY = 'yachiyo-agent-backend-v1'
 const ROOT_CAPABILITY_KEY = 'yachiyo-agent-root-capability-v1'
+const agentLocalStore = createFeatureLocalStore('android-device')
 
 export const ANDROID_AGENT_WORKING_DIRECTORY = '/data/local/tmp/yachiyo-agent'
 export type AgentBackend = 'root' | 'shizuku' | 'accessibility'
@@ -25,6 +40,26 @@ export interface RootCapability {
 let rootCapabilityCache: RootCapability | null = null
 let companionRegistry: AndroidCompanionRegistry | null = null
 
+function readMigratedLocalValue<T>(
+  name: string,
+  legacyKey: string,
+  fallback: T,
+  parseLegacy: (raw: string) => T | undefined,
+): T {
+  if (agentLocalStore.has(name)) return agentLocalStore.get(name, fallback)
+  if (typeof localStorage === 'undefined') return fallback
+  try {
+    const raw = localStorage.getItem(legacyKey)
+    if (raw === null) return fallback
+    const parsed = parseLegacy(raw)
+    if (parsed === undefined) return fallback
+    agentLocalStore.set(name, parsed)
+    return parsed
+  } catch {
+    return fallback
+  }
+}
+
 /** Configure the optional companion transport without making it the default backend. */
 export function setAndroidCompanionRegistry(registry: AndroidCompanionRegistry | null): void {
   companionRegistry = registry
@@ -35,36 +70,37 @@ export function getAndroidCompanionRegistry(): AndroidCompanionRegistry | null {
 }
 
 function readPersistedRootCapability(): RootCapability | null {
-  if (typeof localStorage === 'undefined') return null
-  try {
-    const parsed = JSON.parse(localStorage.getItem(ROOT_CAPABILITY_KEY) || 'null') as RootCapability | null
-    return parsed && typeof parsed.available === 'boolean' && typeof parsed.detail === 'string' ? parsed : null
-  } catch {
-    return null
-  }
+  return readMigratedLocalValue('root-capability', ROOT_CAPABILITY_KEY, null, (raw) => {
+    try {
+      const parsed = JSON.parse(raw) as RootCapability | null
+      return parsed && typeof parsed.available === 'boolean' && typeof parsed.detail === 'string' ? parsed : undefined
+    } catch {
+      return undefined
+    }
+  })
 }
 
 function persistRootCapability(capability: RootCapability | null): void {
   rootCapabilityCache = capability
-  if (typeof localStorage === 'undefined') return
-  if (capability) localStorage.setItem(ROOT_CAPABILITY_KEY, JSON.stringify(capability))
-  else localStorage.removeItem(ROOT_CAPABILITY_KEY)
+  if (capability) agentLocalStore.set('root-capability', capability)
+  else agentLocalStore.remove('root-capability')
 }
 
 export function getAgentBackend(): AgentBackend {
-  if (typeof localStorage === 'undefined') return 'root'
-  const backend = localStorage.getItem(BACKEND_KEY)
-  return backend === 'shizuku' || backend === 'accessibility' ? backend : 'root'
+  return readMigratedLocalValue('backend', BACKEND_KEY, 'root' as AgentBackend, (raw) =>
+    raw === 'root' || raw === 'shizuku' || raw === 'accessibility' ? raw : undefined,
+  )
 }
 
 export function setAgentBackend(backend: AgentBackend): void {
-  if (typeof localStorage !== 'undefined') localStorage.setItem(BACKEND_KEY, backend)
+  agentLocalStore.set('backend', backend)
 }
 
 export function getAgentWorkingDirectory(): string {
-  if (typeof localStorage === 'undefined') return ANDROID_AGENT_WORKING_DIRECTORY
-  const stored = localStorage.getItem(WORKING_DIRECTORY_KEY)?.trim()
-  return stored || ANDROID_AGENT_WORKING_DIRECTORY
+  return readMigratedLocalValue('working-directory', WORKING_DIRECTORY_KEY, ANDROID_AGENT_WORKING_DIRECTORY, (raw) => {
+    const value = raw.trim()
+    return value.startsWith('/') && !/[\0\r\n]/.test(value) ? value : undefined
+  })
 }
 
 export function setAgentWorkingDirectory(path: string): void {
@@ -72,37 +108,61 @@ export function setAgentWorkingDirectory(path: string): void {
   if (!normalized.startsWith('/') || /[\0\r\n]/.test(normalized)) {
     throw new Error('invalid_working_directory')
   }
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(WORKING_DIRECTORY_KEY, normalized)
-  }
+  agentLocalStore.set('working-directory', normalized)
 }
 
-interface AgentAuditEntry {
+export interface AgentAuditEntry {
   at: number
   callId: string
   toolId: string
-  status: 'success' | 'error' | 'denied'
+  principal: AgentPrincipal
+  backend: AgentExecutionBackend | null
+  parameterDigest: string
+  approvalDecision: 'once' | 'conversation' | 'deny' | 'not-required'
+  status: 'success' | 'error' | 'denied' | 'cancelled'
   exitCode?: number
+  errorCode?: string
 }
 
+const AUDIT_MAX_ENTRIES = 1_000
+
 export function isAgentFullAccessEnabled(): boolean {
-  return typeof localStorage !== 'undefined' && localStorage.getItem(FULL_ACCESS_KEY) === 'true'
+  return readMigratedLocalValue('full-access', FULL_ACCESS_KEY, false, (raw) =>
+    raw === 'true' ? true : raw === 'false' ? false : undefined,
+  )
 }
 
 export function setAgentFullAccessEnabled(enabled: boolean): void {
-  if (typeof localStorage === 'undefined') return
-  localStorage.setItem(FULL_ACCESS_KEY, String(enabled))
+  agentLocalStore.set('full-access', enabled)
 }
 
-function appendAudit(entry: AgentAuditEntry): void {
-  if (typeof localStorage === 'undefined') return
-  let entries: AgentAuditEntry[] = []
+export function appendAgentAudit(entry: AgentAuditEntry): void {
+  const entries = readMigratedLocalValue('audit', AUDIT_KEY, [] as AgentAuditEntry[], (raw) => {
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? (parsed as AgentAuditEntry[]) : undefined
+    } catch {
+      return undefined
+    }
+  })
+  agentLocalStore.set('audit', [...entries.slice(-(AUDIT_MAX_ENTRIES - 1)), entry])
+}
+
+export function readAgentAudit(options: { pluginId?: string; limit?: number } = {}): AgentAuditEntry[] {
   try {
-    entries = JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]') as AgentAuditEntry[]
+    const entries = readMigratedLocalValue('audit', AUDIT_KEY, [] as AgentAuditEntry[], (raw) => {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? (parsed as AgentAuditEntry[]) : undefined
+    })
+    const filtered = options.pluginId
+      ? entries.filter(
+          (entry) => entry.principal?.kind === 'plugin' && entry.principal.pluginId === options.pluginId,
+        )
+      : entries
+    return filtered.slice(-Math.max(1, Math.min(options.limit ?? 100, 500))).reverse()
   } catch {
-    entries = []
+    return []
   }
-  localStorage.setItem(AUDIT_KEY, JSON.stringify([...entries.slice(-99), entry]))
 }
 
 export interface AgentBrokerCallContext {
@@ -113,6 +173,8 @@ export interface AgentBrokerCallContext {
   attempt?: number
   deadline?: number
   abortSignal?: AbortSignal
+  principal?: AgentPrincipal
+  approvalDecision?: AgentExecutionOptions<unknown>['approvalDecision']
   /** Read-only shell probes must not be treated as a committed side effect. */
   sideEffect?: boolean
 }
@@ -179,8 +241,59 @@ function toAgentJson(value: unknown, depth = 0): JsonValue {
   return String(value)
 }
 
+function brokerErrorCode(error: unknown): string {
+  const value = error instanceof Error ? error.message : String(error)
+  return /^[a-z0-9._:-]{1,100}$/i.test(value) ? value : 'agent_action_failed'
+}
+
+async function runAbortableBrokerCall<T>(
+  execute: () => Promise<T>,
+  signal: AbortSignal | undefined,
+  deadline: number,
+  onAbort: AgentExecutionOptions<T>['onAbort'],
+): Promise<T> {
+  if (signal?.aborted) throw new Error('agent_action_cancelled')
+  const remaining = deadline - Date.now()
+  if (remaining <= 0) throw new Error('agent_action_deadline_exceeded')
+
+  return await new Promise<T>((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', cancel)
+      callback()
+    }
+    const stopBackend = () => {
+      try {
+        void Promise.resolve(onAbort?.()).catch(() => undefined)
+      } catch {
+        // Cancellation still wins even if the backend-specific stop hook fails.
+      }
+    }
+    const cancel = () => {
+      stopBackend()
+      finish(() => reject(new Error('agent_action_cancelled')))
+    }
+    const timer = setTimeout(() => {
+      stopBackend()
+      finish(() => reject(new Error('agent_action_deadline_exceeded')))
+    }, remaining)
+    signal?.addEventListener('abort', cancel, { once: true })
+    Promise.resolve()
+      .then(execute)
+      .then(
+        (value) => finish(() => resolve(value)),
+        (error) => finish(() => reject(error)),
+      )
+  })
+}
+
 export interface AgentExecutionOptions<T> {
-  toolId: ToolId | string
+  featureId: string
+  principal: AgentPrincipal
+  toolId: BrokerToolId
   backend: AgentExecutionBackend
   parameters: JsonValue
   execute: () => Promise<T>
@@ -201,6 +314,9 @@ export interface AgentExecutionOptions<T> {
   resultToJson?: (result: T) => JsonValue
   checkpointStore?: AgentCheckpointStore
   abortSignal?: AbortSignal
+  approvalDecision?: 'once' | 'conversation' | 'deny' | 'not-required'
+  /** Stops a backend process when cancellation or the call deadline wins the race. */
+  onAbort?: () => void | Promise<void>
 }
 
 let defaultCheckpointStore: AgentCheckpointStore | null = null
@@ -248,6 +364,7 @@ function checkpointRecordBase(
  * second click/write/launch.
  */
 export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): Promise<T> {
+  const principal = AgentPrincipalSchema.parse(options.principal)
   const taskId = options.taskId || 'android-agent'
   const callId = options.callId || options.toolCallId || createAgentId('call')
   const stepId = options.stepId || options.toolCallId || callId
@@ -266,6 +383,27 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
   }
   ToolCallRequestSchema.parse(request)
   const parameterDigest = await digestAgentJson(options.parameters)
+  try {
+    requireBrokerToolAuthorization({
+      featureId: options.featureId,
+      toolId: options.toolId,
+      backend: options.backend,
+      principal,
+    })
+  } catch (error) {
+    appendAgentAudit({
+      at: Date.now(),
+      callId,
+      toolId: options.toolId,
+      principal,
+      backend: options.backend,
+      parameterDigest,
+      approvalDecision: 'deny',
+      status: 'denied',
+      errorCode: brokerErrorCode(error),
+    })
+    throw error
+  }
   const sideEffect = options.sideEffect !== false
   // Parameter-deduplicated calls need a digest lock as well as a call lock.
   // Otherwise two distinct tool-call ids can pass the checkpoint read before
@@ -314,7 +452,12 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
     await store.put(checkpointRecordBase(checkpointRequest, parameterDigest, expectedState, 'running', null))
 
     try {
-      const result = await options.execute()
+      const result = await runAbortableBrokerCall(
+        options.execute,
+        options.abortSignal,
+        deadline,
+        options.onAbort,
+      )
       if (Date.now() >= deadline) throw new Error('agent_action_deadline_exceeded')
       const successful = options.isSuccess ? options.isSuccess(result) : true
       let state: 'not_started' | 'applied' | 'verified' | 'unknown' = successful
@@ -343,7 +486,34 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
   })()
   actionLocks.set(lockKey, run)
   try {
-    return await run
+    const result = await run
+    const successful = options.isSuccess ? options.isSuccess(result) : true
+    appendAgentAudit({
+      at: Date.now(),
+      callId,
+      toolId: options.toolId,
+      principal,
+      backend: options.backend,
+      parameterDigest,
+      approvalDecision: options.approvalDecision ?? 'not-required',
+      status: successful ? 'success' : 'error',
+      ...(successful ? {} : { errorCode: 'backend_reported_failure' }),
+    })
+    return result
+  } catch (error) {
+    const errorCode = brokerErrorCode(error)
+    appendAgentAudit({
+      at: Date.now(),
+      callId,
+      toolId: options.toolId,
+      principal,
+      backend: options.backend,
+      parameterDigest,
+      approvalDecision: options.approvalDecision ?? 'not-required',
+      status: errorCode === 'agent_action_cancelled' ? 'cancelled' : 'error',
+      errorCode,
+    })
+    throw error
   } finally {
     if (actionLocks.get(lockKey) === run) actionLocks.delete(lockKey)
   }
@@ -410,6 +580,8 @@ export async function executeAccessibilityAction(
   }
   try {
     const result = await executeAgentAction({
+      featureId: 'android-device',
+      principal: context.principal ?? CORE_AGENT_PRINCIPAL,
       toolId: toolIdForAccessibilityAction(options),
       backend: 'accessibility',
       parameters: toAgentJson(options),
@@ -420,17 +592,12 @@ export async function executeAccessibilityAction(
       attempt: context.attempt,
       deadline: context.deadline,
       abortSignal: context.abortSignal,
+      approvalDecision: context.approvalDecision,
       sideEffect: isAccessibilitySideEffect(options.action),
       dedupeByParameters: ['launch', 'clickNode', 'setNodeText', 'text', 'tap', 'global'].includes(options.action),
       failureState: isAccessibilitySideEffect(options.action) ? 'unknown' : 'not_started',
       isSuccess: (result) => result.success,
       execute: () => yachiyoDeviceAccessNative.accessibilityAction(options),
-    })
-    appendAudit({
-      at: Date.now(),
-      callId: context.callId || context.toolCallId || 'accessibility-action',
-      toolId: toolIdForAccessibilityAction(options),
-      status: result.success ? 'success' : 'error',
     })
     return result
   } catch (error) {
@@ -457,6 +624,8 @@ export async function executeAppLaunch(
   }
   try {
     const result = await executeAgentAction({
+      featureId: 'android-device',
+      principal: context.principal ?? CORE_AGENT_PRINCIPAL,
       toolId: TOOL_IDS.APP_LAUNCH,
       backend: getAgentBackend(),
       parameters,
@@ -467,17 +636,12 @@ export async function executeAppLaunch(
       attempt: context.attempt,
       deadline: context.deadline,
       abortSignal: context.abortSignal,
+      approvalDecision: context.approvalDecision,
       sideEffect: true,
       dedupeByParameters: true,
       failureState: 'unknown',
       isSuccess: (result) => result.success,
       execute: () => yachiyoDeviceAccessNative.launchApp(packageName, activityName),
-    })
-    appendAudit({
-      at: Date.now(),
-      callId: context.callId || context.toolCallId || 'app-launch',
-      toolId: TOOL_IDS.APP_LAUNCH,
-      status: result.success ? 'success' : 'error',
     })
     return result
   } catch (error) {
@@ -511,9 +675,13 @@ export async function executeCompanionAction(
     }
   }
   const sideEffect = !['observe', 'find', 'verify'].includes(capability)
+  const companionToolId = `android.companion.${capability}` as const
+  registerCompanionBrokerTool(companionToolId)
   try {
     return await executeAgentAction({
-      toolId: `android.companion.${capability}`,
+      featureId: 'android-device',
+      principal: context.principal ?? CORE_AGENT_PRINCIPAL,
+      toolId: companionToolId,
       backend: 'companion',
       parameters,
       taskId: context.taskId,
@@ -523,6 +691,7 @@ export async function executeCompanionAction(
       attempt: context.attempt,
       deadline: context.deadline,
       abortSignal: context.abortSignal,
+      approvalDecision: context.approvalDecision,
       sideEffect,
       dedupeByParameters: sideEffect,
       failureState: sideEffect ? 'unknown' : 'not_started',
@@ -571,13 +740,24 @@ export async function executeRootShell(
   timeout = 120_000,
   context: AgentBrokerCallContext = {},
 ): Promise<RootCommandResult> {
+  const principal = context.principal ?? CORE_AGENT_PRINCIPAL
+  const backend = getAgentBackend()
   if (!isAgentFullAccessEnabled()) {
     const callId = createAgentId('call')
-    appendAudit({ at: Date.now(), callId, toolId: TOOL_IDS.SHELL_EXEC, status: 'denied' })
+    appendAgentAudit({
+      at: Date.now(),
+      callId,
+      toolId: TOOL_IDS.SHELL_EXEC,
+      principal,
+      backend,
+      parameterDigest: await digestAgentJson({ command, timeout }),
+      approvalDecision: context.approvalDecision ?? 'deny',
+      status: 'denied',
+      errorCode: 'agent_full_access_disabled',
+    })
     return { stdout: '', stderr: '完全访问模式未启用', exitCode: 126, timedOut: false }
   }
 
-  const backend = getAgentBackend()
   if (backend === 'accessibility') {
     return { stdout: '', stderr: '无障碍后端不提供 Shell，请使用设备操作工具', exitCode: 127, timedOut: false }
   }
@@ -585,6 +765,8 @@ export async function executeRootShell(
   const callId = context.callId || context.toolCallId || createAgentId('call')
   try {
     const result = await executeAgentAction({
+      featureId: 'android-device',
+      principal,
       toolId: TOOL_IDS.SHELL_EXEC,
       backend,
       parameters: { command, timeout },
@@ -594,6 +776,8 @@ export async function executeRootShell(
       attempt: context.attempt,
       deadline: context.deadline || Date.now() + timeout,
       abortSignal: context.abortSignal,
+      approvalDecision: context.approvalDecision,
+      onAbort: backend === 'root' ? async () => void (await yachiyoAgentNative.kill()) : undefined,
       sideEffect: context.sideEffect ?? true,
       failureState: context.sideEffect === false ? 'not_started' : 'unknown',
       isSuccess: (value) => value.exitCode === 0,
@@ -602,17 +786,9 @@ export async function executeRootShell(
           ? yachiyoDeviceAccessNative.execShizuku(command, timeout)
           : yachiyoAgentNative.execRoot(command, timeout),
     })
-    appendAudit({
-      at: Date.now(),
-      callId,
-      toolId: TOOL_IDS.SHELL_EXEC,
-      status: result.exitCode === 0 ? 'success' : 'error',
-      exitCode: result.exitCode,
-    })
     return result
   } catch (error) {
     if (getAgentBackend() === 'root') persistRootCapability(null)
-    appendAudit({ at: Date.now(), callId, toolId: TOOL_IDS.SHELL_EXEC, status: 'error' })
     throw error
   }
 }

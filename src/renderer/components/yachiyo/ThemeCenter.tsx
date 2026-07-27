@@ -1,0 +1,386 @@
+import { ActionIcon, Badge, Button, FileButton, Group, Modal, Stack, Text, Textarea, TextInput, Title } from '@mantine/core'
+import {
+  MAX_THEME_MANIFEST_BYTES,
+  parseThemeManifestText,
+  resolveThemeVariables,
+  type ThemeManifest,
+} from '@shared/themes/theme'
+import {
+  IconArrowLeft,
+  IconCheck,
+  IconDownload,
+  IconEye,
+  IconEyeOff,
+  IconLink,
+  IconPalette,
+  IconTrash,
+  IconUpload,
+} from '@tabler/icons-react'
+import { useEffect, useState } from 'react'
+import { router } from '@/router'
+import { useThemeStore } from '@/stores/themeStore'
+import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
+import { useInAndroidAppShell } from './AndroidAppShellContext'
+
+const MODE_LABELS: Record<ThemeManifest['mode'], string> = { light: '浅色', dark: '深色', both: '浅色 / 深色' }
+
+function swatches(theme: ThemeManifest): string[] {
+  const scheme = theme.mode === 'dark' ? 'dark' : 'light'
+  const variables = resolveThemeVariables(theme, scheme)
+  const priority = [
+    '--chatbox-tint-brand',
+    '--chatbox-background-primary',
+    '--chatbox-tint-primary',
+    '--chatbox-tint-success',
+    '--chatbox-tint-error',
+  ]
+  const picked = priority.map((key) => variables[key]).filter(Boolean)
+  return (picked.length ? picked : Object.values(variables)).slice(0, 6)
+}
+
+function themeErrorMessage(cause: unknown): string {
+  if (!(cause instanceof Error)) return '主题清单无效，请检查文件后重试'
+  const message = cause.message
+  if (/exceeds/i.test(message)) return `主题文件不能超过 ${MAX_THEME_MANIFEST_BYTES / 1024} KB`
+  if (/not valid JSON|JSON-serializable/i.test(message)) return '主题文件不是有效的 JSON'
+  if (/not a valid CSS color|unsafe/i.test(message)) return '主题包含无效或不安全的颜色值'
+  if (/Unknown theme token/i.test(message)) return '主题包含当前版本不支持的颜色项目'
+  if (/schemaVersion/i.test(message)) return '主题清单版本不受支持'
+  if (/dual-mode|light tokens|dark tokens/i.test(message)) return '主题缺少对应的浅色或深色配色'
+  if (/public_https|private_network|Invalid URL/i.test(message)) return '仅支持不含账号信息的公开 HTTPS 主题地址'
+  if (/size_invalid|exceeds|too_large|size_mismatch/i.test(message))
+    return `主题文件不能超过 ${MAX_THEME_MANIFEST_BYTES / 1024} KB`
+  if (/download_http|probe_http/i.test(message)) return '主题下载失败，请检查地址或网络后重试'
+  return '主题清单无效，请检查名称、标识、版本和配色内容'
+}
+
+export function ThemeCenter() {
+  const inAndroidAppShell = useInAndroidAppShell()
+  const installed = useThemeStore((state) => state.installed)
+  const activeThemeId = useThemeStore((state) => state.activeThemeId)
+  const previewingTheme = useThemeStore((state) => state.previewingTheme)
+  const install = useThemeStore((state) => state.install)
+  const remove = useThemeStore((state) => state.remove)
+  const setActive = useThemeStore((state) => state.setActive)
+  const preview = useThemeStore((state) => state.preview)
+  const clearPreview = useThemeStore((state) => state.clearPreview)
+  const [draft, setDraft] = useState('')
+  const [remoteUrl, setRemoteUrl] = useState('')
+  const [remoteLoading, setRemoteLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<ThemeManifest | null>(null)
+
+  useEffect(() => () => clearPreview(), [clearPreview])
+
+  useEffect(() => {
+    const recovered = consumeRecoveredThemeImport()
+    if (!recovered) return
+    try {
+      const parsed = parseThemeManifestText(recovered)
+      setDraft(recovered)
+      preview(parsed)
+    } catch (recoveryError) {
+      setError(themeErrorMessage(recoveryError))
+    }
+  }, [preview])
+
+  const installFromText = (text: string) => {
+    setError(null)
+    try {
+      const parsed = parseThemeManifestText(text)
+      const theme = install(parsed)
+      setActive(theme.id)
+      setDraft('')
+    } catch (installError) {
+      setError(themeErrorMessage(installError))
+    }
+  }
+
+  const previewFromText = (text: string) => {
+    setError(null)
+    try {
+      preview(parseThemeManifestText(text))
+    } catch (previewError) {
+      clearPreview()
+      setError(themeErrorMessage(previewError))
+    }
+  }
+
+  const loadFromFile = async (file: File | null) => {
+    if (!file) return
+    setError(null)
+    if (file.size > MAX_THEME_MANIFEST_BYTES) {
+      setError(`主题文件不能超过 ${MAX_THEME_MANIFEST_BYTES / 1024} KB`)
+      return
+    }
+    try {
+      const text = await file.text()
+      const parsed = parseThemeManifestText(text)
+      setDraft(text)
+      preview(parsed)
+    } catch (fileError) {
+      clearPreview()
+      setError(themeErrorMessage(fileError))
+    }
+  }
+
+  const loadFromUrl = async () => {
+    if (!remoteUrl.trim() || remoteLoading) return
+    setError(null)
+    setRemoteLoading(true)
+    try {
+      const text = await downloadRemoteTheme(remoteUrl)
+      const parsed = parseThemeManifestText(text)
+      setDraft(text)
+      preview(parsed)
+    } catch (downloadError) {
+      clearPreview()
+      setError(themeErrorMessage(downloadError))
+    } finally {
+      setRemoteLoading(false)
+    }
+  }
+
+  const handleDraftChange = (value: string) => {
+    setDraft(value)
+    setError(null)
+    if (previewingTheme) clearPreview()
+  }
+
+  return (
+    <main className="yachiyo-settings-subpage yachiyo-theme-center">
+      <header className="yachiyo-subpage-heading">
+        {!inAndroidAppShell && (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size={38}
+            aria-label="返回设置"
+            onClick={() => void router.navigate({ to: '/settings' })}
+          >
+            <IconArrowLeft size={21} />
+          </ActionIcon>
+        )}
+        <span className="yachiyo-subpage-icon" aria-hidden="true">
+          <IconPalette size={22} />
+        </span>
+        <div>
+          <Title order={2}>主题外观</Title>
+          <Text size="sm" c="dimmed">
+            导入声明式配色，不加载脚本或外部样式
+          </Text>
+        </div>
+      </header>
+
+      <section className="yachiyo-settings-panel yachiyo-theme-import">
+        <Stack gap="sm">
+          <div>
+            <Text fw={650}>导入主题</Text>
+            <Text size="xs" c="dimmed">
+              支持不超过 64 KB 的 JSON 主题清单，可先预览再安装
+            </Text>
+          </div>
+          <Textarea
+            value={draft}
+            onChange={(event) => handleDraftChange(event.currentTarget.value)}
+            placeholder='例如 {"schemaVersion":1,"id":"sakura","name":"樱色","version":"1.0.0","mode":"light","tokens":{"tint-brand":"#d87597"}}'
+            aria-label="主题 JSON"
+            autosize
+            minRows={4}
+            maxRows={9}
+          />
+          <Group gap="xs" align="flex-end" wrap="nowrap" className="yachiyo-theme-remote-row">
+            <TextInput
+              value={remoteUrl}
+              onChange={(event) => setRemoteUrl(event.currentTarget.value)}
+              label="从网址导入"
+              description="Android 下载会显示在统一下载管理中"
+              placeholder="https://example.com/yachiyo-theme.json"
+              leftSection={<IconLink size={16} />}
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              aria-label="远程主题地址"
+              className="yachiyo-theme-remote-input"
+            />
+            <Button
+              variant="default"
+              leftSection={<IconDownload size={16} />}
+              loading={remoteLoading}
+              disabled={!remoteUrl.trim()}
+              onClick={() => void loadFromUrl()}
+            >
+              下载并预览
+            </Button>
+          </Group>
+          {error && (
+            <Text size="xs" c="red" role="alert">
+              {error}
+            </Text>
+          )}
+          <div className="yachiyo-theme-import-actions">
+            <Button
+              variant={previewingTheme ? 'light' : 'default'}
+              leftSection={previewingTheme ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+              disabled={!draft.trim()}
+              onClick={() => (previewingTheme ? clearPreview() : previewFromText(draft))}
+            >
+              {previewingTheme ? '结束预览' : '预览'}
+            </Button>
+            <Button disabled={!draft.trim()} onClick={() => installFromText(draft)}>
+              安装并使用
+            </Button>
+            <FileButton accept="application/json,.json" onChange={(file) => void loadFromFile(file)}>
+              {(props) => (
+                <Button variant="default" leftSection={<IconUpload size={16} />} {...props}>
+                  选择文件
+                </Button>
+              )}
+            </FileButton>
+          </div>
+        </Stack>
+      </section>
+
+      {previewingTheme && (
+        <div className="yachiyo-theme-preview-notice" role="status">
+          <IconEye size={17} />
+          <span>正在临时预览“{previewingTheme.name}”，离开此页会自动恢复。</span>
+          <Button size="compact-xs" variant="subtle" onClick={clearPreview}>
+            结束
+          </Button>
+        </div>
+      )}
+
+      <section className="yachiyo-theme-library" aria-label="已安装主题">
+        <Text className="yachiyo-section-label">主题库</Text>
+        <div className="yachiyo-theme-grid">
+          <article className="yachiyo-theme-card" data-active={activeThemeId === null ? 'true' : 'false'}>
+            <div className="yachiyo-theme-card-preview yachiyo-theme-card-preview-default">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="yachiyo-theme-card-heading">
+              <div>
+                <Text fw={650}>Yachiyo 浅粉</Text>
+                <Text size="xs" c="dimmed">
+                  内置 · 浅色
+                </Text>
+              </div>
+              {activeThemeId === null && !previewingTheme && (
+                <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
+                  使用中
+                </Badge>
+              )}
+            </div>
+            {activeThemeId !== null && (
+              <Button size="compact-sm" variant="default" onClick={() => setActive(null)}>
+                恢复默认
+              </Button>
+            )}
+          </article>
+
+          {installed.map((theme) => {
+            const isActive = activeThemeId === theme.id
+            const isPreviewing = previewingTheme?.id === theme.id
+            return (
+              <article
+                key={theme.id}
+                className="yachiyo-theme-card"
+                data-active={isActive ? 'true' : 'false'}
+                data-previewing={isPreviewing ? 'true' : 'false'}
+              >
+                <div className="yachiyo-theme-card-preview">
+                  {swatches(theme).map((color, index) => (
+                    <span key={`${theme.id}-${index}`} style={{ background: color }} />
+                  ))}
+                </div>
+                <div className="yachiyo-theme-card-heading">
+                  <div>
+                    <Text fw={650}>{theme.name}</Text>
+                    <Text size="xs" c="dimmed">
+                      {theme.author?.name ? `${theme.author.name} · ` : ''}v{theme.version} · {MODE_LABELS[theme.mode]}
+                    </Text>
+                  </div>
+                  {isActive && !previewingTheme && (
+                    <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
+                      使用中
+                    </Badge>
+                  )}
+                  {isPreviewing && (
+                    <Badge variant="light" leftSection={<IconEye size={12} />}>
+                      预览中
+                    </Badge>
+                  )}
+                </div>
+                <Group justify="space-between" gap="xs" wrap="nowrap">
+                  <Group gap="xs" wrap="nowrap">
+                    <Button
+                      size="compact-sm"
+                      variant="default"
+                      onClick={() => (isPreviewing ? clearPreview() : preview(theme))}
+                    >
+                      {isPreviewing ? '结束预览' : '预览'}
+                    </Button>
+                    {!isActive && (
+                      <Button size="compact-sm" onClick={() => setActive(theme.id)}>
+                        使用
+                      </Button>
+                    )}
+                  </Group>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    aria-label={`删除主题 ${theme.name}`}
+                    onClick={() => setRemoveTarget(theme)}
+                  >
+                    <IconTrash size={17} />
+                  </ActionIcon>
+                </Group>
+              </article>
+            )
+          })}
+        </div>
+        {installed.length === 0 && (
+          <Text c="dimmed" ta="center" py="md">
+            尚未安装第三方主题
+          </Text>
+        )}
+      </section>
+
+      <Modal
+        opened={Boolean(removeTarget)}
+        onClose={() => setRemoveTarget(null)}
+        title="删除主题"
+        centered
+        radius="lg"
+        withCloseButton={false}
+      >
+        <Stack gap="md">
+          <Text size="sm">确定删除主题“{removeTarget?.name}”？此操作无法撤销。</Text>
+          {removeTarget && activeThemeId === removeTarget.id && (
+            <Text size="xs" c="dimmed">
+              当前正在使用此主题，删除后将恢复 Yachiyo 浅粉主题。
+            </Text>
+          )}
+          <Group justify="flex-end" gap="xs">
+            <Button variant="default" onClick={() => setRemoveTarget(null)}>
+              取消
+            </Button>
+            <Button
+              color="red"
+              onClick={() => {
+                if (!removeTarget) return
+                remove(removeTarget.id)
+                setRemoveTarget(null)
+              }}
+            >
+              确认删除
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </main>
+  )
+}

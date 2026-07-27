@@ -13,7 +13,7 @@ export type MCPOAuthConfig = {
   /** Optional pre-registered public client id. Omit to use dynamic registration. */
   clientId?: string
   scopes?: string[]
-  redirectUri?: string
+  redirectUri?: 'yachiyoclaw://oauth/mcp' | 'yachiyoclaw-dev://oauth/mcp'
   resourceMetadataUrl?: string
 }
 
@@ -164,6 +164,38 @@ export const MCPOAuthConfigSchema = z
   })
   .strict()
 
+/** Shared persisted transport schema. Mobile applies the stricter validator below at runtime. */
+export const MCPTransportConfigSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('stdio'),
+      command: z.string(),
+      args: z.array(z.string()),
+      env: z.record(z.string(), z.string()).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('http'),
+      url: z.string(),
+      headers: z.record(z.string(), z.string()).optional(),
+      secretRefs: z.array(MCPSecretRefSchema).max(64).optional(),
+      protocol: z.enum(['streamable-http', 'sse']).optional(),
+      oauth: MCPOAuthConfigSchema.optional(),
+    })
+    .strict(),
+])
+
+export const MCPServerConfigSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    enabled: z.boolean(),
+    transport: MCPTransportConfigSchema,
+    manifest: MCPServerManifestSchema.optional(),
+  })
+  .strict()
+
 export const MCPMobileServerConfigSchema = z
   .object({
     id: z.string().min(1).max(256),
@@ -191,7 +223,10 @@ function hasRawCredentialFields(input: unknown): boolean {
   const transport = (input as { transport?: unknown }).transport
   if (!transport || typeof transport !== 'object') return false
   const value = transport as Record<string, unknown>
-  if ('headers' in value || 'env' in value || 'command' in value || 'args' in value) return true
+  // Controlled forms may retain optional keys with an undefined value. Only
+  // reject fields that actually carry data; their presence alone is not a
+  // credential leak.
+  if (value.headers != null || value.env != null || value.command != null || value.args != null) return true
   try {
     const url = new URL(String(value.url || ''))
     if (url.username || url.password) return true

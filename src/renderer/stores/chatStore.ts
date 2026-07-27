@@ -27,6 +27,7 @@ import { StorageKeyGenerator } from '@/storage/StoreStorage'
 import * as defaults from '../../shared/defaults'
 import { getLogger } from '../lib/utils'
 import { migrateSession } from '../utils/session-utils'
+import { shouldPruneSession } from './sessionPrune'
 import { uiStore } from './uiStore'
 
 const log = getLogger('chat-store')
@@ -362,6 +363,24 @@ export async function deleteSessions(ids: string[]) {
     clearScrollPositionCache(id)
     delete sessionUpdateQueues[id]
   }
+}
+
+/**
+ * Removes abandoned drafts created while opening the mobile shell. System prompts do not count as a
+ * user message, and a short grace period preserves a just-opened composer. Starred sessions, sessions
+ * with branches, and any id in {@link protectedIds} (e.g. scheduled-task sessions) are never removed.
+ */
+export async function pruneAbandonedEmptySessions(graceMs = 60_000, protectedIds?: ReadonlySet<string>): Promise<number> {
+  const cutoff = Date.now() - graceMs
+  const records = await listAllSessionsMeta()
+  const stale = records.filter((record) => record.createdAt < cutoff)
+  const emptyIds: string[] = []
+  for (const record of stale) {
+    const session = await getSession(record.id)
+    if (shouldPruneSession(session, protectedIds?.has(record.id) ?? false)) emptyIds.push(record.id)
+  }
+  await deleteSessions(emptyIds)
+  return emptyIds.length
 }
 
 // MARK: session settings operations

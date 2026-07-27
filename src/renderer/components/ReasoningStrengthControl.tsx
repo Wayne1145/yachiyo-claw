@@ -4,11 +4,11 @@ import type { ReasoningStrength, SessionSettings } from '@shared/types'
 import { getSessionReasoningStrength, mapReasoningStrength, REASONING_STRENGTHS } from '@shared/utils/reasoning-strength'
 
 const LABELS: Record<ReasoningStrength, string> = {
-  off: 'Off',
-  minimal: 'Minimal',
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
+  off: '不思考',
+  minimal: '极低',
+  low: '低',
+  medium: '中',
+  high: '高',
   max: 'MAX',
 }
 
@@ -28,14 +28,14 @@ export function ReasoningStrengthControl({
   return (
     <Menu withinPortal position="top-end" shadow="md">
       <Menu.Target>
-        <Tooltip label={`Reasoning: ${label}${mapping.exact ? '' : ' (model/provider limitation)'}`} withArrow>
-          <ActionIcon variant="subtle" color={mapping.exact ? 'gray' : 'yellow'} size={compact ? 28 : 32} aria-label="Reasoning strength">
+        <Tooltip label={`推理强度：${label}${mapping.exact ? '' : '（当前模型或提供商会自行映射）'}`} withArrow>
+          <ActionIcon variant="subtle" color={mapping.exact ? 'gray' : 'yellow'} size={compact ? 28 : 32} aria-label="推理强度" style={{ flex: '0 0 auto' }}>
             <IconBrain size={compact ? 17 : 19} />
           </ActionIcon>
         </Tooltip>
       </Menu.Target>
       <Menu.Dropdown miw={170}>
-        <Menu.Label>Reasoning strength</Menu.Label>
+        <Menu.Label>推理强度</Menu.Label>
         {REASONING_STRENGTHS.map((strength) => (
           <Menu.Item
             key={strength}
@@ -47,7 +47,7 @@ export function ReasoningStrengthControl({
         ))}
         {!mapping.exact && (
           <Text size="xs" c="dimmed" px="sm" py={4}>
-            * This model may use its own fixed reasoning mode.
+            * 当前模型可能使用固定的推理模式。
           </Text>
         )}
       </Menu.Dropdown>

@@ -1,12 +1,13 @@
 import { App } from '@capacitor/app'
 import { ActionIcon } from '@mantine/core'
-import { IconChevronLeft, IconHistory } from '@tabler/icons-react'
+import { IconChevronLeft, IconHistory, IconPuzzle } from '@tabler/icons-react'
 import { useLocation } from '@tanstack/react-router'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { copyAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import {
   type AndroidShellTab,
   createYachiyoApiSettingsPatch,
+  getAndroidShellTabs,
   hasConfiguredModelProvider,
   hasYachiyoDefaultModel,
   isAllowedAndroidShellPath,
@@ -14,58 +15,158 @@ import {
   resolveAndroidShellTab,
   resolveAndroidShellWorkspaceView,
 } from '@/mobile/android-app-shell'
+import { getOverlays } from '@/features/ui-registry'
+import { registerBuiltinFeatureOverlays } from '@/features/builtin-overlays'
+import { getEnabledFeatureIds } from '@/features/feature-runtime'
 import { ensureAgentTaskForChat, ensureChatSessionForTask, openTaskSessionAsChat } from '@/mobile/conversation-bridge'
 import { removeBuiltInDemoSessions } from '@/mobile/demo-session-cleanup'
+import { syncInstalledLocalModelsIntoSettings } from '@/mobile/local-model-provider-sync'
 import { fetchYachiyoModels } from '@/mobile/yachiyo-api'
+import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
 import { router } from '@/router'
-import { useSession } from '@/stores/chatStore'
+import { initThemeApplication } from '@/stores/themeStore'
+import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
+import { startPendingPluginInstallRecovery } from '@/plugins/install-recovery'
+import { startPendingThemeImportRecovery } from '@/themes/remote-theme'
+import { pruneAbandonedEmptySessions, useSession } from '@/stores/chatStore'
 import { createEmpty, switchCurrentSession } from '@/stores/sessionActions'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
-import { getTaskSession, taskSessionStore, useTaskSessionRecord } from '@/stores/taskSessionStore'
-import { AgentApprovalDialog } from './AgentApprovalDialog'
+import { getTaskSession, listAllTaskSessions, taskSessionStore, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AgentSessionControls } from './AgentSessionControls'
 import { AndroidAppShellContext } from './AndroidAppShellContext'
 import { AndroidBottomNavigation } from './AndroidBottomNavigation'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
-import { AndroidPermissionWizard } from './AndroidPermissionWizard'
-import { AndroidScheduledTaskRunner } from './AndroidScheduledTasks'
 import { AndroidSettingsHome } from './AndroidSettingsHome'
 import { AndroidAboutWorkspace, AndroidTasksWorkspace } from './AndroidWorkspaceHome'
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
 import { YachiyoChatLanding } from './YachiyoChatLanding'
 import { YachiyoMark } from './YachiyoMark'
 import './android-app-shell.css'
-
-const TAB_TITLES: Record<AndroidShellTab, string> = {
-  chat: '聊天',
-  interactive: '交互式',
-  tasks: '任务',
-  settings: '设置',
-}
+import './local-model-center.css'
 
 export function AndroidAppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
   const lastConversationPathname = useRef(
     location.pathname === '/' || location.pathname.startsWith('/session/') || location.pathname.startsWith('/task/')
       ? location.pathname
-      : '/'
+      : '/',
   )
   const [historyOpened, setHistoryOpened] = useState(false)
   const customProviders = useSettingsStore((state) => state.customProviders)
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
   const licenseKey = useSettingsStore((state) => state.licenseKey)
   const providers = useSettingsStore((state) => state.providers)
+  const featureOverrides = useSettingsStore((state) => state.featureOverrides)
+  const installedPlugins = usePluginStore((state) => state.installed)
+  const contributionPluginIds = usePluginStore((state) => state.contributionPluginIds)
   const settings = useMemo(
     () => ({ customProviders, defaultChatModel, licenseKey, providers }),
-    [customProviders, defaultChatModel, licenseKey, providers]
+    [customProviders, defaultChatModel, licenseKey, providers],
   )
   const hasProvider = useMemo(() => hasConfiguredModelProvider(settings), [settings])
-  const activeTab = resolveAndroidShellTab(location.pathname)
+  const enabledFeatureIds = useMemo(() => getEnabledFeatureIds('android', featureOverrides), [featureOverrides])
+  const shellTabs = useMemo(() => {
+    const core = getAndroidShellTabs(featureOverrides)
+    const allowedContributions = new Set(contributionPluginIds)
+    const pluginTabs = (enabledFeatureIds.has('plugins') ? installedPlugins : [])
+      .filter((record) => allowedContributions.has(record.manifest.id) && record.manifest.contributions.tab)
+      .map((record) => ({
+        id: `plugin-${record.manifest.id}`,
+        label: record.manifest.contributions.tab?.label ?? record.manifest.displayName,
+        icon: IconPuzzle,
+        order: record.manifest.contributions.tab?.order ?? 900,
+        route: record.manifest.contributions.tab?.route ?? `/plugin/${record.manifest.id}`,
+      }))
+      .sort((a, b) => a.order - b.order)
+    // Android's stable bottom bar supports five destinations; remaining plugin pages stay available
+    // from their settings contributions and the plugin center.
+    const availablePluginSlots = Math.max(0, 5 - core.length)
+    return [...core, ...pluginTabs.slice(0, availablePluginSlots)].sort((a, b) => a.order - b.order)
+  }, [contributionPluginIds, enabledFeatureIds, featureOverrides, installedPlugins])
+  const shellOverlays = useMemo(() => {
+    registerBuiltinFeatureOverlays()
+    return getOverlays({ platform: 'android', enabledFeatureIds })
+  }, [enabledFeatureIds])
+  const activePlugin = installedPlugins.find(
+    (record) =>
+      location.pathname === `/plugin/${record.manifest.id}` ||
+      location.pathname.startsWith(`/plugin/${record.manifest.id}/`),
+  )
+  const activeTab = activePlugin ? `plugin-${activePlugin.manifest.id}` : resolveAndroidShellTab(location.pathname)
+  const activeTabLabel =
+    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天'
   const workspaceView = resolveAndroidShellWorkspaceView(location.pathname)
   const isAllowedPath = isAllowedAndroidShellPath(location.pathname)
   const isAgentTaskPath = location.pathname === '/task' || location.pathname.startsWith('/task/')
   const isSettingsDetail = activeTab === 'settings' && location.pathname !== '/settings'
   const isInteractive = activeTab === 'interactive'
+
+  useLayoutEffect(() => {
+    // Apply persisted theme tokens before the shell is painted to avoid a default-color flash.
+    initThemeApplication()
+  }, [])
+
+  useEffect(() => {
+    // Register installed plugins' tools into the Agent toolset registry (grant-gated per session build).
+    initPluginTools()
+    void usePluginStore.getState().refresh()
+    return startPendingPluginInstallRecovery(() => {
+      void router.navigate({ to: '/settings/plugins' })
+    })
+  }, [])
+
+  useEffect(
+    () =>
+      startPendingThemeImportRecovery(() => {
+        void router.navigate({ to: '/settings/themes' })
+      }),
+    [],
+  )
+
+  useEffect(() => {
+    void syncInstalledLocalModelsIntoSettings().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    // New sessions are only drafts until the user sends content. Clear stale startup drafts once,
+    // protecting any session a scheduled task is linked to (starred/branch sessions are kept by the store).
+    void (async () => {
+      try {
+        const tasks = await listAllTaskSessions()
+        const protectedIds = new Set(
+          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+        )
+        await pruneAbandonedEmptySessions(60_000, protectedIds)
+      } catch {
+        // Fall back to the default prune if the task index is unavailable.
+        await pruneAbandonedEmptySessions().catch(() => undefined)
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
+    // A download notification tap sets a pending route natively; pick it up on launch and on resume.
+    const consumePendingRoute = async () => {
+      try {
+        const { route } = await yachiyoDownloadsNative.consumePendingRoute()
+        if (route === 'downloads') void router.navigate({ to: '/settings/downloads' })
+      } catch {
+        // No native pending route (e.g. non-Android platform); nothing to do.
+      }
+    }
+    void consumePendingRoute()
+    const handles: Array<{ remove: () => Promise<void> }> = []
+    void App.addListener('resume', () => void consumePendingRoute()).then((handle) => handles.push(handle))
+    void yachiyoDownloadsNative
+      .addListener('route', ({ route }) => {
+        if (route === 'downloads') {
+          void yachiyoDownloadsNative.consumePendingRoute().catch(() => undefined)
+          void router.navigate({ to: '/settings/downloads' })
+        }
+      })
+      .then((handle) => handles.push(handle))
+    return () => handles.forEach((handle) => void handle.remove())
+  }, [])
 
   useEffect(() => {
     if (location.pathname === '/' || location.pathname.startsWith('/session/')) {
@@ -155,13 +256,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       return
     }
 
-    if (tab === 'tasks') {
-      await router.navigate({ to: '/tasks', replace: true })
-      return
-    }
-
-    if (tab === 'settings') {
-      await router.navigate({ to: '/settings', replace: true })
+    if (tab !== 'chat') {
+      const destination = shellTabs.find((candidate) => candidate.id === tab)
+      if (destination) await router.navigate({ to: destination.route as '/', replace: true })
       return
     }
     if (taskMatch?.[1]) {
@@ -255,60 +352,68 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   return (
     <AndroidAppShellContext.Provider value={true}>
       <div className="yachiyo-mobile-shell">
-        <AndroidScheduledTaskRunner />
-        <AndroidPermissionWizard />
-        <AgentApprovalDialog />
+        {shellOverlays.map((Overlay, index) => (
+          <Overlay key={`${Overlay.displayName || Overlay.name || 'feature-overlay'}-${index}`} />
+        ))}
         <AndroidConversationHistory
           opened={historyOpened}
           mode={isAgentTaskPath ? 'agent' : 'chat'}
           currentId={location.pathname.split('/').at(-1)}
           onClose={() => setHistoryOpened(false)}
         />
-        {!isInteractive && <header className="yachiyo-mobile-header">
-          {isSettingsDetail ? (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size={36}
-              aria-label="返回设置"
-              onClick={() => router.navigate({ to: '/settings' })}
-            >
-              <IconChevronLeft size={22} />
-            </ActionIcon>
-          ) : (
-            <YachiyoMark size={36} />
-          )}
-          <div className="yachiyo-mobile-title">
-            <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
-            <span>{isAgentTaskPath ? 'Agent 对话' : TAB_TITLES[activeTab]}</span>
-          </div>
-          {activeTab === 'chat' && (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size={36}
-              aria-label="会话记录"
-              onClick={() => setHistoryOpened(true)}
-            >
-              <IconHistory size={21} />
-            </ActionIcon>
-          )}
-          <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
-            <span aria-hidden="true" />
-            {hasProvider ? '已连接' : '未连接'}
-          </div>
-          {activeTab === 'chat' && (
-            <AgentSessionControls
-              sessionId={conversationConfigId}
-              enabled={isAgentTaskPath}
-              onToggle={handleAgentToggle}
-            />
-          )}
-        </header>}
+        {!isInteractive && (
+          <header className="yachiyo-mobile-header">
+            {isSettingsDetail ? (
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size={36}
+                aria-label="返回设置"
+                onClick={() => router.navigate({ to: '/settings' })}
+              >
+                <IconChevronLeft size={22} />
+              </ActionIcon>
+            ) : (
+              <YachiyoMark size={36} />
+            )}
+            <div className="yachiyo-mobile-title">
+              <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
+              <span>{isAgentTaskPath ? 'Agent 对话' : activeTabLabel}</span>
+            </div>
+            {activeTab === 'chat' && (
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size={36}
+                aria-label="会话记录"
+                onClick={() => setHistoryOpened(true)}
+              >
+                <IconHistory size={21} />
+              </ActionIcon>
+            )}
+            <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
+              <span aria-hidden="true" />
+              {hasProvider ? '已连接' : '未连接'}
+            </div>
+            {activeTab === 'chat' && (
+              <AgentSessionControls
+                sessionId={conversationConfigId}
+                enabled={isAgentTaskPath}
+                onToggle={handleAgentToggle}
+              />
+            )}
+          </header>
+        )}
 
-        <div key={location.pathname} className="yachiyo-mobile-content">{content}</div>
+        <div key={location.pathname} className="yachiyo-mobile-content">
+          {content}
+        </div>
 
-        <AndroidBottomNavigation activeTab={activeTab} onChange={(tab) => void handleTabChange(tab)} />
+        <AndroidBottomNavigation
+          activeTab={activeTab}
+          items={shellTabs}
+          onChange={(tab) => void handleTabChange(tab)}
+        />
       </div>
     </AndroidAppShellContext.Provider>
   )

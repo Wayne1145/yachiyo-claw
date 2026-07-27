@@ -86,13 +86,26 @@ public final class YachiyoSandboxService extends Service {
             active.put(id, process);
             long pid = processId(process);
             store.update(id, SandboxJobStore.STATE_RUNNING, pid, null, System.currentTimeMillis());
-            boolean completed = process.waitFor(job.timeoutMs, TimeUnit.MILLISECONDS);
+            boolean completed = false;
+            boolean outputLimitExceeded = false;
+            long deadline = System.currentTimeMillis() + job.timeoutMs;
+            while (System.currentTimeMillis() < deadline) {
+                if (process.waitFor(Math.min(500L, Math.max(1L, deadline - System.currentTimeMillis())), TimeUnit.MILLISECONDS)) {
+                    completed = true;
+                    break;
+                }
+                if (store.outputBytes(id) > SandboxJobStore.MAX_OUTPUT_BYTES_PER_STREAM * 2L) {
+                    outputLimitExceeded = true;
+                    break;
+                }
+            }
             if (!completed) {
                 killTree(pid, ConcurrentHashMap.newKeySet());
                 process.destroy();
                 process.destroyForcibly();
             }
-            int exitCode = completed ? process.exitValue() : 124;
+            int exitCode = completed ? process.exitValue() : outputLimitExceeded ? 125 : 124;
+            if (outputLimitExceeded) appendError(id, "sandbox_output_limit_exceeded");
             SandboxJobStore.Job latest = store.get(id);
             if (latest != null && SandboxJobStore.STATE_CANCELLED.equals(latest.state)) return;
             store.update(id, exitCode == 0 ? SandboxJobStore.STATE_SUCCEEDED : SandboxJobStore.STATE_FAILED, pid, exitCode, System.currentTimeMillis());

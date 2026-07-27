@@ -55,6 +55,7 @@ import { useTranslation } from 'react-i18next'
 import { v4 as uuidv4 } from 'uuid'
 import { createModelDependencies } from '@/adapters'
 import { ContextUsageBar } from '@/components/common/ContextUsageBar'
+import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import useInputBoxHistory from '@/hooks/useInputBoxHistory'
 import { useKnowledgeBase } from '@/hooks/useKnowledgeBase'
 import { useMessageInput } from '@/hooks/useMessageInput'
@@ -90,12 +91,13 @@ import { useSession, useSessionSettings } from '@/stores/chatStore'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { delay } from '@/utils'
-import { featureFlags } from '@/utils/feature-flags'
+import { getEnabledFeatureIds } from '@/features/feature-runtime'
 import { trackEvent } from '@/utils/track'
 import {
   type KnowledgeBase,
   type Message,
   ModelProviderEnum,
+  type ReasoningStrength,
   type SessionAttachment,
   type SessionAttachmentIndexingStage,
   type SessionType,
@@ -253,6 +255,8 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const { height: viewportHeight } = useViewportSize()
     const pasteLongTextAsAFile = useSettingsStore((state) => state.pasteLongTextAsAFile)
     const shortcuts = useSettingsStore((state) => state.shortcuts)
+    const featureOverrides = useSettingsStore((state) => state.featureOverrides)
+    const enabledFeatureIds = useMemo(() => getEnabledFeatureIds(undefined, featureOverrides), [featureOverrides])
     const widthFull = useUIStore((s) => s.widthFull) || fullWidth
     const saveBlob = useSaveBlob()
 
@@ -696,6 +700,20 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
               autoCompaction: enabled,
             },
           }
+        })
+      },
+      [currentSessionId, isNewSession],
+    )
+
+    const handleReasoningStrengthChange = useCallback(
+      async (reasoningStrength: ReasoningStrength) => {
+        if (!currentSessionId || isNewSession) {
+          settingsStore.getState().setSettings({ reasoningStrength })
+          return
+        }
+        await chatStore.updateSession(currentSessionId, (session) => {
+          if (!session) throw new Error('Session not found')
+          return { ...session, settings: { ...(session.settings || {}), reasoningStrength } }
         })
       },
       [currentSessionId, isNewSession],
@@ -1675,6 +1693,11 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                         {autoSpeak ? <IconVolume size={toolbarIconSize} /> : <IconVolumeOff size={toolbarIconSize} />}
                       </UnstyledButton>
                     </Tooltip>
+                    <ReasoningStrengthControl
+                      settings={currentSessionMergedSettings}
+                      onChange={(value) => void handleReasoningStrengthChange(value)}
+                      compact
+                    />
                   </>
                 )}
                 <AttachmentMenu
@@ -1684,7 +1707,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                   t={t}
                 />
 
-                {featureFlags.mcp && (
+                {enabledFeatureIds.has('mcp') && (
                   <MCPMenu>
                     {(enabledTools) => (
                       <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
@@ -1707,7 +1730,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                   </MCPMenu>
                 )}
 
-                {featureFlags.knowledgeBase && !isSmallScreen && (
+                {enabledFeatureIds.has('knowledge-base') && !isSmallScreen && (
                   <KnowledgeBaseMenu currentKnowledgeBaseId={knowledgeBase?.id} onSelect={handleKnowledgeBaseSelect}>
                     <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
                       <IconVocabulary
@@ -1721,7 +1744,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                   </KnowledgeBaseMenu>
                 )}
 
-                <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
+                {enabledFeatureIds.has('web-search') && <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
                   <UnstyledButton
                     onClick={() => {
                       setWebBrowsingMode(!webBrowsingMode)
@@ -1737,7 +1760,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                       }
                     />
                   </UnstyledButton>
-                </Tooltip>
+                </Tooltip>}
 
                 {!isSmallScreen &&
                   (showRollbackThreadButton ? (

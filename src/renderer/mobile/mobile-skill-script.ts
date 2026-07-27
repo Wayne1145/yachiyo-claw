@@ -1,3 +1,4 @@
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import { SkillScriptEntrypointSchema, type SkillScriptCapability } from '@shared/types/skills'
 import { requestAgentApproval } from './agent-approval'
 import { executeAgentAction } from './agent-broker'
@@ -101,6 +102,7 @@ export async function executeMobileSkillScript(
   await verifyScript(options.script.scriptBase64, entrypoint.sha256, entrypoint.size)
 
   const approved = await requestAgentApproval({
+    principal: CORE_AGENT_PRINCIPAL,
     sessionId: options.sessionId,
     runId: options.sessionId,
     title: `Run Skill script: ${options.skillName}/${entrypoint.name}`,
@@ -135,6 +137,8 @@ export async function executeMobileSkillScript(
     signatureVerified: options.signatureVerified,
   }
   const result = await executeAgentAction({
+    featureId: 'skills',
+    principal: CORE_AGENT_PRINCIPAL,
     toolId: 'skill.script.execute',
     backend: 'sandbox',
     parameters: executionParameters,

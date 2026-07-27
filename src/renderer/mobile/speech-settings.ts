@@ -57,7 +57,8 @@ export function getSpeechSettings(): SpeechSettings {
 }
 
 export function saveSpeechSettings(settings: SpeechSettings): void {
-  localStorage.setItem(KEY, JSON.stringify(settings))
+  // Custom headers may contain bearer tokens; only speech-credentials may persist them.
+  localStorage.setItem(KEY, JSON.stringify({ ...settings, asrHeaders: '', ttsHeaders: '' }))
   window.dispatchEvent(new Event('yachiyo-speech-settings-changed'))
 }
 

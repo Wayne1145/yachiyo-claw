@@ -211,6 +211,10 @@ tmp-*.md
 **/google-services.json
 **/key.properties
 **/keystore.properties
+*.pem
+
+# Locally built plugin packages; publish them as release/marketplace assets instead.
+/examples/plugins/*/*.zip
 
 # On-device model weights are downloaded at runtime, never committed
 *.gguf

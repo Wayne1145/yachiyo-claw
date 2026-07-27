@@ -1,9 +1,11 @@
 import { Capacitor } from '@capacitor/core'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 import {
   type AgentApprovalRequest,
   cancelPendingAgentApprovals,
+  cancelPendingPluginApprovals,
   onAgentApprovalRequest,
   requestAgentApproval,
   requestAgentDecision,
@@ -33,8 +35,22 @@ describe('Agent approval queue', () => {
     const requests: AgentApprovalRequest[] = []
     const unsubscribe = onAgentApprovalRequest((request) => requests.push(request))
 
-    const first = requestAgentApproval({ sessionId: 'chat', runId: 'run-1', title: 'first', detail: '', risk: 'safe' })
-    const second = requestAgentApproval({ sessionId: 'chat', runId: 'run-2', title: 'second', detail: '', risk: 'safe' })
+    const first = requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
+      sessionId: 'chat',
+      runId: 'run-1',
+      title: 'first',
+      detail: '',
+      risk: 'safe',
+    })
+    const second = requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
+      sessionId: 'chat',
+      runId: 'run-2',
+      title: 'second',
+      detail: '',
+      risk: 'safe',
+    })
 
     expect(requests.map((request) => request.title)).toEqual(['first'])
     resolveAgentApproval(requests[0].id, 'once')
@@ -49,6 +65,7 @@ describe('Agent approval queue', () => {
     saveAgentSessionConfig('chat', { approvalMode: 'manual' })
     const unsubscribe = onAgentApprovalRequest(() => undefined)
     const approval = requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       sessionId: 'chat',
       runId: 'chat:assistant-message',
       title: 'tap',
@@ -61,11 +78,41 @@ describe('Agent approval queue', () => {
     unsubscribe()
   })
 
+  it('cancels approvals owned by an uninstalled plugin without cancelling other principals', async () => {
+    saveAgentSessionConfig('chat', { approvalMode: 'manual' })
+    const requests: AgentApprovalRequest[] = []
+    const unsubscribe = onAgentApprovalRequest((request) => requests.push(request))
+    const pluginApproval = requestAgentApproval({
+      principal: { kind: 'plugin', pluginId: 'removed-plugin', entrySha256: 'a'.repeat(64) },
+      sessionId: 'chat',
+      runId: 'plugin-run',
+      title: 'plugin action',
+      detail: '',
+      risk: 'dangerous',
+    })
+    const coreApproval = requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
+      sessionId: 'chat',
+      runId: 'core-run',
+      title: 'core action',
+      detail: '',
+      risk: 'dangerous',
+    })
+
+    cancelPendingPluginApprovals('removed-plugin')
+    await expect(pluginApproval).resolves.toBe(false)
+    await vi.waitFor(() => expect(requests.at(-1)?.title).toBe('core action'))
+    resolveAgentApproval(requests.at(-1)!.id, 'once')
+    await expect(coreApproval).resolves.toBe(true)
+    unsubscribe()
+  })
+
   it('defaults to deny when the tool AbortSignal is cancelled', async () => {
     saveAgentSessionConfig('chat', { approvalMode: 'manual' })
     const controller = new AbortController()
     const unsubscribe = onAgentApprovalRequest(() => undefined)
     const approval = requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       sessionId: 'chat',
       runId: 'run-abort',
       title: 'type',
@@ -84,6 +131,7 @@ describe('Agent approval queue', () => {
     const requests: AgentApprovalRequest[] = []
     const unsubscribe = onAgentApprovalRequest((request) => requests.push(request))
     const decision = requestAgentDecision({
+      principal: CORE_AGENT_PRINCIPAL,
       sessionId: 'chat',
       runId: 'run-loop',
       title: 'loop',
@@ -125,7 +173,14 @@ describe('Agent approval queue', () => {
     const unsubscribe = onAgentApprovalRequest(inAppListener)
 
     await expect(
-      requestAgentApproval({ sessionId: 'chat', runId: 'run-native', title: 'tap', detail: '', risk: 'dangerous' }),
+      requestAgentApproval({
+        principal: CORE_AGENT_PRINCIPAL,
+        sessionId: 'chat',
+        runId: 'run-native',
+        title: 'tap',
+        detail: '',
+        risk: 'dangerous',
+      })
     ).resolves.toBe(true)
     expect(cancelNative).toHaveBeenCalledOnce()
     expect(nativeRequest).toHaveBeenCalledTimes(2)

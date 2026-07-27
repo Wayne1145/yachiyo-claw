@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
 import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-calls/toolsets/session-attachment-rag'
 import { buildToolsForSession, generateSkillsXml } from '@/stores/session/tools-builder'
+import { settingsStore } from '@/stores/settingsStore'
 
 const mockSettings = vi.hoisted(() => ({
   provider: 'bing',
@@ -229,6 +230,18 @@ describe('buildToolsForSession web search tools', () => {
     expect(result.tools).toHaveProperty('parse_link')
     expect(result.instructions).toContain('web_search')
     expect(result.instructions).toContain('parse_link')
+  })
+
+  it('removes tools and their instructions when the feature override is off', async () => {
+    const previous = settingsStore.getState().featureOverrides
+    try {
+      settingsStore.setState({ featureOverrides: { ...previous, 'web-search': false } })
+      const result = await buildToolsForSession(makeModel(true), { webBrowsing: true, messages: [] })
+      expect(result.tools).not.toHaveProperty('web_search')
+      expect(result.instructions).not.toContain('Use web_search')
+    } finally {
+      settingsStore.setState({ featureOverrides: previous })
+    }
   })
 })
 

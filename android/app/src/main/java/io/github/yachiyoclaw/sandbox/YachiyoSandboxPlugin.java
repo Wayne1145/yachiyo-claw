@@ -125,6 +125,27 @@ public final class YachiyoSandboxPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void pauseDownload(PluginCall call) {
+        SandboxDistribution.Spec distribution = SandboxDistribution.current(getContext().getApplicationInfo().nativeLibraryDir);
+        if (distribution == null) { call.reject("sandbox_abi_unsupported"); return; }
+        YachiyoSandboxDownloadWorker.pause(getContext(), distribution);
+        call.resolve(new JSObject().put("accepted", true));
+    }
+
+    @PluginMethod
+    public void cancelDownload(PluginCall call) {
+        SandboxDistribution.Spec distribution = SandboxDistribution.current(getContext().getApplicationInfo().nativeLibraryDir);
+        if (distribution == null) { call.reject("sandbox_abi_unsupported"); return; }
+        YachiyoSandboxDownloadWorker.cancel(getContext(), distribution);
+        call.resolve(new JSObject().put("accepted", true));
+    }
+
+    @PluginMethod
+    public void resumeDownload(PluginCall call) {
+        install(call);
+    }
+
+    @PluginMethod
     public void init(PluginCall call) {
         if (installer == null) {
             call.reject("sandbox_abi_unsupported");
@@ -184,6 +205,30 @@ public final class YachiyoSandboxPlugin extends Plugin {
             call.resolve(new JSObject().put("accepted", true).put("jobId", jobId));
         } catch (Exception error) {
             call.reject(safeError(error, "sandbox_background_start_failed"));
+        }
+    }
+
+    /** Starts a third-party plugin command with only that plugin's private workspace mounted. */
+    @PluginMethod
+    public void startPluginJob(PluginCall call) {
+        String command = call.getString("command", "").trim();
+        int timeout = Math.max(1_000, Math.min(call.getInt("timeout", 30_000), 120_000));
+        try {
+            String pluginId = requirePluginId(call.getString("pluginId", ""));
+            if (command.isEmpty() || command.length() > 8 * 1024 || command.indexOf('\0') >= 0) {
+                throw new IOException("sandbox_command_invalid");
+            }
+            requireReady();
+            File pluginWorkspace = pluginWorkspace(pluginId);
+            if (!pluginWorkspace.isDirectory() && !pluginWorkspace.mkdirs()) {
+                throw new IOException("plugin_workspace_unavailable");
+            }
+            String jobId = createJobId();
+            jobStore.create(jobId, command, pluginWorkspace.getCanonicalPath(), timeout, System.currentTimeMillis());
+            YachiyoSandboxService.start(getContext(), jobId);
+            call.resolve(new JSObject().put("accepted", true).put("jobId", jobId));
+        } catch (Exception error) {
+            call.reject(safeError(error, "plugin_sandbox_start_failed"));
         }
     }
 
@@ -299,6 +344,80 @@ public final class YachiyoSandboxPlugin extends Plugin {
             call.resolve(new JSObject().put("success", true));
         } catch (Exception error) {
             call.resolve(fileError(error, "sandbox_write_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void readPluginFile(PluginCall call) {
+        try {
+            File target = resolvePluginWorkspace(
+                requirePluginId(call.getString("pluginId", "")),
+                call.getString("filePath", "")
+            );
+            if (!target.isFile() || Files.isSymbolicLink(target.toPath())) {
+                throw new IOException("sandbox_file_not_found");
+            }
+            if (target.length() > MAX_FILE_BYTES) throw new IOException("sandbox_file_too_large");
+            call.resolve(new JSObject()
+                .put("success", true)
+                .put("content", new String(Files.readAllBytes(target.toPath()), StandardCharsets.UTF_8)));
+        } catch (Exception error) {
+            call.resolve(fileError(error, "plugin_sandbox_read_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void writePluginFile(PluginCall call) {
+        try {
+            File target = resolvePluginWorkspace(
+                requirePluginId(call.getString("pluginId", "")),
+                call.getString("filePath", "")
+            );
+            byte[] bytes = call.getString("content", "").getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > MAX_FILE_BYTES) throw new IOException("sandbox_file_too_large");
+            File parent = target.getParentFile();
+            if (parent == null || (!parent.isDirectory() && !parent.mkdirs())) {
+                throw new IOException("sandbox_parent_unavailable");
+            }
+            File temporary = new File(parent, target.getName() + ".yachiyo.tmp");
+            try (FileOutputStream output = new FileOutputStream(temporary)) {
+                output.write(bytes);
+                output.getFD().sync();
+            }
+            Files.move(temporary.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            call.resolve(new JSObject().put("success", true));
+        } catch (Exception error) {
+            call.resolve(fileError(error, "plugin_sandbox_write_failed"));
+        }
+    }
+
+    /** Stops every job owned by a plugin and removes its private workspace during uninstall. */
+    @PluginMethod
+    public void cleanupPlugin(PluginCall call) {
+        try {
+            String pluginId = requirePluginId(call.getString("pluginId", ""));
+            File target = pluginWorkspace(pluginId).getCanonicalFile();
+            List<String> jobIds = SandboxJobStore.jobIdsForWorkspace(jobStore.list(), target.getCanonicalPath());
+            for (String jobId : jobIds) YachiyoSandboxService.stop(getContext(), jobId);
+
+            boolean removed = !target.exists();
+            if (target.exists()) {
+                File quarantine = new File(target.getParentFile(), target.getName() + ".deleting-" + System.nanoTime());
+                try {
+                    Files.move(target.toPath(), quarantine.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                    Files.move(target.toPath(), quarantine.toPath());
+                }
+                deleteTree(quarantine);
+                removed = !quarantine.exists();
+            }
+            jobStore.removeJobs(jobIds);
+            call.resolve(new JSObject()
+                .put("success", true)
+                .put("stoppedJobs", jobIds.size())
+                .put("removedWorkspace", removed));
+        } catch (Exception error) {
+            call.reject(safeError(error, "plugin_sandbox_cleanup_failed"));
         }
     }
 
@@ -571,9 +690,48 @@ public final class YachiyoSandboxPlugin extends Plugin {
         return new File(getContext().getFilesDir(), "linux-sandbox/workspaces/" + id);
     }
 
+    private static String requirePluginId(String value) {
+        String pluginId = value == null ? "" : value.trim();
+        if (!pluginId.matches("^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$") || pluginId.length() > 100) {
+            throw new IllegalArgumentException("plugin_id_invalid");
+        }
+        return pluginId;
+    }
+
+    private File pluginWorkspace(String pluginId) throws Exception {
+        return workspaceFor("plugin:" + pluginId);
+    }
+
+    private File resolvePluginWorkspace(String pluginId, String path) throws Exception {
+        requireReady();
+        File root = pluginWorkspace(pluginId);
+        if (!root.isDirectory() && !root.mkdirs()) throw new IOException("plugin_workspace_unavailable");
+        return SandboxPathPolicy.resolveWorkspace(root, path);
+    }
+
     private File resolveWorkspace(String path) throws Exception {
         requireReady();
         return SandboxPathPolicy.resolveWorkspace(workspace, path);
+    }
+
+    private static void deleteTree(File root) throws IOException {
+        if (!root.exists()) return;
+        Files.walkFileTree(root.toPath(), new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override
+            public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs)
+                throws IOException {
+                Files.deleteIfExists(file);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public java.nio.file.FileVisitResult postVisitDirectory(Path directory, IOException error)
+                throws IOException {
+                if (error != null) throw error;
+                Files.deleteIfExists(directory);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private void requireReady() throws IOException {

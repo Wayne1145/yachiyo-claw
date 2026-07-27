@@ -58,18 +58,20 @@ export function getConfigFromFormValues(values: MCPServerConfigFormValues): MCPS
     transport = {
       type: values.transport.type,
       url: values.transport.url,
-      headers: values.transport.headers ? envUtils.parse(values.transport.headers) : undefined,
-      secretRefs: values.transport.secretRefs,
-      protocol: values.transport.protocol,
-      oauth: values.transport.oauthEnabled
+      ...(values.transport.headers ? { headers: envUtils.parse(values.transport.headers) } : {}),
+      ...(values.transport.secretRefs?.length ? { secretRefs: values.transport.secretRefs } : {}),
+      ...(values.transport.protocol ? { protocol: values.transport.protocol } : {}),
+      ...(values.transport.oauthEnabled
         ? {
-            enabled: true,
-            clientId: values.transport.oauthClientId?.trim() || undefined,
-            scopes: values.transport.oauthScopes?.split(/[\s,]+/).filter(Boolean),
-            redirectUri: 'yachiyoclaw://oauth/mcp',
-            resourceMetadataUrl: values.transport.oauthResourceMetadataUrl?.trim() || undefined,
+            oauth: {
+              enabled: true,
+              clientId: values.transport.oauthClientId?.trim() || undefined,
+              scopes: values.transport.oauthScopes?.split(/[\s,]+/).filter(Boolean),
+              redirectUri: 'yachiyoclaw://oauth/mcp',
+              resourceMetadataUrl: values.transport.oauthResourceMetadataUrl?.trim() || undefined,
+            },
           }
-        : undefined,
+        : {}),
     }
   }
   return {

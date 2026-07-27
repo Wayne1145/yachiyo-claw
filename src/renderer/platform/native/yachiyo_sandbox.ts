@@ -1,4 +1,5 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 export type SandboxInstallStage =
   | 'downloading'
@@ -43,9 +44,17 @@ interface NativeSandboxPlugin {
   checkAvailability(): Promise<{ available: boolean; reason?: string; installed: boolean; state: string }>
   status(): Promise<NativeSandboxStatus>
   install(): Promise<NativeSandboxStatus & { success: boolean }>
+  pauseDownload(): Promise<{ accepted: boolean }>
+  cancelDownload(): Promise<{ accepted: boolean }>
+  resumeDownload(): Promise<NativeSandboxStatus & { success: boolean }>
   init(options: { workingDirectory: string }): Promise<{ success: boolean; workingDirectory?: string; error?: string }>
   exec(options: { command: string; timeout?: number }): Promise<{ stdout: string; stderr: string; exitCode: number }>
   startBackground(options: { command: string; timeout?: number }): Promise<{ accepted: boolean; jobId: string }>
+  startPluginJob(options: {
+    pluginId: string
+    command: string
+    timeout?: number
+  }): Promise<{ accepted: boolean; jobId: string }>
   listJobs(): Promise<{ jobs: NativeSandboxJob[] }>
   queryJob(options: { jobId: string }): Promise<NativeSandboxJob>
   readJobOutput(options: { jobId: string; stdoutOffset?: number; stderrOffset?: number }): Promise<{
@@ -59,6 +68,18 @@ interface NativeSandboxPlugin {
   kill(): Promise<{ killed: boolean }>
   read(options: { filePath: string }): Promise<{ success: boolean; content?: string; error?: string }>
   write(options: { filePath: string; content: string }): Promise<{ success: boolean; error?: string }>
+  readPluginFile(options: {
+    pluginId: string
+    filePath: string
+  }): Promise<{ success: boolean; content?: string; error?: string }>
+  writePluginFile(options: {
+    pluginId: string
+    filePath: string
+    content: string
+  }): Promise<{ success: boolean; error?: string }>
+  cleanupPlugin(options: {
+    pluginId: string
+  }): Promise<{ success: boolean; stoppedJobs: number; removedWorkspace: boolean }>
   edit(options: { filePath: string; search: string; replace: string }): Promise<{ success: boolean; error?: string }>
   list(options: { dirPath: string }): Promise<{ success: boolean; content?: string; error?: string }>
   grep(options: { pattern: string; dirPath?: string; include?: string }): Promise<{
@@ -71,4 +92,7 @@ interface NativeSandboxPlugin {
   addListener(eventName: 'progress', listener: (event: NativeSandboxProgress) => void): Promise<PluginListenerHandle>
 }
 
-export const yachiyoSandboxNative = registerPlugin<NativeSandboxPlugin>('YachiyoSandbox')
+export const yachiyoSandboxNative = createFeatureGatedPlugin(
+  'sandbox',
+  registerPlugin<NativeSandboxPlugin>('YachiyoSandbox'),
+)

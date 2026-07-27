@@ -17,7 +17,6 @@ import { estimateTokensFromMessages } from '@/packages/token'
 import platform from '@/platform'
 import storage from '@/storage'
 import { StorageKeyGenerator } from '@/storage/StoreStorage'
-import { featureFlags } from '@/utils/feature-flags'
 import { SESSION_ATTACHMENT_RAG_LOG_PREFIX } from '../../../shared/session-attachment-rag/logging'
 import * as chatStore from '../chatStore'
 import { settingsStore } from '../settingsStore'
@@ -179,11 +178,18 @@ export async function orchestrateGeneration(
     promptMsgs = updatedMsgs
 
     const { tools, instructions: toolInstructions } = await buildToolsForSession(model, {
-      webBrowsing,
-      knowledgeBase,
       messages: promptMsgs,
-      cameraSessionId: sessionId,
       agentSessionId: sessionId,
+      featureOptions: {
+        'web-search': { webBrowsing },
+        'knowledge-base': { knowledgeBase },
+        sandbox: { sandboxEnabled: false },
+        workspace: { sandboxEnabled: false },
+        skills: { enabledSkillNames: [], sandboxEnabled: false },
+        'android-device': { deviceControlEnabled: false },
+        camera: { cameraSessionId: sessionId },
+        mcp: { agentSessionId: sessionId },
+      },
     })
     const latestUserMessage = [...promptMsgs].reverse().find((message) => message.role === 'user')
     const latestUserText = latestUserMessage ? getMessageText(latestUserMessage, true, true) : ''

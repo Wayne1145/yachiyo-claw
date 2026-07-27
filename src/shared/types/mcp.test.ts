@@ -25,6 +25,7 @@ describe('mobile MCP configuration contract', () => {
     })
     expect(withoutRefs.success).toBe(true)
     if (withoutRefs.success) expect(withoutRefs.data.transport.secretRefs).toEqual([])
+
   })
 
   it('rejects stdio, HTTP, inline headers, and credential-bearing URLs', () => {

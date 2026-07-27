@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import { AgentActionRecoveryRequiredError, digestAgentJson, executeAgentAction } from './agent-broker'
 import { type AgentCheckpointStorage, AgentCheckpointStore } from './agent-checkpoints'
+import type { BrokerToolId } from '@/features/broker-tool-registry'
 
 class MemoryStorage implements AgentCheckpointStorage {
   private values = new Map<string, unknown>()
@@ -111,7 +113,9 @@ describe('AgentCheckpointStore', () => {
     const execute = vi.fn().mockResolvedValue({ success: true })
     await expect(
       executeAgentAction({
-        toolId: uncertain.toolId,
+        featureId: 'android-device',
+        principal: CORE_AGENT_PRINCIPAL,
+        toolId: uncertain.toolId as BrokerToolId,
         backend: 'accessibility',
         parameters,
         taskId: uncertain.taskId,

@@ -1,33 +1,33 @@
 import { ActionIcon, Box, Flex, Stack, Text } from '@mantine/core'
 import {
   IconAdjustmentsHorizontal,
-  IconBook,
   IconBox,
   IconCategory,
   IconChevronLeft,
   IconChevronRight,
-  IconCircleDottedLetterM,
   IconFileText,
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
-  IconNotebook,
-  IconWand,
-  IconWorldWww,
 } from '@tabler/icons-react'
 import { createFileRoute, Link, Outlet, useCanGoBack, useRouter, useRouterState } from '@tanstack/react-router'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { Toaster } from 'sonner'
+import { useMemo } from 'react'
 import Divider from '@/components/common/Divider'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import Page from '@/components/layout/Page'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
+import { registerBuiltinFeatureUi } from '@/features/builtin-feature-ui'
+import { registerBuiltinFeatures } from '@/features/builtin-features'
+import { resolveRendererFeaturePlatform } from '@/features/feature-runtime'
+import { getSettingsEntries } from '@/features/ui-registry'
 import platform from '@/platform'
-import { featureFlags } from '@/utils/feature-flags'
+import { useSettingsStore } from '@/stores/settingsStore'
 
-const ITEMS = [
+const CORE_ITEMS = [
   {
     key: 'provider',
     label: 'Model Provider',
@@ -39,46 +39,9 @@ const ITEMS = [
     icon: <IconBox className="w-full h-full" />,
   },
   {
-    key: 'web-search',
-    label: 'Web Search',
-    icon: <IconWorldWww className="w-full h-full" />,
-  },
-  ...(featureFlags.mcp
-    ? [
-        {
-          key: 'mcp',
-          label: 'MCP',
-          icon: <IconCircleDottedLetterM className="w-full h-full" />,
-        },
-      ]
-    : []),
-  ...(featureFlags.knowledgeBase
-    ? [
-        {
-          key: 'knowledge-base',
-          label: 'Knowledge Base',
-          icon: <IconBook className="w-full h-full" />,
-        },
-      ]
-    : []),
-  ...(featureFlags.skills
-    ? [
-        {
-          key: 'skills',
-          label: 'Skills',
-          icon: <IconWand className="w-full h-full" />,
-        },
-      ]
-    : []),
-  {
     key: 'document-parser',
     label: 'Document Parser',
     icon: <IconFileText className="w-full h-full" />,
-  },
-  {
-    key: 'user-memory',
-    label: 'User & Memory',
-    icon: <IconNotebook className="w-full h-full" />,
   },
   {
     key: 'chat',
@@ -100,6 +63,20 @@ const ITEMS = [
     icon: <IconAdjustmentsHorizontal className="w-full h-full" />,
   },
 ]
+
+const DESKTOP_ITEM_ORDER: Readonly<Record<string, number>> = {
+  provider: 100,
+  'default-models': 200,
+  'web-search': 300,
+  mcp: 400,
+  'knowledge-base': 500,
+  skills: 600,
+  'document-parser': 700,
+  'user-memory': 800,
+  chat: 900,
+  hotkeys: 1000,
+  general: 1100,
+}
 
 export const Route = createFileRoute('/settings')({
   component: RouteComponent,
@@ -146,6 +123,25 @@ export function SettingsRoot() {
   const key = routerState.location.pathname.split('/')[2]
   const isSmallScreen = useIsSmallScreen()
   const inAndroidAppShell = useInAndroidAppShell()
+  const featureOverrides = useSettingsStore((state) => state.featureOverrides)
+  const items = useMemo(() => {
+    registerBuiltinFeatures()
+    registerBuiltinFeatureUi()
+    const featurePlatform = resolveRendererFeaturePlatform()
+    const contributed = (['model', 'capability', 'app'] as const)
+      .flatMap((group) => getSettingsEntries(group, { platform: featurePlatform, overrides: featureOverrides }))
+      .map((entry) => {
+        const Icon = entry.icon
+        return {
+          key: entry.route.replace(/^\/settings\//, ''),
+          label: entry.desktopLabel ?? entry.label,
+          icon: <Icon className="w-full h-full" />,
+        }
+      })
+    return [...CORE_ITEMS, ...contributed].sort(
+      (a, b) => (DESKTOP_ITEM_ORDER[a.key] ?? 10_000) - (DESKTOP_ITEM_ORDER[b.key] ?? 10_000)
+    )
+  }, [featureOverrides])
 
   if (inAndroidAppShell) {
     return (
@@ -167,7 +163,7 @@ export function SettingsRoot() {
             isSmallScreen ? 'w-full border-r-0' : 'flex-[1_0_auto]'
           )}
         >
-          {ITEMS.map((item) => (
+          {items.map((item) => (
             <Link
               disabled={
                 routerState.location.pathname === `/settings/${item.key}` ||

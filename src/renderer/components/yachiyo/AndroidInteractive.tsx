@@ -14,6 +14,7 @@ import { getMessageText } from '@shared/utils/message'
 import {
   IconCamera,
   IconChevronDown,
+  IconCpu,
   IconHistory,
   IconKeyboard,
   IconMicrophone,
@@ -388,7 +389,7 @@ export function AndroidInteractive({
   if (!selectedModel) {
     return (
       <div className="yachiyo-interactive-loading">
-        <Loader color="pink" />
+        <Loader color="chatbox-brand" />
       </div>
     )
   }
@@ -422,7 +423,11 @@ export function AndroidInteractive({
               aria-label={`切换模型：${conversationModelName}`}
               title={conversationModelName}
             >
-              {conversationModel && <ProviderImageIcon size={18} provider={conversationModel.provider} />}
+              {conversationModel?.provider === ModelProviderEnum.Local ? (
+                <IconCpu size={18} aria-hidden="true" />
+              ) : (
+                conversationModel && <ProviderImageIcon size={18} provider={conversationModel.provider} />
+              )}
               <span>{conversationModelName}</span>
               <IconChevronDown size={14} />
             </UnstyledButton>
@@ -455,7 +460,7 @@ export function AndroidInteractive({
           </ActionIcon>
           <ActionIcon
             variant="subtle"
-            color={cameraEnabled ? 'pink' : 'gray'}
+            color={cameraEnabled ? 'chatbox-brand' : 'gray'}
             aria-label="摄像头"
             onClick={() => setCameraEnabled(!cameraEnabled)}
           >

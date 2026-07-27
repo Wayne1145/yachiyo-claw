@@ -1,6 +1,7 @@
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import { requestAgentApproval, type AgentApprovalRequest } from './agent-approval'
 
-type BrokerRequest = Omit<AgentApprovalRequest, 'id' | 'sessionId'> & {
+type BrokerRequest = Omit<AgentApprovalRequest, 'id' | 'sessionId' | 'principal'> & {
   sessionId?: string | null
   mutating?: boolean
 }
@@ -11,6 +12,6 @@ export async function runWorkspaceBrokeredAction<T>(
   action: () => Promise<T>,
   denied: T,
 ): Promise<T> {
-  if (!(await requestAgentApproval(request))) return denied
+  if (!(await requestAgentApproval({ ...request, principal: CORE_AGENT_PRINCIPAL }))) return denied
   return action()
 }

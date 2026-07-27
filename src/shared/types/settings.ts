@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { ModelProviderEnum, ModelProviderType } from './provider'
 import { SkillSettingsSchema } from './skills'
+import { MCPServerConfigSchema } from './mcp'
 
 // Re-export for backward compatibility
 export { ModelProviderType } from './provider'
@@ -151,6 +152,7 @@ export const GlobalSessionSettingsSchema = z.object({
   topP: z.number().optional().catch(undefined),
   maxTokens: z.number().optional().catch(undefined),
   stream: z.boolean().optional().catch(true),
+  reasoningStrength: z.enum(['off', 'minimal', 'low', 'medium', 'high', 'max']).optional().catch(undefined),
 })
 
 export const SessionSettingsSchema = GlobalSessionSettingsSchema.extend({
@@ -159,7 +161,6 @@ export const SessionSettingsSchema = GlobalSessionSettingsSchema.extend({
   dalleStyle: z.enum(['vivid', 'natural']).optional().catch('vivid'),
   imageGenerateNum: z.number().optional().catch(1),
   providerOptions: ProviderOptionsSchema.optional().catch(undefined),
-  reasoningStrength: z.enum(['off', 'minimal', 'low', 'medium', 'high', 'max']).optional().catch(undefined),
   autoCompaction: z.boolean().optional().catch(undefined),
 })
 
@@ -269,27 +270,6 @@ const ExtensionSettingsSchema = z.object({
   documentParser: DocumentParserConfigSchema.optional(),
 })
 
-const MCPTransportConfigSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('stdio'),
-    command: z.string(),
-    args: z.array(z.string()),
-    env: z.record(z.string(), z.string()).optional(),
-  }),
-  z.object({
-    type: z.literal('http'),
-    url: z.string(),
-    headers: z.record(z.string(), z.string()).optional(),
-  }),
-])
-
-const MCPServerConfigSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  enabled: z.boolean(),
-  transport: MCPTransportConfigSchema,
-})
-
 const MCPSettingsSchema = z.object({
   servers: z.array(MCPServerConfigSchema),
   enabledBuiltinServers: z.array(z.string()),
@@ -302,6 +282,10 @@ export enum Theme {
 }
 
 export const SettingsSchema = GlobalSessionSettingsSchema.extend({
+  /** Runtime feature-module overrides. Only values differing from the module default are persisted. */
+  featureOverrides: z.record(z.string(), z.boolean()).optional().catch(undefined),
+  /** Feature-owned settings namespaces. Each module validates its own entry before use. */
+  featureSettings: z.record(z.string(), z.unknown()).optional().catch(undefined),
   providers: z.record(z.string(), ProviderSettingsSchema).optional().catch(undefined),
   customProviders: z.array(CustomProviderBaseInfoSchema).optional().catch(undefined),
   favoritedModels: z
@@ -452,8 +436,8 @@ export type ShortcutToggleWindowValue = z.infer<typeof ShortcutToggleWindowValue
 export type ShortcutName = keyof ShortcutSetting
 export type ShortcutSetting = z.infer<typeof ShortcutSettingSchema>
 export type ExtensionSettings = z.infer<typeof ExtensionSettingsSchema>
-export type MCPTransportConfig = z.infer<typeof MCPTransportConfigSchema>
-export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>
+export type MCPTransportConfig = import('./mcp').MCPTransportConfig
+export type MCPServerConfig = import('./mcp').MCPServerConfig
 export type MCPSettings = z.infer<typeof MCPSettingsSchema>
 
 // Re-export SkillSettings for convenience

@@ -1,4 +1,5 @@
 import { registerPlugin } from '@capacitor/core'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 interface YachiyoMemoryPlugin {
   read(options: { key: string }): Promise<{ found: boolean; value?: string }>
@@ -7,7 +8,10 @@ interface YachiyoMemoryPlugin {
   clear(): Promise<void>
 }
 
-export const yachiyoMemoryNative = registerPlugin<YachiyoMemoryPlugin>('YachiyoMemory')
+export const yachiyoMemoryNative = createFeatureGatedPlugin(
+  'long-term-memory',
+  registerPlugin<YachiyoMemoryPlugin>('YachiyoMemory'),
+)
 
 export function readNativeMemoryBlob(key: string): Promise<{ found: boolean; value?: string }> {
   return yachiyoMemoryNative.read({ key })

@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core'
+import type { AgentPrincipal } from '@shared/agent'
 import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 import { getAgentSessionConfig, saveAgentSessionConfig } from './agent-session-config'
 
@@ -11,19 +12,33 @@ export interface AgentApprovalRequest {
   detail: string
   risk: AgentOperationRisk
   kind?: 'operation' | 'loop'
+  principal: AgentPrincipal
 }
 
 export type ApprovalDecision = 'once' | 'conversation' | 'deny'
+export interface AgentApprovalAuthorization {
+  decision: ApprovalDecision
+  approvalNonce?: string
+  expiresAt?: number
+}
 type ApprovalListener = (request: AgentApprovalRequest) => void
 export type AgentApprovalLifecycleEvent =
-  | { state: 'requested'; sessionId: string; runId: string; title: string; risk: AgentOperationRisk; kind: 'operation' | 'loop' }
-  | { state: 'resolved'; sessionId: string; runId: string; decision: ApprovalDecision }
+  | {
+      state: 'requested'
+      sessionId: string
+      runId: string
+      title: string
+      risk: AgentOperationRisk
+      kind: 'operation' | 'loop'
+      principal: AgentPrincipal
+    }
+  | { state: 'resolved'; sessionId: string; runId: string; decision: ApprovalDecision; principal: AgentPrincipal }
 type ApprovalLifecycleListener = (event: AgentApprovalLifecycleEvent) => void
 
 interface PendingApproval {
   sessionId: string
   runId: string
-  resolve: (decision: ApprovalDecision) => void
+  resolve: (authorization: AgentApprovalAuthorization) => void
 }
 
 interface ApprovalJob {
@@ -33,11 +48,13 @@ interface ApprovalJob {
   detail: string
   risk: AgentOperationRisk
   kind?: 'operation' | 'loop'
+  principal: AgentPrincipal
+  bindingDigest?: string
   rememberConversationApproval: boolean
   signal?: AbortSignal
   cancelled: boolean
   settled: boolean
-  resolve: (decision: ApprovalDecision) => void
+  resolve: (authorization: AgentApprovalAuthorization) => void
   cancelActive?: () => void
 }
 
@@ -79,29 +96,46 @@ export function resolveAgentApproval(id: string, decision: ApprovalDecision): vo
   const approval = pending.get(id)
   if (!approval) return
   pending.delete(id)
-  approval.resolve(decision)
+  approval.resolve({ decision })
 }
 
 function matchesApproval(job: ApprovalJob, id?: string): boolean {
   return !id || job.sessionId === id || job.runId === id
 }
 
-function settleJob(job: ApprovalJob, decision: ApprovalDecision): void {
+function settleJob(job: ApprovalJob, authorization: AgentApprovalAuthorization): void {
   if (job.settled) return
   job.settled = true
-  job.resolve(decision)
+  job.resolve(authorization)
 }
 
 export function cancelPendingAgentApprovals(sessionOrRunId?: string): void {
   for (const job of approvalQueue) {
     if (!matchesApproval(job, sessionOrRunId)) continue
     job.cancelled = true
-    settleJob(job, 'deny')
+    settleJob(job, { decision: 'deny' })
   }
 
   if (activeApproval && matchesApproval(activeApproval, sessionOrRunId)) {
     activeApproval.cancelled = true
-    settleJob(activeApproval, 'deny')
+    settleJob(activeApproval, { decision: 'deny' })
+    activeApproval.cancelActive?.()
+  }
+}
+
+/** Uninstall/revocation boundary: cancel only approvals originating from this plugin. */
+export function cancelPendingPluginApprovals(pluginId: string): void {
+  const matchesPlugin = (job: ApprovalJob) => job.principal.kind === 'plugin' && job.principal.pluginId === pluginId
+
+  for (const job of approvalQueue) {
+    if (!matchesPlugin(job)) continue
+    job.cancelled = true
+    settleJob(job, { decision: 'deny' })
+  }
+
+  if (activeApproval && matchesPlugin(activeApproval)) {
+    activeApproval.cancelled = true
+    settleJob(activeApproval, { decision: 'deny' })
     activeApproval.cancelActive?.()
   }
 }
@@ -111,40 +145,49 @@ function isApprovalAlreadyPending(error: unknown): boolean {
   return message.includes('approval_already_pending')
 }
 
-async function requestNativeApproval(job: ApprovalJob): Promise<ApprovalDecision | null> {
+async function requestNativeApproval(job: ApprovalJob): Promise<AgentApprovalAuthorization | null> {
   const permissions = await yachiyoDeviceAccessNative.getPermissionStatus()
   if (!permissions.overlay) return null
 
   const request = () =>
-    yachiyoDeviceAccessNative.requestOperationApproval(job.title, job.detail, job.risk === 'dangerous')
-  const remember = (decision: ApprovalDecision): ApprovalDecision => {
-    if (decision === 'conversation' && job.rememberConversationApproval) {
+    yachiyoDeviceAccessNative.requestOperationApproval(
+      job.title,
+      job.detail,
+      job.risk === 'dangerous',
+      job.bindingDigest
+    )
+  const remember = (authorization: AgentApprovalAuthorization): AgentApprovalAuthorization => {
+    if (
+      authorization.decision === 'conversation' &&
+      job.rememberConversationApproval &&
+      job.principal.kind === 'core'
+    ) {
       saveAgentSessionConfig(job.sessionId, { allowDangerousForConversation: true })
     }
-    return decision
+    return authorization
   }
 
   try {
     const result = await request()
-    return remember(result.decision)
+    return remember(result)
   } catch (error) {
     if (!isApprovalAlreadyPending(error)) throw error
 
     // A stale native call can survive WebView lifecycle changes. Clear it once
     // and retry on the visible overlay; never fall back to an invisible dialog.
     await yachiyoDeviceAccessNative.cancelOperationApproval().catch(() => undefined)
-    if (job.cancelled || job.signal?.aborted) return 'deny'
+    if (job.cancelled || job.signal?.aborted) return { decision: 'deny' }
     try {
       const result = await request()
-      return remember(result.decision)
+      return remember(result)
     } catch {
-      return 'deny'
+      return { decision: 'deny' }
     }
   }
 }
 
-function waitForInAppApproval(job: ApprovalJob): Promise<ApprovalDecision> {
-  if (listeners.size === 0) return Promise.resolve('deny')
+function waitForInAppApproval(job: ApprovalJob): Promise<AgentApprovalAuthorization> {
+  if (listeners.size === 0 || job.bindingDigest) return Promise.resolve({ decision: 'deny' })
 
   const request: AgentApprovalRequest = {
     id: crypto.randomUUID(),
@@ -153,29 +196,34 @@ function waitForInAppApproval(job: ApprovalJob): Promise<ApprovalDecision> {
     detail: job.detail,
     risk: job.risk,
     kind: job.kind,
+    principal: job.principal,
   }
 
-  return new Promise<ApprovalDecision>((resolve) => {
+  return new Promise<AgentApprovalAuthorization>((resolve) => {
     pending.set(request.id, {
       sessionId: job.sessionId,
       runId: job.runId,
-      resolve: (decision) => {
+      resolve: (authorization) => {
         pending.delete(request.id)
-        if (decision === 'conversation' && job.rememberConversationApproval) {
+        if (
+          authorization.decision === 'conversation' &&
+          job.rememberConversationApproval &&
+          job.principal.kind === 'core'
+        ) {
           saveAgentSessionConfig(job.sessionId, { allowDangerousForConversation: true })
         }
-        resolve(decision)
+        resolve(authorization)
       },
     })
     listeners.forEach((listener) => listener(request))
   })
 }
 
-async function executeApprovalJob(job: ApprovalJob): Promise<ApprovalDecision> {
-  if (job.cancelled || job.signal?.aborted) return 'deny'
+async function executeApprovalJob(job: ApprovalJob): Promise<AgentApprovalAuthorization> {
+  if (job.cancelled || job.signal?.aborted) return { decision: 'deny' }
 
-  let cancelResolve: (decision: ApprovalDecision) => void = () => undefined
-  const cancelled = new Promise<ApprovalDecision>((resolve) => {
+  let cancelResolve: (authorization: AgentApprovalAuthorization) => void = () => undefined
+  const cancelled = new Promise<AgentApprovalAuthorization>((resolve) => {
     cancelResolve = resolve
   })
   const abort = () => {
@@ -183,11 +231,11 @@ async function executeApprovalJob(job: ApprovalJob): Promise<ApprovalDecision> {
     for (const [id, approval] of pending) {
       if (approval.runId === job.runId) {
         pending.delete(id)
-        approval.resolve('deny')
+        approval.resolve({ decision: 'deny' })
       }
     }
     void yachiyoDeviceAccessNative.cancelOperationApproval().catch(() => undefined)
-    cancelResolve('deny')
+    cancelResolve({ decision: 'deny' })
   }
   job.cancelActive = abort
   job.signal?.addEventListener('abort', abort, { once: true })
@@ -201,6 +249,7 @@ async function executeApprovalJob(job: ApprovalJob): Promise<ApprovalDecision> {
         // Only unavailable native overlays use the foreground in-app dialog.
       }
     }
+    if (job.bindingDigest) return { decision: 'deny' }
     return await Promise.race([waitForInAppApproval(job), cancelled])
   } finally {
     job.signal?.removeEventListener('abort', abort)
@@ -213,7 +262,7 @@ function pumpApprovalQueue(): void {
   const job = approvalQueue.shift()
   if (!job) return
   if (job.cancelled || job.signal?.aborted) {
-    settleJob(job, 'deny')
+    settleJob(job, { decision: 'deny' })
     pumpApprovalQueue()
     return
   }
@@ -227,23 +276,30 @@ function pumpApprovalQueue(): void {
       title: job.title,
       risk: job.risk,
       kind: job.kind || 'operation',
-    }),
+      principal: job.principal,
+    })
   )
   void executeApprovalJob(job)
-    .then((decision) => {
+    .then((authorization) => {
       lifecycleListeners.forEach((listener) =>
-        listener({ state: 'resolved', sessionId: job.sessionId, runId: job.runId, decision }),
+        listener({
+          state: 'resolved',
+          sessionId: job.sessionId,
+          runId: job.runId,
+          decision: authorization.decision,
+          principal: job.principal,
+        })
       )
-      settleJob(job, decision)
+      settleJob(job, authorization)
     })
-    .catch(() => settleJob(job, 'deny'))
+    .catch(() => settleJob(job, { decision: 'deny' }))
     .finally(() => {
       if (activeApproval === job) activeApproval = null
       pumpApprovalQueue()
     })
 }
 
-export async function requestAgentDecision(
+export async function requestAgentAuthorization(
   input: Omit<AgentApprovalRequest, 'id' | 'sessionId'> & {
     sessionId?: string | null
     /** Identifies one generated Agent run so cancellation cannot hit another run. */
@@ -254,17 +310,26 @@ export async function requestAgentDecision(
     alwaysAsk?: boolean
     /** Only operation approvals may grant a conversation-wide dangerous-action allowance. */
     rememberConversationApproval?: boolean
-  },
-): Promise<ApprovalDecision> {
+    /** Optional SHA-256 binding consumed once by the native privileged operation. */
+    bindingDigest?: string
+  }
+): Promise<AgentApprovalAuthorization> {
   const sessionId = input.sessionId || activeAgentSessionId
-  if (!sessionId || input.mutating === false) return 'once'
+  if (!sessionId || input.mutating === false) {
+    return { decision: input.bindingDigest ? 'deny' : 'once' }
+  }
 
   const config = getAgentSessionConfig(sessionId)
-  if (!input.alwaysAsk && (config.approvalMode === 'full' || config.allowDangerousForConversation)) return 'once'
-  if (!input.alwaysAsk && config.approvalMode === 'smart' && input.risk === 'safe') return 'once'
-  if (input.signal?.aborted) return 'deny'
+  const canUseConversationGrant = input.principal.kind === 'core' && config.allowDangerousForConversation
+  if (!input.alwaysAsk && !input.bindingDigest && (config.approvalMode === 'full' || canUseConversationGrant)) {
+    return { decision: 'once' }
+  }
+  if (!input.alwaysAsk && !input.bindingDigest && config.approvalMode === 'smart' && input.risk === 'safe') {
+    return { decision: 'once' }
+  }
+  if (input.signal?.aborted) return { decision: 'deny' }
 
-  return await new Promise<ApprovalDecision>((resolve) => {
+  return await new Promise<AgentApprovalAuthorization>((resolve) => {
     approvalQueue.push({
       sessionId,
       runId: input.runId || sessionId,
@@ -272,7 +337,9 @@ export async function requestAgentDecision(
       detail: input.detail,
       risk: input.risk,
       kind: input.kind,
-      rememberConversationApproval: input.rememberConversationApproval ?? true,
+      principal: input.principal,
+      bindingDigest: input.bindingDigest,
+      rememberConversationApproval: input.principal.kind === 'core' && (input.rememberConversationApproval ?? true),
       signal: input.signal,
       cancelled: false,
       settled: false,
@@ -282,9 +349,13 @@ export async function requestAgentDecision(
   })
 }
 
-export async function requestAgentApproval(
-  input: Parameters<typeof requestAgentDecision>[0],
-): Promise<boolean> {
+export async function requestAgentDecision(
+  input: Parameters<typeof requestAgentAuthorization>[0]
+): Promise<ApprovalDecision> {
+  return (await requestAgentAuthorization(input)).decision
+}
+
+export async function requestAgentApproval(input: Parameters<typeof requestAgentDecision>[0]): Promise<boolean> {
   return (await requestAgentDecision(input)) !== 'deny'
 }
 

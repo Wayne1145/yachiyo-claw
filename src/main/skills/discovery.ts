@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { getLogger } from '../util'
 import { parseSkillFile } from './parser'
+import { listBuiltinSkillInfos } from './builtin'
 
 const log = getLogger('skills:discovery')
 
@@ -38,8 +39,9 @@ export function discoverSkills(skillsDir: string): SkillInfo[] {
     log.error(`Failed to scan skills directory: ${skillsDir}`, error)
   }
 
-  const seenNames = new Set<string>()
-  const deduplicatedSkills: SkillInfo[] = []
+  const builtin = listBuiltinSkillInfos()
+  const seenNames = new Set(builtin.map((skill) => skill.name))
+  const deduplicatedSkills: SkillInfo[] = [...builtin]
   for (const skill of customSkills) {
     if (seenNames.has(skill.name)) {
       log.warn(`Duplicate skill name "${skill.name}" found, keeping first occurrence`)

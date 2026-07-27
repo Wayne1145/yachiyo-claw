@@ -2,6 +2,7 @@ import { Badge, Button, Flex, Loader, Stack, Text, Title } from '@mantine/core'
 import { IconCheck, IconExternalLink, IconShieldCheck, IconX } from '@tabler/icons-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
+import { getNativeFeatureHealth, type NativeFeatureHealth } from '@/features/native-health'
 import { shouldOpenPermissionWizard } from '@/mobile/device-permissions'
 import {
   type DevicePermissionStatus,
@@ -68,6 +69,7 @@ function PermissionRow({
 export function AndroidPermissionWizard() {
   const [status, setStatus] = useState<DevicePermissionStatus | null>(null)
   const [opened, setOpened] = useState(false)
+  const [nativeHealth, setNativeHealth] = useState<readonly NativeFeatureHealth[]>([])
   const [loading, setLoading] = useState(true)
   const [deferred, setDeferred] = useState(
     () => sessionStorage.getItem('yachiyo-permission-wizard-deferred') === 'true',
@@ -76,8 +78,10 @@ export function AndroidPermissionWizard() {
   const refresh = useCallback(async () => {
     try {
       const permissions = await yachiyoDeviceAccessNative.getPermissionStatus()
+      const health = getNativeFeatureHealth()
       setStatus(permissions)
-      if (shouldOpenPermissionWizard(permissions, deferred)) {
+      setNativeHealth(health)
+      if (health.some((item) => !item.available) || shouldOpenPermissionWizard(permissions, deferred)) {
         setOpened(true)
       }
     } finally {
@@ -102,8 +106,12 @@ export function AndroidPermissionWizard() {
 
   const requiredReady = useMemo(() => {
     if (!status) return false
-    return status.batteryOptimizationIgnored && status.notificationsGranted
-  }, [status])
+    return (
+      status.batteryOptimizationIgnored &&
+      status.notificationsGranted &&
+      nativeHealth.every((item) => item.available)
+    )
+  }, [nativeHealth, status])
 
   const openSettings = (target: PermissionTarget) => {
     void yachiyoDeviceAccessNative.openPermissionSettings(target)
@@ -144,6 +152,16 @@ export function AndroidPermissionWizard() {
           </Flex>
         ) : (
           <Stack gap={0} className="yachiyo-permission-list">
+            {nativeHealth
+              .filter((item) => !item.available)
+              .map((item) => (
+                <PermissionRow
+                  key={item.featureId}
+                  label={`${item.featureId} 原生组件`}
+                  description={`当前安装包缺少 ${item.missingPlugins.join('、')}，请安装完整版本。`}
+                  granted={false}
+                />
+              ))}
             <PermissionRow
               label="任务通知"
               description="显示定时任务唤醒和待继续状态；通知不包含提示词、密钥或执行结果。"

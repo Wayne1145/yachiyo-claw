@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import { requestAgentApproval } from './agent-approval'
 
 export interface CameraCapture {
@@ -39,6 +40,7 @@ export function createCameraCaptureTool(sessionId: string) {
     }),
     execute: async ({ reason }) => {
       const approved = await requestAgentApproval({
+        principal: CORE_AGENT_PRINCIPAL,
         sessionId,
         title: '拍摄并上传当前摄像头画面',
         detail: reason?.trim() || '模型请求查看当前摄像头画面。',

@@ -116,9 +116,14 @@ export const SkillCapabilityManifestSchema = z
   })
   .strict()
 
+// ed25519 is kept for existing SkillHub metadata compatibility, but WebCrypto Ed25519 is unavailable
+// on Android WebView below API 33 (verified on-device: Chrome 110 throws NotSupportedError), so
+// ecdsa-p256 is the algorithm that actually verifies across this app's supported versions.
+export const SignatureAlgorithmSchema = z.enum(['ed25519', 'ecdsa-p256'])
+
 export const SkillSignatureSchema = z
   .object({
-    algorithm: z.literal('ed25519'),
+    algorithm: SignatureAlgorithmSchema,
     value: z.string().min(1),
     keyId: z.string().min(1).max(256).optional(),
     publicKey: z.string().min(1).optional(),

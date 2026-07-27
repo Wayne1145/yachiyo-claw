@@ -187,7 +187,7 @@ export function AndroidScheduledTasks() {
                 <Tooltip label="立即运行">
                   <ActionIcon
                     variant="subtle"
-                    color="pink"
+                    color="chatbox-brand"
                     loading={runningId === task.id}
                     aria-label={`立即运行${task.title}`}
                     onClick={() => void handleRun(task.id)}

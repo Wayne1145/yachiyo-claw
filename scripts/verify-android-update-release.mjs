@@ -67,6 +67,49 @@ function parseSidecar(file) {
   return match[1].toLowerCase()
 }
 
+function androidSdkRoots(projectRoot) {
+  return [
+    join(projectRoot, '.tools', 'android-sdk'),
+    join(process.cwd(), '.tools', 'android-sdk'),
+    process.env.ANDROID_SDK_ROOT,
+    process.env.ANDROID_HOME,
+  ].filter((value, index, values) => value && values.indexOf(value) === index)
+}
+
+function findAndroidBuildTool(projectRoot, name) {
+  const executable = process.platform === 'win32' ? `${name}.exe` : name
+  for (const sdkRoot of androidSdkRoots(projectRoot)) {
+    const buildTools = join(sdkRoot, 'build-tools')
+    if (!existsSync(buildTools)) continue
+    const versions = readdirSync(buildTools).sort((left, right) =>
+      right.localeCompare(left, undefined, { numeric: true })
+    )
+    for (const version of versions) {
+      const candidate = join(buildTools, version, executable)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return null
+}
+
+function inspectApkManifest(aapt, apk) {
+  const result = spawnSync(aapt, ['dump', 'badging', apk], {
+    encoding: 'utf8',
+    windowsHide: true,
+    maxBuffer: 4 * 1024 * 1024,
+  })
+  if (result.status !== 0) fail(`Could not inspect APK manifest: ${(result.stderr || result.stdout).trim()}`)
+  const packageLine = result.stdout.split(/\r?\n/).find((line) => line.startsWith('package:'))
+  const applicationId = /\bname='([^']+)'/.exec(packageLine || '')?.[1]
+  const versionCodeValue = /\bversionCode='(\d+)'/.exec(packageLine || '')?.[1]
+  const versionName = /\bversionName='([^']+)'/.exec(packageLine || '')?.[1]
+  const versionCode = Number(versionCodeValue)
+  if (!applicationId || !versionName || !Number.isInteger(versionCode)) {
+    fail(`Could not read applicationId/versionName/versionCode from APK: ${apk}`)
+  }
+  return { applicationId, versionName, versionCode }
+}
+
 function findApkSigner(projectRoot) {
   const buildTools = join(projectRoot, '.tools', 'android-sdk', 'build-tools')
   if (!existsSync(buildTools)) return null
@@ -126,10 +169,26 @@ export function verifyAndroidUpdateRelease(options) {
 
   const packageJson = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
   const gradle = readFileSync(join(projectRoot, 'android', 'app', 'build.gradle'), 'utf8')
+  const applicationId = /applicationId\s+["']([^"']+)["']/.exec(gradle)?.[1]
   const versionName = /versionName\s+["']([^"']+)["']/.exec(gradle)?.[1]
   const versionCode = Number(/versionCode\s+(\d+)/.exec(gradle)?.[1])
-  if (!versionName || !Number.isInteger(versionCode)) fail('Could not read Android versionName/versionCode')
+  if (!applicationId || !versionName || !Number.isInteger(versionCode)) {
+    fail('Could not read Android applicationId/versionName/versionCode')
+  }
   if (packageJson.version !== versionName) fail('package.json version and Android versionName must match')
+
+  const aapt = findAndroidBuildTool(projectRoot, 'aapt')
+  if (!aapt) fail('aapt was not found under the workspace Android SDK build-tools')
+  const apkManifest = inspectApkManifest(aapt, apk)
+  if (apkManifest.applicationId !== applicationId) {
+    fail(`APK applicationId ${apkManifest.applicationId} does not match project applicationId ${applicationId}`)
+  }
+  if (apkManifest.versionName !== versionName) {
+    fail(`APK versionName ${apkManifest.versionName} does not match project versionName ${versionName}`)
+  }
+  if (apkManifest.versionCode !== versionCode) {
+    fail(`APK versionCode ${apkManifest.versionCode} does not match project versionCode ${versionCode}`)
+  }
 
   const previousVersion = options.previousVersion || '0.0.5'
   const previousVersionCode = Number(options.previousVersionCode || 5)
@@ -147,7 +206,7 @@ export function verifyAndroidUpdateRelease(options) {
   }
 
   if (options.releaseJson) verifyReleaseJson(resolve(projectRoot, options.releaseJson), versionName, apkName, digest)
-  return { version: versionName, versionCode, apkName, apkSize, sha256: digest }
+  return { applicationId, version: versionName, versionCode, apkName, apkSize, sha256: digest }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

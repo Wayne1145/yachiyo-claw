@@ -1,5 +1,5 @@
 import { Device } from '@capacitor/device'
-import { SEMANTIC_NODE_ROLES, type JsonValue } from '@shared/agent'
+import { CORE_AGENT_PRINCIPAL, SEMANTIC_NODE_ROLES, type JsonValue } from '@shared/agent'
 import { type ToolExecutionOptions, tool } from 'ai'
 import { z } from 'zod'
 import { requestAgentApproval } from '@/mobile/agent-approval'
@@ -220,6 +220,7 @@ ${
     context?: AndroidToolContext,
   ) =>
     requestAgentApproval({
+      principal: CORE_AGENT_PRINCIPAL,
       sessionId: approvalSessionId || sessionId,
       runId: sessionId,
       title,
@@ -673,5 +674,3 @@ ${
     },
   }
 }
-
-export default createAndroidDeviceToolSet()

@@ -290,6 +290,8 @@ jobs:
             "android.permission.CAMERA"
             "android.permission.FOREGROUND_SERVICE"
             "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+            # Persistent Linux sandbox jobs use Android's declared special-use foreground-service type.
+            "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
             "android.permission.INTERNET"
             "android.permission.MANAGE_EXTERNAL_STORAGE"
             "android.permission.POST_NOTIFICATIONS"

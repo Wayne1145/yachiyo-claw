@@ -20,6 +20,7 @@ import {
   type TypedToolResult,
   wrapLanguageModel,
 } from 'ai'
+import { ANDROID_PRUNABLE_TOOL_RESULTS } from '../agent/android-tool-stages'
 import { createRetryable, isErrorAttempt, type RetryContext } from 'ai-retry'
 import type {
   MessageContentParts,
@@ -76,7 +77,7 @@ function createAgentStepHook(options: {
   return async ({ stepNumber, messages }: { stepNumber: number; messages: ModelMessage[] }) => {
     const prunedMessages = pruneMessages({
       messages,
-      toolCalls: [{ type: 'before-last-2-messages', tools: ['android_observe'] }],
+      toolCalls: [{ type: 'before-last-2-messages', tools: [...ANDROID_PRUNABLE_TOOL_RESULTS] }],
     })
     const activeTools = selectAndroidActiveTools(stepNumber, messages, options.activeTools)
     await options.onAgentRequest?.(stepNumber)

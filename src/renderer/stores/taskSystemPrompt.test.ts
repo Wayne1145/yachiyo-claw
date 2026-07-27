@@ -47,4 +47,13 @@ describe('buildTaskSystemPrompt', () => {
     expect(prompt).toContain('Phone control is not enabled')
     expect(prompt).not.toContain('android_device_info')
   })
+
+  it('removes disabled feature guidance without changing the core Agent policy', () => {
+    const prompt = buildTaskSystemPrompt('/work/project', {
+      enabledFeatureIds: new Set(['core-agent', 'android-device']),
+    })
+    expect(prompt).toContain('<agent_operating_instructions>')
+    expect(prompt).not.toContain('<local_linux_sandbox>')
+    expect(prompt).not.toContain('<skills_policy>')
+  })
 })

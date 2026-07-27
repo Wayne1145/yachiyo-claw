@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "signers": [
+    {
+      "keyId": "newdreamstudio-example-v1",
+      "algorithm": "ecdsa-p256",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEU3UFfUlzmgoltaDcbHVm0N5XhLQpRT9rjIFYupdGZLJU5NefHPh_6hDNMpn_3uH9EM_e542-CXVTH7EhNZ_G0w"
+    }
+  ]
+}

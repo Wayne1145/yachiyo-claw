@@ -4,6 +4,7 @@ import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { validateMobileMCPServerConfig } from '@shared/types/mcp'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import type { ToolSet } from 'ai'
 import Emittery from 'emittery'
 import { isEqual } from 'lodash'
@@ -268,6 +269,7 @@ export const mcpController = {
           execute: async (args, options) => {
             try {
               const approved = await requestAgentApproval({
+                principal: CORE_AGENT_PRINCIPAL,
                 sessionId,
                 title: `MCP: ${config.name}/${toolName}`,
                 detail: JSON.stringify(args, null, 2).slice(0, 4_000),

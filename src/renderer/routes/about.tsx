@@ -31,6 +31,7 @@ import {
   downloadUpdate,
   openUpdateInstallPermissionSettings,
   requestInstallUpdate,
+  reopenUpdateDialog,
   useUpdateStore,
 } from '@/stores/updateStore'
 import iconPNG from '../../../assets/brand/yachiyo-avatar.png'
@@ -148,7 +149,7 @@ function DesktopUpdateSection() {
     case 'available':
       if (platform.type === 'mobile') {
         return (
-          <Button size="xs" variant="light" radius="xl" onClick={() => void downloadUpdate()}>
+          <Button size="xs" variant="light" radius="xl" onClick={reopenUpdateDialog}>
             {t('Download Update')} {updateVersion ? `(v${updateVersion})` : ''}
           </Button>
         )

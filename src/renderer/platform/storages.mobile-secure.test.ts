@@ -79,6 +79,11 @@ describe('Yachiyo secure mobile settings storage', () => {
       isYachiyoSecureStorageEnvelope(
         'yachiyo-secure-storage:{"version":2,"algorithm":"AES-256-GCM","iv":"iv","ciphertext":"ciphertext"}'
       )
+    ).toBe(true)
+    expect(
+      isYachiyoSecureStorageEnvelope(
+        'yachiyo-secure-storage:{"version":3,"algorithm":"AES-256-GCM","iv":"iv","ciphertext":"ciphertext"}'
+      )
     ).toBe(false)
     expect(isYachiyoSecureStorageEnvelope('yachiyo-secure-storage:not-json')).toBe(false)
   })

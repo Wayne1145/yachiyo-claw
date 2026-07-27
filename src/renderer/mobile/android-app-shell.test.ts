@@ -1,5 +1,6 @@
 import { ModelProviderEnum, ModelProviderType, type Settings } from '@shared/types'
 import { describe, expect, it } from 'vitest'
+import { settingsStore } from '@/stores/settingsStore'
 import {
   createYachiyoApiSettingsPatch,
   hasConfiguredModelProvider,
@@ -46,8 +47,31 @@ describe('Android app shell state', () => {
     expect(isAllowedAndroidShellPath('/task/agent-1')).toBe(true)
     expect(isAllowedAndroidShellPath('/tasks')).toBe(true)
     expect(isAllowedAndroidShellPath('/interactive')).toBe(true)
+    expect(isAllowedAndroidShellPath('/plugin/weather')).toBe(false)
     expect(isAllowedAndroidShellPath('/copilots/featured')).toBe(false)
     expect(isAllowedAndroidShellPath('/image-creator')).toBe(false)
+  })
+
+  it('removes a disabled feature tab and its owned route together', () => {
+    const previous = settingsStore.getState().featureOverrides
+    try {
+      settingsStore.setState({ featureOverrides: { ...previous, interactive: false } })
+      expect(resolveAndroidShellTab('/interactive')).toBe('chat')
+      expect(isAllowedAndroidShellPath('/interactive')).toBe(false)
+    } finally {
+      settingsStore.setState({ featureOverrides: previous })
+    }
+  })
+
+  it('rejects plugin routes when the global plugin feature is disabled', () => {
+    const previous = settingsStore.getState().featureOverrides
+    try {
+      settingsStore.setState({ featureOverrides: { ...previous, plugins: false } })
+      expect(isAllowedAndroidShellPath('/plugin/weather')).toBe(false)
+      expect(isAllowedAndroidShellPath('/plugin/weather/settings')).toBe(false)
+    } finally {
+      settingsStore.setState({ featureOverrides: previous })
+    }
   })
 
   it('handles Android back gestures without consulting stale browser history', () => {
@@ -56,6 +80,7 @@ describe('Android app shell state', () => {
     expect(resolveAndroidShellBackAction('/settings')).toBe('chat')
     expect(resolveAndroidShellBackAction('/tasks')).toBe('chat')
     expect(resolveAndroidShellBackAction('/interactive')).toBe('chat')
+    expect(resolveAndroidShellBackAction('/plugin/weather')).toBe('chat')
     expect(resolveAndroidShellBackAction('/')).toBe('minimize')
     expect(resolveAndroidShellBackAction('/session/chat-1')).toBe('minimize')
     expect(resolveAndroidShellBackAction('/task/agent-1')).toBe('minimize')

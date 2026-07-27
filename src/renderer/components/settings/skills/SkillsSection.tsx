@@ -36,6 +36,7 @@ import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { useSkillTranslation } from '@/hooks/useSkillTranslation'
 import { skillsController } from '@/packages/skills/controller'
 import { toastError } from '@/packages/toast'
+import platform from '@/platform'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import GitHubInstallModal, { type DetectedSkill } from './GitHubInstallModal'
 import SkillsSpotlight, { skillsSpotlight } from './SkillsSpotlight'
@@ -164,7 +165,7 @@ const SectionHeader: FC<{
   </Flex>
 )
 
-const EmptyState: FC<{ onAddClick: () => void; onOpenFolder: () => void }> = ({ onAddClick, onOpenFolder }) => {
+const EmptyState: FC<{ onAddClick: () => void; onOpenFolder?: () => void }> = ({ onAddClick, onOpenFolder }) => {
   const { t } = useTranslation()
 
   return (
@@ -190,14 +191,16 @@ const EmptyState: FC<{ onAddClick: () => void; onOpenFolder: () => void }> = ({ 
           >
             {t('Browse Skills')}
           </Button>
-          <Button
-            variant="subtle"
-            size="xs"
-            leftSection={<ScalableIcon icon={IconFolderOpen} size={14} />}
-            onClick={onOpenFolder}
-          >
-            {t('Open Skills Folder')}
-          </Button>
+          {onOpenFolder && (
+            <Button
+              variant="subtle"
+              size="xs"
+              leftSection={<ScalableIcon icon={IconFolderOpen} size={14} />}
+              onClick={onOpenFolder}
+            >
+              {t('Open Skills Folder')}
+            </Button>
+          )}
         </Flex>
       </Flex>
     </Paper>
@@ -593,11 +596,13 @@ export const SkillsSection: FC = () => {
         className="mb-3"
         right={
           <>
-            <Tooltip label={t('Open Skills Folder')} withArrow openDelay={300}>
-              <ActionIcon variant="subtle" size="sm" color="gray" onClick={() => void handleOpenFolder()}>
-                <ScalableIcon icon={IconFolderOpen} size={16} />
-              </ActionIcon>
-            </Tooltip>
+            {platform.type !== 'mobile' && (
+              <Tooltip label={t('Open Skills Folder')} withArrow openDelay={300}>
+                <ActionIcon variant="subtle" size="sm" color="gray" onClick={() => void handleOpenFolder()}>
+                  <ScalableIcon icon={IconFolderOpen} size={16} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Button
               variant="subtle"
               size="xs"
@@ -612,7 +617,10 @@ export const SkillsSection: FC = () => {
       />
 
       {userSkills.length === 0 ? (
-        <EmptyState onAddClick={skillsSpotlight.open} onOpenFolder={() => void handleOpenFolder()} />
+        <EmptyState
+          onAddClick={skillsSpotlight.open}
+          onOpenFolder={platform.type === 'mobile' ? undefined : () => void handleOpenFolder()}
+        />
       ) : (
         <SimpleGrid type="container" cols={{ base: 1, '450px': 2, '800px': 3, '1200px': 4 }}>
           {userSkills.map((skill) => {

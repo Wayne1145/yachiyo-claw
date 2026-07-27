@@ -34,7 +34,7 @@ export interface Platform extends Storage {
   onWindowFocused(callback: () => void): () => void
   onUpdateDownloaded(callback: () => void): () => void
   onUpdaterChecking?(callback: () => void): () => void
-  onUpdaterAvailable?(callback: (data: { version: string }) => void): () => void
+  onUpdaterAvailable?(callback: (data: { version: string; notes?: string; releaseUrl?: string }) => void): () => void
   onUpdaterNotAvailable?(callback: () => void): () => void
   onUpdaterProgress?(
     callback: (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void
@@ -44,6 +44,11 @@ export interface Platform extends Storage {
   checkForUpdate?(): Promise<{ started: boolean }>
   downloadUpdate?(): Promise<void>
   openUpdateInstallPermissionSettings?(): Promise<void>
+  /** Restart recovery: reports whether a verified APK is already on disk waiting to be installed. */
+  getUpdateDownloadStatus?(): Promise<import('./native/yachiyo_update').NativeUpdateDownloadStatus>
+  pauseUpdate?(version: string): Promise<void>
+  resumeUpdate?(version: string): Promise<void>
+  cancelUpdate?(version: string): Promise<void>
   onNavigate?(callback: (path: string) => void): () => void
   openLink(url: string): Promise<void>
   getDeviceName(): Promise<string>

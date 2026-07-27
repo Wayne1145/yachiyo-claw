@@ -13,9 +13,16 @@ import type {
 import { SkillExecutableManifestSchema } from '@shared/types/skills'
 import JSZip from 'jszip'
 import platform from '@/platform'
+import {
+  readCompletedDownload,
+  yachiyoDownloadsNative,
+  type GenericDownloadRequest,
+} from '@/platform/native/yachiyo_downloads'
 import { executeMobileSkillScript } from '@/mobile/mobile-skill-script'
 
 const MOBILE_SKILLS_KEY = 'yachiyo-mobile-skills-v1'
+const MOBILE_SKILL_INSTALLS_KEY = 'yachiyo-mobile-skill-installs-v1'
+const MAX_MOBILE_SKILL_BYTES = 32 * 1024 * 1024
 
 interface MobileSkillRecord {
   metadata: SkillMetadata
@@ -28,6 +35,123 @@ interface MobileSkillRecord {
   executionMode?: SkillExecutionMode
   scriptFiles?: Record<string, { entrypoint: SkillScriptEntrypoint; scriptBase64: string }>
   grantedScriptCapabilities?: SkillScriptCapability[]
+}
+
+type PendingSkillInstallState = 'prepared' | 'enqueued' | 'installed'
+
+interface PendingSkillInstallBase {
+  schemaVersion: 1
+  taskId: string
+  state: PendingSkillInstallState
+  createdAt: string
+  updatedAt: string
+  descriptor: {
+    url: string
+    sizeBytes: number
+    sha256?: string
+    contentType?: string
+    signature?: MarketplaceSkill['signature']
+  }
+  lastError?: string
+}
+
+interface PendingGitHubSkillInstall extends PendingSkillInstallBase {
+  sourceType: 'github'
+  owner: string
+  repo: string
+  skillPath: string
+  revision: string
+}
+
+interface PendingSkillHubInstall extends PendingSkillInstallBase {
+  sourceType: 'skillhub'
+  skill: MarketplaceSkill
+  requireSignature: boolean
+}
+
+type PendingSkillInstall = PendingGitHubSkillInstall | PendingSkillHubInstall
+
+function validPendingSkillInstalls(value: unknown): PendingSkillInstall[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((entry): entry is PendingSkillInstall => {
+    const item = entry as Partial<PendingSkillInstall>
+    const common =
+      item?.schemaVersion === 1 &&
+      typeof item.taskId === 'string' &&
+      /^skill-[A-Za-z0-9._-]{1,93}$/.test(item.taskId) &&
+      (item.state === 'prepared' || item.state === 'enqueued' || item.state === 'installed') &&
+      (item.sourceType === 'github' || item.sourceType === 'skillhub') &&
+      typeof item.descriptor?.url === 'string' &&
+      Number.isSafeInteger(item.descriptor?.sizeBytes) &&
+      Number(item.descriptor?.sizeBytes) > 0 &&
+      Number(item.descriptor?.sizeBytes) <= MAX_MOBILE_SKILL_BYTES
+    if (!common) return false
+    if (item.sourceType === 'github') {
+      const github = item as Partial<PendingGitHubSkillInstall>
+      return (
+        typeof github.owner === 'string' &&
+        typeof github.repo === 'string' &&
+        typeof github.skillPath === 'string' &&
+        typeof github.revision === 'string' &&
+        /^[a-f0-9]{40}$/.test(github.revision)
+      )
+    }
+    const skillhub = item as Partial<PendingSkillHubInstall>
+    return (
+      typeof skillhub.skill?.name === 'string' &&
+      typeof skillhub.skill?.skillId === 'string' &&
+      typeof skillhub.skill?.revision === 'string' &&
+      typeof skillhub.requireSignature === 'boolean'
+    )
+  })
+}
+
+async function readPendingSkillInstalls(): Promise<PendingSkillInstall[]> {
+  try {
+    return validPendingSkillInstalls(await platform.getStoreValue(MOBILE_SKILL_INSTALLS_KEY))
+  } catch {
+    return []
+  }
+}
+
+let pendingInstallMutation = Promise.resolve()
+
+async function mutatePendingSkillInstalls(
+  mutation: (current: PendingSkillInstall[]) => PendingSkillInstall[]
+): Promise<void> {
+  const operation = pendingInstallMutation.then(async () => {
+    await platform.setStoreValue(MOBILE_SKILL_INSTALLS_KEY, mutation(await readPendingSkillInstalls()))
+  })
+  pendingInstallMutation = operation.catch(() => undefined)
+  return operation
+}
+
+async function persistPendingSkillInstall(context: PendingSkillInstall, preserveState = false): Promise<PendingSkillInstall> {
+  let persisted = context
+  await mutatePendingSkillInstalls((current) => {
+    const existing = current.find((item) => item.taskId === context.taskId)
+    persisted = existing && preserveState ? { ...context, state: existing.state, createdAt: existing.createdAt } : context
+    return [...current.filter((item) => item.taskId !== context.taskId), persisted]
+  })
+  return persisted
+}
+
+async function updatePendingSkillInstall(
+  taskId: string,
+  patch: Partial<Pick<PendingSkillInstall, 'state' | 'lastError' | 'updatedAt'>>
+): Promise<void> {
+  await mutatePendingSkillInstalls((current) =>
+    current.map((item) => (item.taskId === taskId ? ({ ...item, ...patch } as PendingSkillInstall) : item))
+  )
+}
+
+async function removePendingSkillInstall(taskId: string): Promise<void> {
+  await mutatePendingSkillInstalls((current) => current.filter((item) => item.taskId !== taskId))
+}
+
+export async function stableMobileSkillTaskId(sourceType: 'github' | 'skillhub', identity: string): Promise<string> {
+  const digest = await sha256Hex(new TextEncoder().encode(`${sourceType}\n${identity}`))
+  return `skill-${sourceType}-${digest.slice(0, 40)}`
 }
 
 function validMobileSkills(value: unknown): MobileSkillRecord[] {
@@ -57,6 +181,14 @@ async function writeMobileSkills(skills: MobileSkillRecord[]): Promise<void> {
   await platform.setStoreValue(MOBILE_SKILLS_KEY, skills)
 }
 
+let mobileSkillMutation = Promise.resolve()
+
+async function mutateMobileSkills(mutation: (current: MobileSkillRecord[]) => MobileSkillRecord[]): Promise<void> {
+  const operation = mobileSkillMutation.then(async () => writeMobileSkills(mutation(await readMobileSkills())))
+  mobileSkillMutation = operation.catch(() => undefined)
+  return operation
+}
+
 function parseMobileSkill(content: string, fallbackName: string): { metadata: SkillMetadata; body: string } | null {
   const frontmatter = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/)
   const header = frontmatter?.[1] || ''
@@ -68,24 +200,98 @@ function parseMobileSkill(content: string, fallbackName: string): { metadata: Sk
 }
 
 async function installMobileGitHubSkill(owner: string, repo: string, skillPath: string): Promise<SkillInstallResult> {
+  const fallbackName = skillPath.replace(/^\/+|\/+$/g, '') || repo
+  try {
+    const context = await prepareGitHubSkillInstall(owner, repo, skillPath)
+    const persisted = await persistPendingSkillInstall(context, true)
+    return await runPendingSkillInstall(persisted, { wait: true, userInitiated: true })
+  } catch (error) {
+    return { success: false, skillName: fallbackName, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+async function probePersistentDownloadSize(url: string): Promise<number> {
+  const { size } = await yachiyoDownloadsNative.probe({ url, maximumBytes: MAX_MOBILE_SKILL_BYTES })
+  if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_MOBILE_SKILL_BYTES) {
+    throw new Error('Skill package size is missing or exceeds the mobile limit')
+  }
+  return size
+}
+
+async function checkMobileSkillUpdate(name: string): Promise<SkillUpdateResult> {
+  const skill = (await readMobileSkills()).find((candidate) => candidate.metadata.name === name)
+  if (!skill) return { hasUpdate: false, error: 'skill_not_installed' }
+  const source = skill.source
+  if (source?.type === 'github' && source.repo) {
+    const [owner, repo, extra] = source.repo.split('/')
+    if (!owner || !repo || extra) return { hasUpdate: false, error: 'skill_update_source_invalid' }
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/HEAD`, {
+      headers: { Accept: 'application/vnd.github+json' },
+    })
+    if (!response.ok) return { hasUpdate: false, error: `GitHub HTTP ${response.status}` }
+    const latest = String(((await response.json()) as { sha?: unknown }).sha || '').toLowerCase()
+    if (!/^[a-f0-9]{40}$/.test(latest)) return { hasUpdate: false, error: 'skill_update_revision_invalid' }
+    const current = (source.revision || source.commitHash || '').toLowerCase()
+    return { hasUpdate: Boolean(current && current !== latest), currentHash: current, latestHash: latest }
+  }
+  if (source?.type === 'skillhub' && source.slug) {
+    try {
+      const latest = await new SkillHubAdapter().getSkill(source.slug)
+      const currentRevision = source.revision || ''
+      const latestRevision = latest.revision || ''
+      if (currentRevision && latestRevision) {
+        return {
+          hasUpdate: currentRevision !== latestRevision,
+          currentHash: currentRevision,
+          latestHash: latestRevision,
+        }
+      }
+      return { hasUpdate: Boolean(source.version && latest.version && source.version !== latest.version) }
+    } catch (error) {
+      return { hasUpdate: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+  return { hasUpdate: false, error: '本地创建的 Skill 没有远程更新源。' }
+}
+
+async function prepareGitHubSkillInstall(
+  owner: string,
+  repo: string,
+  skillPath: string
+): Promise<PendingGitHubSkillInstall> {
+  if (!/^[A-Za-z0-9_.-]{1,100}$/.test(owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(repo)) {
+    throw new Error('Invalid GitHub repository')
+  }
   const normalizedPath = skillPath.replace(/^\/+|\/+$/g, '')
-  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${normalizedPath ? `${normalizedPath}/` : ''}SKILL.md`
-  const response = await fetch(rawUrl)
-  if (!response.ok) return { success: false, skillName: normalizedPath || repo, error: `HTTP ${response.status}` }
-  const parsed = parseMobileSkill(await response.text(), normalizedPath.split('/').pop() || repo.toLowerCase())
-  if (!parsed) return { success: false, skillName: normalizedPath || repo, error: 'Invalid SKILL.md' }
-  const installedAt = new Date().toISOString()
-  const current = (await readMobileSkills()).filter((skill) => skill.metadata.name !== parsed.metadata.name)
-  current.push({
-    ...parsed,
-    repo: `${owner}/${repo}`,
-    skillPath: normalizedPath,
-    installedAt,
-    executionMode: 'declarative',
-    source: { type: 'github', repo: `${owner}/${repo}`, skillPath: normalizedPath, installedAt },
+  if (
+    normalizedPath &&
+    (normalizedPath.includes('\\') ||
+      normalizedPath.split('/').some((segment) => !segment || segment === '.' || segment === '..'))
+  ) {
+    throw new Error('Invalid GitHub Skill path')
+  }
+  const commitResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/HEAD`, {
+    headers: { Accept: 'application/vnd.github+json' },
   })
-  await writeMobileSkills(current)
-  return { success: true, skillName: parsed.metadata.name }
+  if (!commitResponse.ok) throw new Error(`GitHub revision lookup failed (HTTP ${commitResponse.status})`)
+  const revision = String(((await commitResponse.json()) as { sha?: unknown }).sha || '').toLowerCase()
+  if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error('GitHub revision lookup returned an invalid commit')
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${revision}/${normalizedPath ? `${normalizedPath}/` : ''}SKILL.md`
+  const sizeBytes = await probePersistentDownloadSize(url)
+  const now = new Date().toISOString()
+  return {
+    schemaVersion: 1,
+    taskId: await stableMobileSkillTaskId('github', `${owner}/${repo}\n${revision}\n${normalizedPath}`),
+    state: 'prepared',
+    sourceType: 'github',
+    owner,
+    repo,
+    skillPath: normalizedPath,
+    revision,
+    descriptor: { url, sizeBytes, contentType: 'text/markdown' },
+    createdAt: now,
+    updatedAt: now,
+  }
 }
 
 function isSkillHubSkill(skill: MarketplaceSkill): boolean {
@@ -249,59 +455,164 @@ export async function installMobileSkillHubSkill(
     const slug = skill.slug || skill.skillId
     const details = await adapter.getSkill(slug).catch(() => skill)
     if (!details.revision) throw new Error('SkillHub package must pin an immutable revision')
-    const download = await adapter.download(slug, details.revision)
-    const integrity = await adapter.verifyDownload(download, details)
-    if (options.requireSignature && !integrity.signatureVerified) throw new Error('SkillHub signature is required')
-    const scriptsRequested = details.capabilityManifest?.scripts === true
-    const decoded = await decodeSkillHubPackage(download, scriptsRequested)
-    if (scriptsRequested && Object.keys(decoded.scriptFiles).length === 0) {
-      throw new Error('Script Skill packages must be ZIP archives with a validated executable manifest')
+    const descriptor = await adapter.resolveDownload(slug, details.revision)
+    const sizeBytes = descriptor.sizeBytes || (await probePersistentDownloadSize(descriptor.url))
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_MOBILE_SKILL_BYTES) {
+      throw new Error('Skill package size is missing or exceeds the mobile limit')
     }
-    const entrypoints = Object.values(decoded.scriptFiles).map((script) => script.entrypoint)
-    const declaredCapabilities = details.capabilityManifest || {}
-    for (const entrypoint of entrypoints) {
-      for (const capability of entrypoint.capabilities) {
-        if (capability === 'unrestricted-privileged' && !declaredCapabilities.privileged) {
-          throw new Error(`Script entrypoint ${entrypoint.name} uses undeclared capability: ${capability}`)
-        }
-      }
-    }
-    const parsed = parseMobileSkill(decoded.content, slug)
-    if (!parsed) throw new Error('Invalid SKILL.md')
     const now = new Date().toISOString()
-    const source: SkillSource = {
-      type: 'skillhub',
-      repo: details.source,
-      slug,
-      version: details.version,
-      revision: details.revision,
-      filesHash: integrity.sha256,
-      signature: details.signature,
-      publisher: details.publisher,
-      capabilityManifest: {
-        ...details.capabilityManifest,
-        scripts: scriptsRequested,
-        scriptEntrypoints: entrypoints.length ? entrypoints : undefined,
+    const context: PendingSkillHubInstall = {
+      schemaVersion: 1,
+      taskId: await stableMobileSkillTaskId('skillhub', `${slug}\n${details.revision}`),
+      state: 'prepared',
+      sourceType: 'skillhub',
+      skill: details,
+      requireSignature: options.requireSignature === true,
+      descriptor: {
+        url: descriptor.url,
+        sizeBytes,
+        contentType: descriptor.contentType,
+        sha256: descriptor.sha256,
+        signature: descriptor.signature,
       },
-      installedAt: now,
-    }
-    const installRecord: SkillInstallRecord = {
-      id: `skillhub:${slug}`,
-      slug,
-      name: parsed.metadata.name,
-      version: details.version,
-      revision: details.revision,
-      source,
-      files: decoded.files,
-      contentHash: integrity.sha256 || (await sha256Hex(download.bytes)),
-      signatureVerified: integrity.signatureVerified,
-      executionMode: scriptsRequested ? 'script-disabled' : 'declarative',
-      enabled: true,
-      installedAt: now,
+      createdAt: now,
       updatedAt: now,
     }
-    const current = (await readMobileSkills()).filter((entry) => entry.metadata.name !== parsed.metadata.name)
-    current.push({
+    const persisted = await persistPendingSkillInstall(context, true)
+    return await runPendingSkillInstall(persisted, { wait: true, userInitiated: true, verificationAdapter: adapter })
+  } catch (error) {
+    return { success: false, skillName: skill.name, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+function skillInstallName(context: PendingSkillInstall): string {
+  return context.sourceType === 'skillhub'
+    ? context.skill.name
+    : context.skillPath.split('/').at(-1) || context.repo.toLowerCase()
+}
+
+function genericSkillDownloadRequest(context: PendingSkillInstall): GenericDownloadRequest {
+  return {
+    id: context.taskId,
+    kind: 'skill',
+    title: `Skill: ${skillInstallName(context)}`,
+    url: context.descriptor.url,
+    expectedSize: context.descriptor.sizeBytes,
+    expectedSha256: context.descriptor.sha256,
+  }
+}
+
+async function installGitHubSkillBytes(context: PendingGitHubSkillInstall, bytes: Uint8Array): Promise<string> {
+  if (bytes.byteLength !== context.descriptor.sizeBytes) throw new Error('GitHub Skill size mismatch')
+  const parsed = parseMobileSkill(new TextDecoder().decode(bytes), skillInstallName(context))
+  if (!parsed) throw new Error('Invalid SKILL.md')
+  const installedAt = new Date().toISOString()
+  const contentHash = await sha256Hex(bytes)
+  const source: SkillSource = {
+    type: 'github',
+    repo: `${context.owner}/${context.repo}`,
+    commitHash: context.revision,
+    revision: context.revision,
+    skillPath: context.skillPath,
+    installedAt,
+  }
+  const installRecord: SkillInstallRecord = {
+    id: `github:${context.owner}/${context.repo}:${context.skillPath || '.'}`,
+    slug: parsed.metadata.name,
+    name: parsed.metadata.name,
+    revision: context.revision,
+    source,
+    files: [{ path: 'SKILL.md', size: bytes.byteLength, sha256: contentHash }],
+    contentHash,
+    signatureVerified: false,
+    executionMode: 'declarative',
+    enabled: true,
+    installedAt,
+    updatedAt: installedAt,
+  }
+  await mutateMobileSkills((current) => [
+    ...current.filter((skill) => skill.metadata.name !== parsed.metadata.name),
+    {
+      ...parsed,
+      repo: `${context.owner}/${context.repo}`,
+      skillPath: context.skillPath,
+      installedAt,
+      executionMode: 'declarative',
+      source,
+      installRecord,
+    },
+  ])
+  return parsed.metadata.name
+}
+
+async function installSkillHubBytes(
+  context: PendingSkillHubInstall,
+  bytes: Uint8Array,
+  adapter: SkillHubAdapter
+): Promise<string> {
+  const slug = context.skill.slug || context.skill.skillId
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+  const download = {
+    slug,
+    revision: context.skill.revision,
+    bytes: arrayBuffer,
+    contentType: context.descriptor.contentType,
+    sha256: context.descriptor.sha256,
+    signature: context.descriptor.signature,
+  }
+  const integrity = await adapter.verifyDownload(download, context.skill)
+  if (context.requireSignature && !integrity.signatureVerified) throw new Error('SkillHub signature is required')
+  const scriptsRequested = context.skill.capabilityManifest?.scripts === true
+  const decoded = await decodeSkillHubPackage(download, scriptsRequested)
+  if (scriptsRequested && Object.keys(decoded.scriptFiles).length === 0) {
+    throw new Error('Script Skill packages must be ZIP archives with a validated executable manifest')
+  }
+  const entrypoints = Object.values(decoded.scriptFiles).map((script) => script.entrypoint)
+  const declaredCapabilities = context.skill.capabilityManifest || {}
+  for (const entrypoint of entrypoints) {
+    for (const capability of entrypoint.capabilities) {
+      if (capability === 'unrestricted-privileged' && !declaredCapabilities.privileged) {
+        throw new Error(`Script entrypoint ${entrypoint.name} uses undeclared capability: ${capability}`)
+      }
+    }
+  }
+  const parsed = parseMobileSkill(decoded.content, slug)
+  if (!parsed) throw new Error('Invalid SKILL.md')
+  const now = new Date().toISOString()
+  const source: SkillSource = {
+    type: 'skillhub',
+    repo: context.skill.source,
+    slug,
+    version: context.skill.version,
+    revision: context.skill.revision,
+    filesHash: integrity.sha256,
+    signature: context.skill.signature,
+    publisher: context.skill.publisher,
+    capabilityManifest: {
+      ...context.skill.capabilityManifest,
+      scripts: scriptsRequested,
+      scriptEntrypoints: entrypoints.length ? entrypoints : undefined,
+    },
+    installedAt: now,
+  }
+  const installRecord: SkillInstallRecord = {
+    id: `skillhub:${slug}`,
+    slug,
+    name: parsed.metadata.name,
+    version: context.skill.version,
+    revision: context.skill.revision,
+    source,
+    files: decoded.files,
+    contentHash: integrity.sha256 || (await sha256Hex(arrayBuffer)),
+    signatureVerified: integrity.signatureVerified,
+    executionMode: scriptsRequested ? 'script-disabled' : 'declarative',
+    enabled: true,
+    installedAt: now,
+    updatedAt: now,
+  }
+  await mutateMobileSkills((current) => [
+    ...current.filter((entry) => entry.metadata.name !== parsed.metadata.name),
+    {
       ...parsed,
       installedAt: now,
       source,
@@ -309,12 +620,135 @@ export async function installMobileSkillHubSkill(
       executionMode: scriptsRequested ? 'script-disabled' : 'declarative',
       scriptFiles: decoded.scriptFiles,
       grantedScriptCapabilities: [],
-    })
-    await writeMobileSkills(current)
-    return { success: true, skillName: parsed.metadata.name }
-  } catch (error) {
-    return { success: false, skillName: skill.name, error: error instanceof Error ? error.message : String(error) }
+    },
+  ])
+  return parsed.metadata.name
+}
+
+const pendingInstallRuns = new Map<string, Promise<SkillInstallResult>>()
+
+async function runPendingSkillInstall(
+  context: PendingSkillInstall,
+  options: { wait: boolean; userInitiated: boolean; verificationAdapter?: SkillHubAdapter }
+): Promise<SkillInstallResult> {
+  const existing = pendingInstallRuns.get(context.taskId)
+  if (existing) return existing
+  const operation = runPendingSkillInstallOnce(context, options).finally(() => pendingInstallRuns.delete(context.taskId))
+  pendingInstallRuns.set(context.taskId, operation)
+  return operation
+}
+
+async function runPendingSkillInstallOnce(
+  context: PendingSkillInstall,
+  options: { wait: boolean; userInitiated: boolean; verificationAdapter?: SkillHubAdapter }
+): Promise<SkillInstallResult> {
+  const fallbackName = skillInstallName(context)
+  if (context.state === 'installed') {
+    try {
+      await yachiyoDownloadsNative.removeArtifact({ id: context.taskId, keepRecord: true })
+      await removePendingSkillInstall(context.taskId)
+    } catch (error) {
+      await updatePendingSkillInstall(context.taskId, {
+        lastError: error instanceof Error ? error.message : String(error),
+        updatedAt: new Date().toISOString(),
+      })
+    }
+    return { success: true, skillName: fallbackName }
   }
+
+  let task = (await yachiyoDownloadsNative.list()).tasks.find((candidate) => candidate.id === context.taskId)
+  if (!task) {
+    if (context.state === 'prepared' || options.userInitiated) {
+      await yachiyoDownloadsNative.enqueue(genericSkillDownloadRequest(context))
+      await updatePendingSkillInstall(context.taskId, { state: 'enqueued', lastError: undefined, updatedAt: new Date().toISOString() })
+      context = { ...context, state: 'enqueued' }
+    } else {
+      // An enqueued task disappearing means the user removed it from Download management.
+      await removePendingSkillInstall(context.taskId)
+      return { success: false, skillName: fallbackName, error: 'Skill download was removed' }
+    }
+  } else if (task.status === 'cancelled') {
+    if (!options.userInitiated) {
+      await removePendingSkillInstall(context.taskId)
+      return { success: false, skillName: fallbackName, error: 'Skill download cancelled' }
+    }
+    await yachiyoDownloadsNative.enqueue(genericSkillDownloadRequest(context))
+    context = await persistPendingSkillInstall({
+      ...context,
+      state: 'enqueued',
+      lastError: undefined,
+      updatedAt: new Date().toISOString(),
+    })
+  } else if (task.status === 'failed' && options.userInitiated) {
+    await yachiyoDownloadsNative.resume({ id: context.taskId })
+  }
+
+  if (!options.wait) {
+    task = (await yachiyoDownloadsNative.list()).tasks.find((candidate) => candidate.id === context.taskId)
+    if (task?.status === 'failed' || task?.status === 'cancelled' || task?.status === 'paused') {
+      return { success: false, skillName: fallbackName, error: task.error || `Skill download ${task.status}` }
+    }
+    if (task?.status !== 'completed') return { success: false, skillName: fallbackName, error: 'Skill install pending' }
+  } else {
+    const deadline = Date.now() + 30 * 60 * 1000
+    while (Date.now() < deadline) {
+      task = (await yachiyoDownloadsNative.list()).tasks.find((candidate) => candidate.id === context.taskId)
+      if (task?.status === 'completed') break
+      if (task?.status === 'failed' || task?.status === 'cancelled') {
+        throw new Error(task.error || `Skill download ${task.status}`)
+      }
+      if (task?.status === 'paused') throw new Error('Skill download paused; resume it from Download management')
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+    if (task?.status !== 'completed') throw new Error('Skill download timed out')
+  }
+
+  try {
+    const bytes = await readCompletedDownload(context.taskId)
+    if (bytes.byteLength !== context.descriptor.sizeBytes) throw new Error('Skill package size mismatch')
+    const installedName =
+      context.sourceType === 'github'
+        ? await installGitHubSkillBytes(context, bytes)
+        : await installSkillHubBytes(context, bytes, options.verificationAdapter || new SkillHubAdapter())
+    await updatePendingSkillInstall(context.taskId, { state: 'installed', lastError: undefined, updatedAt: new Date().toISOString() })
+    try {
+      await yachiyoDownloadsNative.removeArtifact({ id: context.taskId, keepRecord: true })
+      await removePendingSkillInstall(context.taskId)
+    } catch (cleanupError) {
+      await updatePendingSkillInstall(context.taskId, {
+        lastError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        updatedAt: new Date().toISOString(),
+      })
+    }
+    return { success: true, skillName: installedName }
+  } catch (error) {
+    await updatePendingSkillInstall(context.taskId, {
+      lastError: error instanceof Error ? error.message : String(error),
+      updatedAt: new Date().toISOString(),
+    })
+    throw error
+  }
+}
+
+let pendingInstallMonitor: number | undefined
+
+function schedulePendingSkillInstallResume(): void {
+  if (typeof window === 'undefined' || pendingInstallMonitor !== undefined) return
+  pendingInstallMonitor = window.setTimeout(() => {
+    pendingInstallMonitor = undefined
+    void resumePendingMobileSkillInstalls()
+  }, 2_000)
+}
+
+/** Reclaims completed native Skill downloads after a WebView/app-process restart. */
+export async function resumePendingMobileSkillInstalls(): Promise<void> {
+  const pending = await readPendingSkillInstalls()
+  let hasActiveDownload = false
+  for (const context of pending) {
+    const result = await runPendingSkillInstall(context, { wait: false, userInitiated: false }).catch(() => undefined)
+    if (result?.error === 'Skill install pending') hasActiveDownload = true
+  }
+  if (hasActiveDownload) schedulePendingSkillInstallResume()
 }
 
 interface SkillScriptResult {
@@ -354,6 +788,7 @@ export const skillsController = {
 
   async discoverSkills(): Promise<SkillInfo[]> {
     if (platform.type === 'mobile') {
+      await resumePendingMobileSkillInstalls()
       return (await readMobileSkills()).map((skill) => ({
           ...skill.metadata,
           path: `mobile://skills/${skill.metadata.name}`,
@@ -500,12 +935,16 @@ export const skillsController = {
   },
 
   checkForUpdate(name: string): Promise<SkillUpdateResult> {
-    if (platform.type === 'mobile') return Promise.resolve({ hasUpdate: false })
+    if (platform.type === 'mobile') return checkMobileSkillUpdate(name)
     return window.electronAPI.invoke('skills:check-update', name)
   },
 
-  checkForUpdatesBatch(): Promise<Record<string, { hasUpdate: boolean; error?: string }>> {
-    if (platform.type === 'mobile') return Promise.resolve({})
+  async checkForUpdatesBatch(): Promise<Record<string, { hasUpdate: boolean; error?: string }>> {
+    if (platform.type === 'mobile') {
+      const result: Record<string, { hasUpdate: boolean; error?: string }> = {}
+      for (const skill of await readMobileSkills()) result[skill.metadata.name] = await checkMobileSkillUpdate(skill.metadata.name)
+      return result
+    }
     return window.electronAPI.invoke('skills:check-updates-batch')
   },
 }

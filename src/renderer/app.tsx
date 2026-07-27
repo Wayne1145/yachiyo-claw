@@ -34,6 +34,11 @@ import './setup/global_error_handler'
 // 引入保护代码
 import './setup/protect'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { registerBuiltinFeatures } from '@/features/builtin-features'
+import { registerBuiltinFeatureLifecycles } from '@/features/builtin-lifecycles'
+import { getDesiredFeatureIds, getEnabledFeatureIds } from '@/features/feature-runtime'
+import { runFeatureAppResume, runFeatureInit } from '@/features/lifecycle-runner'
+import { runNativeFeatureSelfCheck } from '@/features/native-health'
 import { initSessionAttachmentRagMaintenance } from './setup/session_attachment_rag_maintenance'
 import { initLastUsedModelStore } from './stores/lastUsedModelStore'
 import { initOnboardingStore } from './stores/onboardingStore'
@@ -185,6 +190,17 @@ async function startApp() {
     initOnboardingStore(),
     initRecentDirectoriesStore(),
   ])
+
+  registerBuiltinFeatures()
+  registerBuiltinFeatureLifecycles()
+  const initiallyEnabledFeatures = getDesiredFeatureIds(undefined, settings.featureOverrides)
+  runNativeFeatureSelfCheck(initiallyEnabledFeatures)
+  await runFeatureInit(getEnabledFeatureIds(undefined, settings.featureOverrides))
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void runFeatureAppResume(getEnabledFeatureIds())
+    }
+  })
 
   await i18n.changeLanguage(settings.language)
   // Update listeners are shared; Android performs a delayed startup check when enabled.

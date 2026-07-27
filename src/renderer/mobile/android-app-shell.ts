@@ -1,15 +1,37 @@
 import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL, yachiyoProvider } from '@shared/providers/definitions/yachiyo'
 import { normalizeYachiyoModels } from '@shared/providers/definitions/yachiyo-models'
 import { ModelProviderEnum, type ProviderModelInfo, type Settings } from '@shared/types'
+import { registerBuiltinFeatureUi } from '@/features/builtin-feature-ui'
+import { registerBuiltinFeatures } from '@/features/builtin-features'
+import { getEnabledFeatureIds } from '@/features/feature-runtime'
+import { findFeatureTabForPath, getEnabledTabs, getOwnedRoutes, routeMatchesFeaturePath } from '@/features/ui-registry'
+import { settingsStore } from '@/stores/settingsStore'
 
 export const YACHIYO_API_PROVIDER_ID = ModelProviderEnum.Yachiyo
 export { YACHIYO_API_HOST as YACHIYO_API_BASE_URL, YACHIYO_DEFAULT_MODEL as YACHIYO_DEFAULT_MODEL_ID }
 
-export type AndroidShellTab = 'chat' | 'interactive' | 'tasks' | 'settings'
+export type AndroidShellTab = 'chat' | 'settings' | (string & {})
 export type AndroidShellWorkspaceView = 'tasks' | 'about' | 'settings' | 'route'
 export type AndroidShellBackAction = 'chat' | 'settings' | 'minimize'
 
 type AndroidShellSettings = Pick<Settings, 'customProviders' | 'defaultChatModel' | 'licenseKey' | 'providers'>
+
+function androidFeatureEnvironment(overrides = settingsStore.getState().featureOverrides) {
+  return { platform: 'android' as const, enabledFeatureIds: getEnabledFeatureIds('android', overrides) }
+}
+
+const CORE_ANDROID_SETTINGS_ROUTES = [
+  '/settings/provider',
+  '/settings/default-models',
+  '/settings/downloads',
+  '/settings/themes',
+  '/settings/features',
+  '/settings/chat',
+  '/settings/general',
+  '/settings/document-parser',
+  '/settings/hotkeys',
+  '/settings/plugin-runtime-test',
+] as const
 
 export function shouldUseAndroidAppShell(platformType: string, buildPlatform: string): boolean {
   return platformType === 'mobile' && buildPlatform === 'android'
@@ -17,10 +39,10 @@ export function shouldUseAndroidAppShell(platformType: string, buildPlatform: st
 
 export function resolveAndroidShellTab(pathname: string, workspaceTab?: 'tasks'): AndroidShellTab {
   if (workspaceTab) return workspaceTab
-  if (pathname === '/interactive') return 'interactive'
-  if (pathname === '/tasks') return 'tasks'
   if (pathname === '/about' || pathname === '/settings' || pathname.startsWith('/settings/')) return 'settings'
-  return 'chat'
+  registerBuiltinFeatures()
+  registerBuiltinFeatureUi()
+  return findFeatureTabForPath(pathname, androidFeatureEnvironment())?.id ?? 'chat'
 }
 
 export function resolveAndroidShellWorkspaceView(pathname: string, workspaceTab?: 'tasks'): AndroidShellWorkspaceView {
@@ -32,22 +54,36 @@ export function resolveAndroidShellWorkspaceView(pathname: string, workspaceTab?
 
 export function resolveAndroidShellBackAction(pathname: string): AndroidShellBackAction {
   if (pathname === '/about' || pathname.startsWith('/settings/')) return 'settings'
-  if (pathname === '/settings' || pathname === '/tasks' || pathname === '/interactive') return 'chat'
+  if (pathname === '/settings') return 'chat'
+  if (pathname.startsWith('/plugin/')) return 'chat'
+  registerBuiltinFeatures()
+  registerBuiltinFeatureUi()
+  const tab = findFeatureTabForPath(pathname, androidFeatureEnvironment())
+  if (tab && tab.id !== 'chat') return 'chat'
   return 'minimize'
 }
 
 export function isAllowedAndroidShellPath(pathname: string): boolean {
-  return (
+  const corePath =
     pathname === '/' ||
-    pathname === '/interactive' ||
     pathname === '/about' ||
-    pathname === '/tasks' ||
     pathname === '/task' ||
     pathname.startsWith('/task/') ||
     pathname.startsWith('/session/') ||
     pathname === '/settings' ||
-    pathname.startsWith('/settings/')
-  )
+    CORE_ANDROID_SETTINGS_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    )
+  if (corePath) return true
+  registerBuiltinFeatures()
+  registerBuiltinFeatureUi()
+  return getOwnedRoutes(androidFeatureEnvironment()).some((route) => routeMatchesFeaturePath(pathname, route))
+}
+
+export function getAndroidShellTabs(overrides?: Readonly<Record<string, boolean>>) {
+  registerBuiltinFeatures()
+  registerBuiltinFeatureUi()
+  return getEnabledTabs(androidFeatureEnvironment(overrides))
 }
 
 export function hasConfiguredModelProvider(

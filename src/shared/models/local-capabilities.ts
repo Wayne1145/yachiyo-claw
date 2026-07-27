@@ -24,7 +24,11 @@ export function resolveLocalRuntimeCapabilities(
   artifacts: ModelArtifact[],
 ): LocalRuntimeCapabilities {
   const formats = new Set(artifacts.map((artifact) => artifact.format))
-  const signals = [...(model.capabilities || []), ...(model.tags || [])].map((value) => value.trim().toLowerCase())
+  const signals = [
+    ...(model.capabilities || []),
+    ...(model.tags || []),
+    ...artifacts.flatMap((artifact) => [artifact.id, artifact.modelId, artifact.path, artifact.filename]),
+  ].map((value) => value.trim().toLowerCase())
   const isLiteRtLm = formats.has('litertlm')
   const isChatModel = isLiteRtLm || formats.has('gguf')
   const advertisedVision = hasSignal(signals, [
@@ -52,7 +56,7 @@ export function resolveLocalRuntimeCapabilities(
     audioInput: isLiteRtLm && advertisedAudioInput,
     speechOutput: false,
     reasoning: hasSignal(signals, ['reasoning', 'thinking']),
-    toolUse: false,
+    toolUse: isChatModel && hasSignal(signals, ['functiongemma', 'function-calling', 'function_calling', 'tool-use', 'tool_use']),
     streaming: false,
     reasons,
   }
@@ -67,5 +71,6 @@ export function providerCapabilitiesForLocalRuntime(
     ...(capabilities.reasoning ? (['reasoning'] as const) : []),
     ...(capabilities.audioInput ? (['audio_input'] as const) : []),
     ...(capabilities.speechOutput ? (['tts'] as const) : []),
+    ...(capabilities.toolUse ? (['tool_use'] as const) : []),
   ]
 }

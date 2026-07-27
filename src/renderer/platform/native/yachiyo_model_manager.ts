@@ -3,6 +3,7 @@ import { asSchema, type ToolSet } from 'ai'
 import type { DeviceCompatibilityProfile, DownloadJob, ModelRuntime } from '@shared/models/model-catalog'
 import type { LocalRuntimeCapabilities } from '@shared/models/local-capabilities'
 import type { LocalInferenceAdapter } from '@shared/types/adapters'
+import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 export interface NativeModelManagerCapabilities {
   schemaVersion: 1
@@ -56,7 +57,10 @@ interface NativeModelManagerPlugin {
   addListener(eventName: 'progress', listener: (event: NativeModelProgressEvent) => void): Promise<PluginListenerHandle>
 }
 
-export const yachiyoModelManagerNative = registerPlugin<NativeModelManagerPlugin>('YachiyoModelManager')
+export const yachiyoModelManagerNative = createFeatureGatedPlugin(
+  'local-models',
+  registerPlugin<NativeModelManagerPlugin>('YachiyoModelManager'),
+)
 
 export function createNativeModelDownloadSink() {
   return {
@@ -164,8 +168,11 @@ export function serializeLocalModelMessages(messages: unknown[]): unknown[] {
         if (mediaType.startsWith('image/')) return [{ type: 'image', data, mediaType }]
         if (mediaType.startsWith('audio/')) return [{ type: 'audio', data, mediaType }]
       }
+      if (item.type === 'tool-call' && typeof item.toolName === 'string') {
+        return [{ type: 'tool-call', name: item.toolName, arguments: item.input ?? {} }]
+      }
       if (item.type === 'tool-result') {
-        return [{ type: 'text', text: JSON.stringify(item.output ?? null) }]
+        return [{ type: 'tool-response', name: item.toolName, response: item.output ?? null }]
       }
       return []
     })

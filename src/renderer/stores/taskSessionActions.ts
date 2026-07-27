@@ -1,4 +1,5 @@
 import * as defaults from '@shared/defaults'
+import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
 import type { ChatStreamOptions, ModelStreamPart } from '@shared/models/types'
 import { createMessage, type Message, ModelProviderEnum, type TaskSession } from '@shared/types'
 import { getMessageText, sequenceMessages } from '@shared/utils/message'
@@ -6,6 +7,15 @@ import { resolveReasoningProviderOptions } from '@shared/utils/reasoning-strengt
 import type { ToolSet } from 'ai'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
+import {
+  isDeviceOperationOverlayVisible,
+  registerBuiltinFeatureLifecycles,
+  type SandboxRunState,
+  updateDeviceOperationOverlay,
+} from '@/features/builtin-lifecycles'
+import { registerBuiltinFeatures } from '@/features/builtin-features'
+import { getEnabledFeatureIds } from '@/features/feature-runtime'
+import { beginAgentRun, type AgentRunLifecycleHandle } from '@/features/lifecycle-runner'
 import {
   cancelPendingAgentApprovals,
   onAgentApprovalLifecycle,
@@ -24,10 +34,8 @@ import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from
 import { getAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
 import { nextAgentStreamPart } from '@/mobile/agent-stream-watchdog'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
-import { onAndroidDeviceOperation } from '@/packages/model-calls/toolsets/android-device'
 import platform from '@/platform'
-import { resetSemanticObservationCache, yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
-import { featureFlags } from '@/utils/feature-flags'
+import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 import { lastUsedModelStore } from './lastUsedModelStore'
 import { queryClient } from './queryClient'
 import { createInitialState, processStreamChunk } from './session/stream-chunk-processor'
@@ -232,14 +240,10 @@ async function generateTaskResponse(
   // legitimate action again, while retries of this message remain idempotent.
   const agentRunId = createAgentRunId(taskId, targetMsg.id)
   const loopGuard = new AgentLoopGuard()
-  if (deviceAgent) resetSemanticObservationCache(agentRunId)
   currentAbortController = abortController
   currentAgentRunId = agentRunId
   setActiveAgentRun(agentRunId)
-  let overlayStopListener: Awaited<ReturnType<typeof yachiyoDeviceAccessNative.onOverlayStopRequested>> | undefined
-  let overlayVisible = false
-  let overlayStartPromise: Promise<void> | undefined
-  let removeDeviceOperationListener: (() => void) | undefined
+  let featureRun: AgentRunLifecycleHandle | undefined
   let completedSuccessfully = false
   let sandboxEnabled = true
   let sandboxUnavailableReason = ''
@@ -297,34 +301,26 @@ async function generateTaskResponse(
         usageReservations.delete(stepNumber)
       }
     }
-    if (deviceAgent) {
-      removeDeviceOperationListener = onAndroidDeviceOperation(async () => {
-        if (overlayVisible) return overlayStartPromise
-        overlayVisible = true
-        overlayStartPromise = (async () => {
-          overlayStopListener = await yachiyoDeviceAccessNative.onOverlayStopRequested(() => abortController.abort())
-          await yachiyoDeviceAccessNative.showOperationOverlay('').catch(() => undefined)
-        })()
-        await overlayStartPromise
-      })
-    }
-    if (session?.workingDirectory && platform.sandboxInit) {
-      try {
-        const sandboxStatus = platform.type === 'mobile' ? await platform.sandboxStatus?.() : undefined
-        if (sandboxStatus && sandboxStatus.state !== 'ready') {
-          sandboxEnabled = false
-          sandboxUnavailableReason = `sandbox_${sandboxStatus.state}`
-        } else {
-          const initResult = await platform.sandboxInit({ workingDirectory: session.workingDirectory })
-          if (!initResult.success) {
-            sandboxEnabled = false
-            sandboxUnavailableReason = initResult.error || 'sandbox_initialization_failed'
-          }
-        }
-      } catch (error) {
-        sandboxEnabled = false
-        sandboxUnavailableReason = error instanceof Error ? error.message : 'sandbox_initialization_failed'
-      }
+    registerBuiltinFeatures()
+    registerBuiltinFeatureLifecycles()
+    const enabledFeatureIds = getEnabledFeatureIds()
+    featureRun = await beginAgentRun(
+      {
+        agentRunId,
+        taskId,
+        abortSignal: abortController.signal,
+        requestAbort: () => abortController.abort(),
+        featureOptions: {
+          'android-device': { enabled: deviceAgent },
+          sandbox: { workingDirectory: session?.workingDirectory },
+        },
+      },
+      enabledFeatureIds
+    )
+    const sandboxState = featureRun.getFeatureState<SandboxRunState>('sandbox')
+    if (sandboxState) {
+      sandboxEnabled = sandboxState.enabled
+      sandboxUnavailableReason = sandboxState.unavailableReason
     }
 
     let filteredContext = contextMessages
@@ -362,28 +358,33 @@ async function generateTaskResponse(
       buildTaskSystemPrompt(workingDir, {
         agentIdentity: [buildAgentIdentityPrompt(), relevantMemoryPrompt].filter(Boolean).join('\n\n'),
         deviceAgent,
+        enabledFeatureIds,
       }),
     )
 
     const promptMessages = [systemMessage, ...filteredContext]
 
     const skillSettings = settingsStore.getState().getSettings().skills
-    const enabledSkillNames = featureFlags.skills ? skillSettings.enabledSkillNames : []
+    const enabledSkillNames = enabledFeatureIds.has('skills') ? skillSettings.enabledSkillNames : []
     const inputSessionId = session?.linkedSessionId || taskId
     const uiState = uiStore.getState()
     const webBrowsing = uiState.sessionWebBrowsingMap[inputSessionId] ?? true
     const knowledgeBase = uiState.sessionKnowledgeBaseMap[inputSessionId]
 
     const { tools, instructions, activeTools } = await buildToolsForSession(model, {
-      webBrowsing,
-      knowledgeBase,
       messages: promptMessages,
-      sandboxEnabled,
-      enabledSkillNames,
       agentSessionId: deviceAgent ? agentRunId : taskId,
       agentApprovalSessionId: deviceAgent ? taskId : undefined,
-      cameraSessionId: taskId,
-      deviceControlEnabled: deviceAgent,
+      featureOptions: {
+        'web-search': { webBrowsing },
+        'knowledge-base': { knowledgeBase },
+        sandbox: { sandboxEnabled },
+        workspace: { sandboxEnabled },
+        skills: { enabledSkillNames, sandboxEnabled },
+        'android-device': { deviceControlEnabled: deviceAgent },
+        camera: { cameraSessionId: taskId },
+        mcp: { agentSessionId: deviceAgent ? agentRunId : taskId },
+      },
     })
 
     const runtimeInstructions = sandboxUnavailableReason
@@ -469,6 +470,7 @@ async function generateTaskResponse(
           const warning = loopGuard.observeCompletedStep(result)
           if (!warning) return
           const decision = await requestAgentDecision({
+            principal: CORE_AGENT_PRINCIPAL,
             sessionId: taskId,
             runId: agentRunId,
             signal: abortController.signal,
@@ -546,11 +548,9 @@ async function generateTaskResponse(
         await persistTaskDraft(taskId, targetMsg)
         await runCheckpointStore.update(agentRunId, { phase: 'streaming' })
       }
-      if (deviceAgent && overlayVisible && Date.now() - lastOverlayUpdate >= 120) {
+      if (deviceAgent && isDeviceOperationOverlayVisible(agentRunId) && Date.now() - lastOverlayUpdate >= 120) {
         lastOverlayUpdate = Date.now()
-        void yachiyoDeviceAccessNative
-          .updateOperationOverlay(getMessageText(targetMsg, true, true))
-          .catch(() => undefined)
+        void updateDeviceOperationOverlay(agentRunId, getMessageText(targetMsg, true, true))
       }
     }
 
@@ -620,22 +620,16 @@ async function generateTaskResponse(
     cancelPendingAgentApprovals(agentRunId)
     removeApprovalLifecycleListener?.()
     abortController.abort()
-    try {
-      removeDeviceOperationListener?.()
-    } catch (cleanupError) {
-      log.debug('device operation listener cleanup failed:', cleanupError)
-    }
-    await overlayStopListener?.remove().catch((cleanupError) => {
-      log.debug('overlay stop listener cleanup failed:', cleanupError)
+    const hadVisibleOverlay = isDeviceOperationOverlayVisible(agentRunId)
+    await featureRun?.disposeAll().catch((cleanupError) => {
+      log.debug('feature Agent-run cleanup failed:', cleanupError)
     })
-    if (deviceAgent && overlayVisible) {
-      await yachiyoDeviceAccessNative.hideOperationOverlay().catch(() => undefined)
+    if (deviceAgent && hadVisibleOverlay) {
       if (completedSuccessfully && getAgentRuntimeSettings().returnToAppOnComplete) {
         await yachiyoDeviceAccessNative.bringAppToForeground().catch(() => undefined)
       }
     }
     await settlePendingUsage().catch(() => undefined)
-    if (deviceAgent) resetSemanticObservationCache(agentRunId)
   }
 }
 

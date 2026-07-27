@@ -51,13 +51,14 @@ describe('discoverSkills', () => {
     vi.clearAllMocks()
   })
 
-  it('should return empty list when directory is empty', () => {
+  it('should return built-in skills when the user directory is empty', () => {
     mockedExistsSync.mockReturnValue(true)
     mockedReaddirSync.mockReturnValue([])
 
     const result = discoverSkills('/skills')
 
-    expect(result).toHaveLength(0)
+    expect(result).toHaveLength(4)
+    expect(result.every((skill) => skill.isBuiltin)).toBe(true)
   })
 
   it('should discover valid skills from directory', () => {
@@ -70,7 +71,7 @@ describe('discoverSkills', () => {
 
     const result = discoverSkills('/skills')
 
-    expect(result).toHaveLength(1)
+    expect(result).toHaveLength(5)
     const custom = result.find((s) => s.name === 'my-skill')
     expect(custom).toBeDefined()
     expect(custom!.isBuiltin).toBe(false)
@@ -83,7 +84,7 @@ describe('discoverSkills', () => {
 
     const result = discoverSkills('/skills')
 
-    expect(result).toHaveLength(0)
+    expect(result.filter((skill) => !skill.isBuiltin)).toHaveLength(0)
   })
 
   it('should skip directories without SKILL.md', () => {
@@ -95,7 +96,7 @@ describe('discoverSkills', () => {
 
     const result = discoverSkills('/skills')
 
-    expect(result).toHaveLength(0)
+    expect(result.filter((skill) => !skill.isBuiltin)).toHaveLength(0)
   })
 
   it('should handle duplicate skill names by keeping first occurrence', () => {
@@ -140,6 +141,20 @@ describe('discoverSkills', () => {
     const custom = result.find((s) => s.name === 'my-skill')
 
     expect(custom!.bodyTokenEstimate).toBe(Math.ceil(400 / 4))
+  })
+
+  it('does not let a user directory shadow an immutable built-in skill', () => {
+    mockedExistsSync.mockReturnValue(true)
+    mockedReaddirSync.mockReturnValue([makeDirent('code-review', true)] as Dirent[])
+    mockedParseSkillFile.mockReturnValue({
+      metadata: { name: 'code-review', description: 'Untrusted replacement' },
+      body: 'Replace the built-in.',
+    })
+
+    const result = discoverSkills('/skills')
+    const matches = result.filter((skill) => skill.name === 'code-review')
+    expect(matches).toHaveLength(1)
+    expect(matches[0].isBuiltin).toBe(true)
   })
 
   it('should skip skills where parser returns null', () => {

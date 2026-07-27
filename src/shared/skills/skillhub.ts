@@ -14,6 +14,11 @@ export type SkillHubDownload = {
   signature?: SkillSignature
 }
 
+export type SkillHubDownloadDescriptor = Omit<SkillHubDownload, 'bytes'> & {
+  url: string
+  sizeBytes?: number
+}
+
 export type SkillArchiveEntry = {
   path: string
   size: number
@@ -76,9 +81,10 @@ function normalizeSignature(value: unknown): SkillSignature | undefined {
   if (typeof value === 'string' && value.trim()) return { algorithm: 'ed25519', value: value.trim() }
   const item = record(value)
   const signature = stringValue(item?.value ?? item?.signature)
-  if (!signature || String(item?.algorithm || 'ed25519').toLowerCase() !== 'ed25519') return undefined
+  const algorithm = String(item?.algorithm || 'ed25519').toLowerCase()
+  if (!signature || (algorithm !== 'ed25519' && algorithm !== 'ecdsa-p256')) return undefined
   return {
-    algorithm: 'ed25519',
+    algorithm: algorithm as SkillSignature['algorithm'],
     value: signature,
     keyId: stringValue(item?.keyId ?? item?.key_id),
     publicKey: stringValue(item?.publicKey ?? item?.public_key),
@@ -220,41 +226,96 @@ export class SkillHubAdapter {
     }
   }
 
+  /** Resolves immutable package metadata without buffering the archive in the WebView. */
+  async resolveDownload(slug: string, revision?: string): Promise<SkillHubDownloadDescriptor> {
+    const normalized = normalizeSlug(slug)
+    const suffix = revision ? `?revision=${encodeURIComponent(revision)}` : ''
+    const path = `/v1/skills/${encodeURIComponent(normalized)}/download${suffix}`
+    const response = await this.request(path)
+    let sha256 = normalizeHash(response.headers.get('x-skill-sha256'))
+    let signature = normalizeSignature(response.headers.get('x-skill-signature'))
+    let url = response.url || `${this.baseUrl}${path}`
+    let sizeBytes = positiveSize(response.headers.get('content-length'))
+    let contentType = response.headers.get('content-type') || undefined
+    if (contentType?.includes('application/json')) {
+      const metadata = record(unwrap(await response.json()))
+      const resolved = stringValue(metadata?.downloadUrl ?? metadata?.download_url ?? metadata?.url)
+      if (!resolved || !safeArtifactUrl(resolved)) throw new SkillHubError('SkillHub download URL must use public HTTPS.', 'invalid_response')
+      url = resolved
+      sizeBytes = positiveSize(metadata?.sizeBytes ?? metadata?.size_bytes ?? metadata?.size ?? metadata?.contentLength) || sizeBytes
+      contentType = stringValue(metadata?.contentType ?? metadata?.content_type) || undefined
+      sha256 = normalizeHash(metadata?.sha256 ?? metadata?.filesHash) || sha256
+      signature = normalizeSignature(metadata?.signature) || signature
+    } else {
+      if (!response.ok) throw new SkillHubError(`SkillHub download failed with HTTP ${response.status}.`, 'http', response.status)
+      await response.body?.cancel().catch(() => undefined)
+    }
+    return { slug: normalized, revision, url, sizeBytes, contentType, sha256, signature }
+  }
+
   async verifyDownload(download: SkillHubDownload, expected?: MarketplaceSkill) {
     const sha256 = await sha256Hex(download.bytes)
     const expectedHash = normalizeHash(expected?.filesHash ?? download.sha256)
     if (expectedHash && sha256 !== expectedHash) throw new SkillHubError('SkillHub download hash mismatch.', 'integrity')
     const signature = expected?.signature || download.signature
     if (!signature) return { sha256, signatureVerified: false }
-    if (!signature.publicKey || !(await verifyEd25519Signature(download.bytes, signature.value, signature.publicKey))) {
+    if (!(await verifyPackageSignature(download.bytes, signature))) {
       throw new SkillHubError('SkillHub signature verification failed.', 'signature')
     }
     return { sha256, signatureVerified: true }
   }
 }
 
+function positiveSize(value: unknown): number | undefined {
+  const size = Number(value)
+  return Number.isSafeInteger(size) && size > 0 ? size : undefined
+}
+
+/**
+ * Generic archive-entry guard shared by Skills and plugin packages: path traversal, absolute paths,
+ * drive letters, backslashes, symlinks, duplicates, invalid sizes, file-count and total-size limits.
+ * Callers layer their own package-specific rules (Skills: script gating + SKILL.md; plugins: manifest
+ * + per-file digests) on top — the security checks live once, here.
+ */
+export function inspectArchiveEntries(
+  entries: SkillArchiveEntry[],
+  policy: { maxFiles: number; maxTotalBytes: number; label?: string }
+): { totalBytes: number } {
+  const label = policy.label ?? 'archive'
+  if (entries.length > policy.maxFiles) throw new SkillHubError(`${label} has too many files.`, 'archive')
+  const seen = new Set<string>()
+  let totalBytes = 0
+  for (const entry of entries) {
+    const path = entry.path.replace(/\\/g, '/')
+    const segments = path.split('/')
+    if (!path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || segments.includes('..') || entry.type === 'symlink' || seen.has(path)) {
+      throw new SkillHubError(`Unsafe path in ${label}: ${entry.path}`, 'archive')
+    }
+    if (!Number.isFinite(entry.size) || entry.size < 0) throw new SkillHubError(`Invalid ${label} size.`, 'archive')
+    seen.add(path)
+    totalBytes += entry.size
+    if (totalBytes > policy.maxTotalBytes) throw new SkillHubError(`${label} exceeds size limit.`, 'archive')
+  }
+  return { totalBytes }
+}
+
 export function inspectSkillArchive(
   entries: SkillArchiveEntry[],
   policy: { maxFiles?: number; maxTotalBytes?: number; allowScripts?: boolean } = {}
 ) {
-  if (entries.length > (policy.maxFiles ?? MAX_ARCHIVE_FILES)) throw new SkillHubError('Skill archive has too many files.', 'archive')
-  const seen = new Set<string>()
-  let totalBytes = 0
+  const { totalBytes } = inspectArchiveEntries(entries, {
+    maxFiles: policy.maxFiles ?? MAX_ARCHIVE_FILES,
+    maxTotalBytes: policy.maxTotalBytes ?? MAX_ARCHIVE_BYTES,
+    label: 'Skill archive',
+  })
   let hasSkillMd = false
   for (const entry of entries) {
     const path = entry.path.replace(/\\/g, '/')
     const segments = path.split('/')
     const extension = path.includes('.') ? path.slice(path.lastIndexOf('.')).toLowerCase() : ''
-    if (!path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || segments.includes('..') || entry.type === 'symlink' || seen.has(path)) {
-      throw new SkillHubError(`Unsafe path in Skill archive: ${entry.path}`, 'archive')
-    }
-    if (!Number.isFinite(entry.size) || entry.size < 0) throw new SkillHubError('Invalid Skill archive size.', 'archive')
     if (!policy.allowScripts && (segments.includes('scripts') || SCRIPT_EXTENSIONS.has(extension))) {
       throw new SkillHubError('Executable Skill files are disabled on mobile.', 'archive')
     }
-    seen.add(path)
-    totalBytes += entry.size
-    if (totalBytes > (policy.maxTotalBytes ?? MAX_ARCHIVE_BYTES)) throw new SkillHubError('Skill archive exceeds size limit.', 'archive')
     if (segments.at(-1)?.toLowerCase() === 'skill.md') hasSkillMd = true
   }
   if (!hasSkillMd) throw new SkillHubError('Skill archive must contain SKILL.md.', 'archive')
@@ -294,4 +355,38 @@ export async function verifyEd25519Signature(
   } catch {
     return false
   }
+}
+
+/**
+ * ECDSA P-256 (SHA-256) verification. Unlike Ed25519 this works on every WebView this app supports —
+ * Conscrypt only added WebCrypto Ed25519 at API 33 while minSdk is 30 (verified on-device: Android 12
+ * Chrome 110 throws NotSupportedError on Ed25519 importKey, while this P-256 path round-trips).
+ * Public key is base64(url) SPKI; signature is base64(url) in WebCrypto's raw r||s form.
+ */
+export async function verifyEcdsaP256Signature(
+  value: string | ArrayBuffer | Uint8Array,
+  signature: string,
+  publicKey: string
+): Promise<boolean> {
+  try {
+    const key = await crypto.subtle.importKey('spki', decode(publicKey), { name: 'ECDSA', namedCurve: 'P-256' }, false, [
+      'verify',
+    ])
+    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, decode(signature), ownedBuffer(value))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The single signature-verification entry shared by Skills and plugins. Dispatches on the declared
+ * algorithm so the two package pipelines can never drift apart.
+ */
+export async function verifyPackageSignature(
+  value: string | ArrayBuffer | Uint8Array,
+  signature: { algorithm: 'ed25519' | 'ecdsa-p256'; value: string; publicKey?: string }
+): Promise<boolean> {
+  if (!signature.publicKey) return false
+  if (signature.algorithm === 'ecdsa-p256') return verifyEcdsaP256Signature(value, signature.value, signature.publicKey)
+  return verifyEd25519Signature(value, signature.value, signature.publicKey)
 }

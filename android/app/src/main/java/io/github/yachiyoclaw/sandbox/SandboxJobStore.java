@@ -9,12 +9,15 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** File-backed registry shared by the UI process and the isolated sandbox service process. */
 final class SandboxJobStore {
+    static final long MAX_OUTPUT_BYTES_PER_STREAM = 8L * 1024L * 1024L;
     static final String STATE_QUEUED = "queued";
     static final String STATE_RUNNING = "running";
     static final String STATE_SUCCEEDED = "succeeded";
@@ -59,6 +62,28 @@ final class SandboxJobStore {
         });
     }
 
+    static List<String> jobIdsForWorkspace(List<Job> jobs, String workspace) {
+        List<String> ids = new ArrayList<>();
+        for (Job job : jobs) if (workspace.equals(job.workspace)) ids.add(job.id);
+        return ids;
+    }
+
+    /** Removes terminal metadata and bounded output files after the owner has stopped the jobs. */
+    synchronized void removeJobs(List<String> ids) throws Exception {
+        if (ids.isEmpty()) return;
+        Set<String> selected = new HashSet<>(ids);
+        locked(() -> {
+            List<Job> jobs = readAll();
+            jobs.removeIf(job -> selected.contains(job.id));
+            writeAll(jobs);
+            for (String id : selected) {
+                Files.deleteIfExists(stdout(id).toPath());
+                Files.deleteIfExists(stderr(id).toPath());
+            }
+            return null;
+        });
+    }
+
     synchronized Job update(String id, String state, long pid, Integer exitCode, long now) throws Exception {
         return locked(() -> {
             List<Job> jobs = readAll();
@@ -96,6 +121,7 @@ final class SandboxJobStore {
 
     File stdout(String id) { return new File(directory, id + ".stdout"); }
     File stderr(String id) { return new File(directory, id + ".stderr"); }
+    long outputBytes(String id) { return stdout(id).length() + stderr(id).length(); }
     String decryptCommand(Job job) throws Exception { return cipher.decrypt(job.commandCiphertext); }
 
     private <T> T locked(JobStoreAction<T> action) throws Exception {

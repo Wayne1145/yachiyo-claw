@@ -144,4 +144,32 @@ describe('YachiyoModelManager bridge', () => {
       serializeLocalModelMessages([{ role: 'user', content: [{ type: 'image', image: 'https://example.com/a.png' }] }]),
     ).toEqual([{ role: 'user', content: [] }])
   })
+
+  it('preserves broker tool calls and results for the next native inference step', () => {
+    expect(
+      serializeLocalModelMessages([
+        {
+          role: 'assistant',
+          content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'device_info', input: {} }],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call-1',
+              toolName: 'device_info',
+              output: { model: 'SM-S9280' },
+            },
+          ],
+        },
+      ]),
+    ).toEqual([
+      { role: 'assistant', content: [{ type: 'tool-call', name: 'device_info', arguments: {} }] },
+      {
+        role: 'tool',
+        content: [{ type: 'tool-response', name: 'device_info', response: { model: 'SM-S9280' } }],
+      },
+    ])
+  })
 })
