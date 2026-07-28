@@ -1,6 +1,7 @@
 import { ActionIcon, Badge, Button, Code, Group, Stack, Text, Title } from '@mantine/core'
 import { IconArrowLeft, IconPlayerPlay } from '@tabler/icons-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createBlobWorkerRuntime } from '@/plugins/blob-worker-runtime'
 import type { PluginRuntime } from '@/plugins/plugin-runtime'
 import { router } from '@/router'
@@ -104,6 +105,7 @@ interface TestResult {
 }
 
 export function PluginRuntimeTest() {
+  const { t } = useTranslation()
   const inAndroidAppShell = useInAndroidAppShell()
   const [results, setResults] = useState<TestResult[]>([])
   const [running, setRunning] = useState(false)
@@ -223,14 +225,14 @@ export function PluginRuntimeTest() {
       <header className="local-model-queue-heading">
         <Group gap="sm">
           {!inAndroidAppShell && (
-            <ActionIcon variant="subtle" aria-label="返回设置" onClick={() => void router.navigate({ to: '/settings' })}>
+            <ActionIcon variant="subtle" aria-label={t('返回设置')} onClick={() => void router.navigate({ to: '/settings' })}>
               <IconArrowLeft />
             </ActionIcon>
           )}
           <div>
-            <Title order={2}>插件运行时测试</Title>
+            <Title order={2}>{t('插件运行时测试')}</Title>
             <Text size="sm" c="dimmed">
-              开发者工具：验证 Blob Worker 隔离与 RPC 协议
+              {t('开发者工具：验证 Blob Worker 隔离与 RPC 协议')}
             </Text>
           </div>
         </Group>
@@ -239,11 +241,10 @@ export function PluginRuntimeTest() {
       <section className="local-model-queue-row">
         <Stack gap="md">
           <Text size="sm">
-            此页面用于测试插件隔离运行时。点击下方按钮将创建一个真实的 Blob Worker，加载测试插件，并验证 RPC
-            往返与能力授权。
+            {t('此页面用于测试插件隔离运行时。点击下方按钮将创建一个真实的 Blob Worker，加载测试插件，并验证 RPC 往返与能力授权。')}
           </Text>
           <Button leftSection={<IconPlayerPlay size={16} />} onClick={() => void runTests()} loading={running}>
-            运行测试
+            {t('运行测试')}
           </Button>
         </Stack>
       </section>
@@ -251,18 +252,18 @@ export function PluginRuntimeTest() {
       {results.length > 0 && (
         <section className="local-model-queue-row">
           <Stack gap="xs">
-            <Text fw={650}>测试结果</Text>
+            <Text fw={650}>{t('测试结果')}</Text>
             {results.map((r, i) => (
               <Group key={i} gap="sm" align="flex-start">
                 <Badge color={r.ok ? 'green' : 'red'} size="sm">
-                  {r.ok ? '通过' : '失败'}
+                  {r.ok ? t('通过') : t('失败')}
                 </Badge>
                 <div>
                   <Text size="sm" fw={500}>
-                    {r.step}
+                    {t(r.step)}
                   </Text>
                   <Code block style={{ maxWidth: '100%', overflow: 'auto' }}>
-                    {r.detail}
+                    {t(r.detail)}
                   </Code>
                 </div>
               </Group>

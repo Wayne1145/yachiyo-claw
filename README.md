@@ -35,7 +35,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 模型文件下载到应用私有目录，支持空间限制、断点续传、暂停/恢复/取消、SHA-256 校验和下载状态持久化。
 - 本地模型页的下载入口统一跳转到设置中的下载管理；离开来源页面或通知消失后仍可查看任务状态、下载速度、预计剩余时间、已下载/总大小与失败原因，并可继续、取消或删除任务。
 - Android 原生接入 LiteRT-LM 与 llama.cpp，可分别加载 `.litertlm` 和单文件/完整分片的 `.gguf` 对话模型；接入 MediaPipe Text Embedder，可使用已下载的 `.tflite` 模型生成本地文本向量。
-- 已下载模型提供独立列表、设为默认、加载进内存、卸载和删除操作；删除会同步清理原生文件、Provider 模型、默认项、收藏和各模型选择器中的失效引用。
+- 已下载模型提供独立列表、设为默认、加载进内存、卸载和删除操作；手动预加载会关闭 GGUF mmap、真实读取权重，并显示模型大小、推理进程 PSS 与耗时；删除会同步清理原生文件、Provider 模型、默认项、收藏和各模型选择器中的失效引用。
 - 已在 Android 12、6 GB 模拟器上实机验证 Gemma 3 270M GGUF 连续对话、FunctionGemma LiteRT-LM 结构化工具调用及模型进程驻留；小于 1B 的模型会使用紧凑人格和按请求筛选的工具描述，避免上下文挤占回复。
 
 ### 本地知识库与 Vibe Coding
@@ -65,7 +65,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 ### 扩展与主题
 
 - 声明式主题中心支持粘贴 JSON、选择文件或公开 HTTPS 导入，可临时预览、安装、切换和删除；主题只能覆盖受支持的颜色 token，不能运行代码。
-- 提供不可删除的“Yachiyo 浅粉”和“Yachiyo 液态玻璃”两套内置外观；液态玻璃主题使用纯白聊天背景、半透明导航和输入控件，并可收起整个聊天顶栏。
+- 提供不可删除的“Yachiyo 浅粉”和“Yachiyo 液态玻璃”两套内置外观；液态玻璃主题使用纯白聊天背景、半透明导航和输入控件，标题行始终保留，Agent 控制与输入工具可独立展开或收起。
 - Android 已开放第三方插件中心、HTTPS/本地 ZIP 安装、声明式页面、设置贡献、Agent 工具贡献、权限管理、健康状态、更新和完整卸载。
 - 脚本插件运行在不继承应用源站权限的 opaque-origin Worker 中，通过带版本的纯 JSON RPC 调用白名单 Host API；网络、存储、工具等能力按插件摘要绑定授权，运行失败会记录审计并触发超时终止、健康熔断或安装回滚。
 - 已在 Android 实机验证示例插件从本地 FunctionGemma 工具调用、最上层审批、隔离 Worker 执行到结果回填和第二轮模型回答的完整链路。
@@ -86,8 +86,9 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 手动创建一次、每日或每周 Agent 任务；应用运行或重新激活时执行到期任务。
 - 定时任务通过 Room、WorkManager 和开机/应用升级恢复接收器持久化并可靠唤醒；当前仍由前台应用接续实际模型与工具执行。
 - API Key、登录令牌及敏感设置使用 Android Keystore 支持的加密存储。
-- 可在启动时检查本项目的 GitHub Release；Android 更新器将 APK 下载到应用私有缓存，验证 HTTPS 来源、SHA-256 与包名后交给系统安装器，并支持未知来源安装权限引导。
+- 可在启动时检查本项目的 GitHub Release；Android 更新器将 APK 下载到应用私有目录，验证 HTTPS 来源、SHA-256、包名、签名链和递增的 `versionCode` 后交给系统安装器，并在升级后自动清理陈旧安装包。
 - 模型、更新、Linux 环境、插件/Skills 包体、远程主题和应用资源共用设置中的下载管理，支持 1-64 个分段、断点续传、代理、仅 Wi-Fi、独立通知和进程重建后的调度恢复。
+- 下载设置可分别启用 `hf-mirror.com` 与 `ghfast.top`；首次成功识别到中国大陆网络出口时默认开启，用户随后保存的选择不会被自动覆盖。镜像只代理白名单资源，模型摘要与 APK 摘要/签名校验保持不变。
 - Android CI 包含 TypeScript 检查、基础测试、原生日志隐私检查、Gradle 单测和 Debug APK 构建。
 - Yachiyo Claw 自定义的聊天、交互式、Agent、权限、本地模型、下载、主题、插件和工作区页面支持完整英文切换；用户自定义名称和第三方内容保持原文。
 
@@ -105,7 +106,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 开发计划与验收条件见 [ROADMAP](docs/ROADMAP.md)，权限和执行边界见 [SECURITY_MODEL](docs/SECURITY_MODEL.md)。
 使用与发布资料见 [统一下载管理](docs/downloads.md)、[主题](docs/themes.md)、[Skills](docs/skills.md)、
 [插件开发者预览](docs/plugins/README.md)、[隐私说明](PRIVACY.md)、[安全政策](SECURITY.md) 和
-[v0.0.13 发布说明](docs/releases/v0.0.13.md)。
+[v0.0.14 发布说明](docs/releases/v0.0.14.md)。
 
 ## Agent 执行结构
 
@@ -220,13 +221,14 @@ Yachiyo Claw 是独立的开源项目，与影片制作方、发行方、Netflix
 
 本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0-only](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## v0.0.13
+## v0.0.14
 
-- Android 聊天页改为单一 Yachiyo 顶栏，搜索、更多与历史入口在聊天和 Agent 状态下保持一致，并移除重复的 Agent 底部状态行。
-- 历史会话加入重命名，修复选中会话透出滑动操作按钮和长列表重叠问题。
-- 本地模型搜索结果显示实际可下载的首选文件或完整 GGUF 分片组大小，不再显示整个仓库体积。
-- 新增内置液态玻璃主题、纯白聊天背景和可收起顶栏，并为不支持背景模糊的 WebView 提供清晰回退。
+- 修复同版本更新包反复提示安装的问题；应用内更新现在拒绝降级或同版本 APK，并清理失效的已下载状态。
+- 下载设置增加 GitHub 与 Hugging Face 镜像开关；中国大陆首次启动时自动启用，仍可由用户手动覆盖。
+- GGUF“加载到内存”改为真实预加载，并显示模型体积、进程驻留内存和加载耗时；普通推理仍可使用内存映射以降低峰值。
+- 扩大 Android 页面国际化覆盖，补齐 API、本地模型和网络错误的应用内解释，并移除跳转到 Chatbox 文档的遗留入口。
+- 液态玻璃主题保留固定标题行，仅收起 Agent 控件；输入区工具改为可横向展开的二级托盘，并增强旧 WebView 的视觉回退。
 
-完整变化、边界和发布门禁见 [v0.0.13 发布说明](docs/releases/v0.0.13.md)。
+完整变化、边界和发布门禁见 [v0.0.14 发布说明](docs/releases/v0.0.14.md)。
 
 Copyright (c) NewDreamStudio and contributors.

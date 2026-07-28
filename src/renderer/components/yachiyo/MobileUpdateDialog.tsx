@@ -27,19 +27,19 @@ export function MobileUpdateDialog() {
     <Modal
       opened={opened}
       onClose={dismiss}
-      title={version ? `发现新版本 v${version}` : '发现新版本'}
+      title={version ? t('发现新版本 v{{version}}', { version }) : t('发现新版本')}
       centered
       size="md"
     >
       <Stack gap="md">
         <Text c="chatbox-secondary">
           {status === 'permission-required'
-            ? '请允许 Yachiyo Claw 安装未知来源应用，授权后返回此处继续安装。'
-            : '更新包会在校验 SHA-256 通过后才交给 Android 安装。'}
+            ? t('请允许 Yachiyo Claw 安装未知来源应用，授权后返回此处继续安装。')
+            : t('更新包会在校验 SHA-256 通过后才交给 Android 安装。')}
         </Text>
         {notes && (
           <Stack gap={4}>
-            <Text fw={600} size="sm">更新日志</Text>
+            <Text fw={600} size="sm">{t('更新日志')}</Text>
             <div
               className="mobile-update-notes"
               style={{ maxHeight: 280, overflowY: 'auto', fontSize: 13, lineHeight: 1.55, wordBreak: 'break-word' }}
@@ -71,7 +71,7 @@ export function MobileUpdateDialog() {
           <Stack gap="xs">
             <Progress value={progress} animated radius="xl" />
             <Text size="xs" ta="center" c="chatbox-tertiary">
-              正在下载 {progress}%
+              {t('正在下载 {{progress}}%', { progress })}
             </Text>
           </Stack>
         )}
@@ -84,14 +84,14 @@ export function MobileUpdateDialog() {
 
         <Group justify="flex-end" wrap="wrap">
           <Button variant="default" onClick={dismiss}>
-            稍后
+            {t('稍后')}
           </Button>
-          {status === 'available' && <Button onClick={() => void downloadUpdate()}>下载更新</Button>}
-          {status === 'downloaded' && <Button onClick={() => void requestInstallUpdate()}>安装更新</Button>}
+          {status === 'available' && <Button onClick={() => void downloadUpdate()}>{t('下载更新')}</Button>}
+          {status === 'downloaded' && <Button onClick={() => void requestInstallUpdate()}>{t('安装更新')}</Button>}
           {status === 'permission-required' && (
-            <Button onClick={() => void openUpdateInstallPermissionSettings()}>前往授权</Button>
+            <Button onClick={() => void openUpdateInstallPermissionSettings()}>{t('前往授权')}</Button>
           )}
-          {status === 'error' && <Button onClick={() => void checkForUpdates()}>重试</Button>}
+          {status === 'error' && <Button onClick={() => void checkForUpdates()}>{t('重试')}</Button>}
         </Group>
       </Stack>
     </Modal>

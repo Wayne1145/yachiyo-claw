@@ -5,6 +5,8 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Debug;
+import android.os.SystemClock;
 import androidx.core.app.NotificationCompat;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +34,10 @@ public final class LocalInferenceService extends Service {
     private volatile String activeRuntime = "";
     private volatile String loadedRuntime = "";
     private volatile String loadedModelPath = "";
+    private volatile boolean loadedEager = false;
+    private volatile long loadedModelBytes = 0L;
+    private volatile long loadedResidentBytes = 0L;
+    private volatile long loadedDurationMs = 0L;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -62,6 +68,10 @@ public final class LocalInferenceService extends Service {
                 MediaPipeTextEmbeddingRunner.unload();
                 loadedRuntime = "";
                 loadedModelPath = "";
+                loadedEager = false;
+                loadedModelBytes = 0L;
+                loadedResidentBytes = 0L;
+                loadedDurationMs = 0L;
                 stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelf(startId);
             });
@@ -128,28 +138,36 @@ public final class LocalInferenceService extends Service {
                 result = new JSONObject().put("embeddings", vectors);
             } else if ("load".equals(op)) {
                 stage.set("loading");
+                long loadStartedAt = SystemClock.elapsedRealtime();
+                boolean eager = request.optBoolean("eager", false);
                 if (modelPath.toLowerCase().endsWith(".litertlm")) {
                     activeRuntime = "litert-lm";
                     LiteRtLmRunner.load(modelPath);
                     loadedRuntime = "litert-lm";
+                    eager = true;
                 } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
                     activeRuntime = "llama.cpp";
-                    GgufRunner.load(modelPath, request.optString("requestId"));
+                    GgufRunner.load(modelPath, request.optString("requestId"), eager);
                     loadedRuntime = "llama.cpp";
                 } else throw new IllegalArgumentException("local_model_not_chat_model");
                 loadedModelPath = modelPath;
+                loadedEager = eager;
+                loadedModelBytes = new File(modelPath).length();
+                loadedDurationMs = Math.max(0L, SystemClock.elapsedRealtime() - loadStartedAt);
+                loadedResidentBytes = processResidentBytes();
                 stage.set("ready");
                 updateNotification("本地模型已加载到内存");
-                result = new JSONObject().put("loaded", true).put("runtime", loadedRuntime);
+                result = runtimeResult(true);
             } else if ("status".equals(op)) {
                 boolean loaded = !loadedModelPath.isEmpty() && loadedModelPath.equals(modelPath);
                 stage.set(loaded ? "ready" : "idle");
-                result = new JSONObject().put("loaded", loaded).put("runtime", loaded ? loadedRuntime : "");
+                result = runtimeResult(loaded);
             } else {
                 JSONArray messages = request.getJSONArray("messages");
                 JSONObject tools = request.optJSONObject("tools");
                 if (tools == null) tools = new JSONObject();
                 int maxTokens = request.optInt("maxTokens", 2048);
+                boolean retainedEagerLoad = loadedModelPath.equals(modelPath) && loadedEager;
                 JSONArray events;
                 if (modelPath.toLowerCase().endsWith(".litertlm")) {
                     activeRuntime = "litert-lm";
@@ -166,8 +184,12 @@ public final class LocalInferenceService extends Service {
                 }
                 else throw new IllegalArgumentException("local_model_not_chat_model");
                 loadedModelPath = modelPath;
+                loadedEager = retainedEagerLoad;
+                if (!retainedEagerLoad) loadedDurationMs = 0L;
+                loadedModelBytes = new File(modelPath).length();
+                loadedResidentBytes = processResidentBytes();
                 stage.set("ready");
-                updateNotification("本地模型已加载到内存");
+                updateNotification(loadedEager ? "本地模型已完整加载到内存" : "本地模型已就绪（按需映射）");
                 result = new JSONObject().put("events", events);
             }
             // Write then rename so the UI process never observes a half-written result file.
@@ -191,4 +213,20 @@ public final class LocalInferenceService extends Service {
     }
 
     private static String safe(Throwable error) { String value = error.getMessage(); return value != null && value.matches("[A-Za-z0-9._-]{1,120}") ? value : "local_inference_failed"; }
+
+    private JSONObject runtimeResult(boolean loaded) throws org.json.JSONException {
+        return new JSONObject()
+            .put("loaded", loaded)
+            .put("runtime", loaded ? loadedRuntime : "")
+            .put("eager", loaded && loadedEager)
+            .put("modelBytes", loaded ? loadedModelBytes : 0L)
+            .put("residentBytes", loaded ? loadedResidentBytes : 0L)
+            .put("loadDurationMs", loaded ? loadedDurationMs : 0L);
+    }
+
+    private static long processResidentBytes() {
+        Debug.MemoryInfo memory = new Debug.MemoryInfo();
+        Debug.getMemoryInfo(memory);
+        return Math.max(0L, memory.getTotalPss()) * 1024L;
+    }
 }

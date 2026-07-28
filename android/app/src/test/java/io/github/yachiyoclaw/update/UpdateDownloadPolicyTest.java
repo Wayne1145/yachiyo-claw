@@ -9,11 +9,17 @@ import org.junit.Test;
 
 public class UpdateDownloadPolicyTest {
     @Test
-    public void acceptsOnlyOfficialHttpsReleaseUrls() throws Exception {
+    public void acceptsOnlyTrustedHttpsReleaseSources() throws Exception {
         assertEquals(
             "github.com",
             UpdateDownloadPolicy.requireInitialReleaseUrl(
                 "https://github.com/Wayne1145/yachiyo-claw/releases/download/v0.0.5/app.apk"
+            ).getHost()
+        );
+        assertEquals(
+            "ghfast.top",
+            UpdateDownloadPolicy.requireInitialReleaseUrl(
+                "https://ghfast.top/https://github.com/Wayne1145/yachiyo-claw/releases/download/v0.0.5/app.apk"
             ).getHost()
         );
         assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireInitialReleaseUrl(
@@ -22,11 +28,15 @@ public class UpdateDownloadPolicyTest {
         assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireInitialReleaseUrl(
             "https://github.com/other/repo/releases/download/v0.0.5/app.apk"
         ));
+        assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireInitialReleaseUrl(
+            "https://ghfast.top/https://github.com/other/repo/releases/download/v0.0.5/app.apk"
+        ));
     }
 
     @Test
     public void acceptsOnlyGithubAssetRedirects() throws Exception {
         UpdateDownloadPolicy.requireAllowedRedirect(new URL("https://release-assets.githubusercontent.com/github-production-release-asset/app.apk"));
+        UpdateDownloadPolicy.requireAllowedRedirect(new URL("https://ghfast.top/https://github.com/Wayne1145/yachiyo-claw/releases/download/v1/app.apk"));
         assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireAllowedRedirect(
             new URL("https://example.com/app.apk")
         ));
@@ -36,6 +46,13 @@ public class UpdateDownloadPolicyTest {
         assertThrows(IllegalArgumentException.class, () -> UpdateDownloadPolicy.requireAllowedRedirect(
             new URL("https://user@release-assets.githubusercontent.com/github-production-release-asset/app.apk")
         ));
+    }
+
+    @Test
+    public void rejectsSameVersionAndDowngradePackages() {
+        UpdatePackageVerifier.requireVersionIncrease(13, 14);
+        assertThrows(IllegalArgumentException.class, () -> UpdatePackageVerifier.requireVersionIncrease(13, 13));
+        assertThrows(IllegalArgumentException.class, () -> UpdatePackageVerifier.requireVersionIncrease(13, 12));
     }
 
     @Test

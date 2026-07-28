@@ -41,6 +41,25 @@ export const useUpdateStore = create<UpdateState & UpdateActions>((set, get) => 
   },
 }))
 
+const UPDATE_ERROR_KEYS: Record<string, string> = {
+  update_version_not_newer: '更新包版本不高于当前版本，已清理旧安装包。',
+  update_signature_mismatch: '更新包签名与当前应用不一致，安装已阻止。',
+  update_package_invalid: '更新包不是有效的 Yachiyo Claw 安装包。',
+  update_digest_mismatch: '更新包完整性校验失败，请重新下载。',
+  verified_update_missing: '已下载的更新包不存在或已失效，请重新下载。',
+  update_storage_unavailable: '无法写入更新包，请检查设备剩余空间。',
+  update_install_failed: '无法启动 Android 安装程序，请检查安装权限后重试。',
+  update_download_failed: '更新下载失败，请检查网络或镜像设置后重试。',
+  update_metadata_missing: '更新下载信息已失效，请重新检查更新。',
+}
+
+export function humanizeUpdateError(error: unknown): string {
+  const code = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const key = UPDATE_ERROR_KEYS[code] || '更新操作失败，请稍后重试。'
+  const translated = t(key)
+  return typeof translated === 'string' && translated ? translated : key
+}
+
 export async function requestInstallUpdate() {
   try {
     await platform.installUpdate()
@@ -49,7 +68,7 @@ export async function requestInstallUpdate() {
       useUpdateStore.setState({ status: 'permission-required', error: null })
       return
     }
-    useUpdateStore.setState({ status: 'error', error: t('Update failed') })
+    useUpdateStore.setState({ status: 'error', error: humanizeUpdateError(error) })
   }
 }
 
@@ -68,7 +87,7 @@ export async function downloadUpdate() {
     await platform.downloadUpdate?.()
     startUpdateDownloadMonitor()
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('Update failed')
+    const message = humanizeUpdateError(error)
     useUpdateStore.setState({ status: 'error', error: message, progress: 0 })
   }
 }
@@ -149,7 +168,12 @@ export function applyNativeUpdateDownloadStatus(result: NativeUpdateDownloadStat
     return false
   }
   if (result.status === 'failed') {
-    useUpdateStore.setState({ status: 'error', version, progress: result.progress || 0, error: result.error || '更新下载失败' })
+    useUpdateStore.setState({
+      status: 'error',
+      version,
+      progress: result.progress || 0,
+      error: humanizeUpdateError(result.error || 'update_download_failed'),
+    })
     return false
   }
   if (result.status === 'cancelled') {
@@ -157,7 +181,17 @@ export function applyNativeUpdateDownloadStatus(result: NativeUpdateDownloadStat
     return false
   }
   if (result.status === 'completed') {
-    useUpdateStore.setState({ status: 'error', version, progress: 100, error: '更新包校验失败' })
+    useUpdateStore.setState({ status: 'error', version, progress: 100, error: t('更新包校验失败，请重新下载。') })
+    return false
+  }
+  if (result.status === 'idle') {
+    useUpdateStore.setState({
+      status: 'idle',
+      version: null,
+      progress: 0,
+      error: null,
+      dismissedVersion: null,
+    })
   }
   return false
 }

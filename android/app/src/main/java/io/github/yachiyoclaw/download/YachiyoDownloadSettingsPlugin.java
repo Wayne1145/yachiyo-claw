@@ -13,7 +13,17 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import io.github.yachiyoclaw.NativeCallValues;
 import java.io.File;
 import java.io.RandomAccessFile;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.Proxy;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 /** Shared, process-persistent transport preferences. Callers retain their own URL and hash policy. */
@@ -24,11 +34,22 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     private static final String THREADS = "threads";
     private static final String WIFI_ONLY = "wifiOnly";
     private static final String RETRY_COUNT = "retryCount";
+    private static final String HUGGING_FACE_MIRROR = "huggingFaceMirror";
+    private static final String GITHUB_MIRROR = "githubMirror";
+    private static final String REGION_INITIALIZED = "regionInitialized";
+    private static final String DETECTED_COUNTRY = "detectedCountry";
+    private static final String HUGGING_FACE_ORIGIN = "https://huggingface.co";
+    private static final String HUGGING_FACE_MIRROR_ORIGIN = "https://hf-mirror.com";
+    private static final String GITHUB_ORIGIN = "https://github.com/";
+    private static final String GITHUB_MIRROR_ORIGIN = "https://ghfast.top/";
+    private static final String COUNTRY_TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace";
     private static final String NAV_PREFS = "yachiyo-nav";
     private static final String PENDING_ROUTE = "pendingRoute";
     static final int DEFAULT_THREADS = 8;
     static final int DEFAULT_RETRY = 3;
     private static final int READ_CHUNK_MAX = 1024 * 1024;
+    private static final int COUNTRY_RESPONSE_MAX = 16 * 1024;
+    private final ExecutorService regionExecutor = Executors.newSingleThreadExecutor();
 
     /** Records an in-app route requested from outside the webview (e.g. a download notification tap). */
     public static void setPendingRoute(android.content.Context context, String route) {
@@ -56,6 +77,28 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         return Math.max(0, Math.min(16, preferences(context).getInt(RETRY_COUNT, DEFAULT_RETRY)));
     }
 
+    public static boolean huggingFaceMirror(android.content.Context context) {
+        return preferences(context).getBoolean(HUGGING_FACE_MIRROR, false);
+    }
+
+    public static boolean githubMirror(android.content.Context context) {
+        return preferences(context).getBoolean(GITHUB_MIRROR, false);
+    }
+
+    /** Rewrites only the official Hugging Face origin; repository paths and query parameters stay intact. */
+    public static String mirrorHuggingFaceUrl(android.content.Context context, String value) {
+        if (!huggingFaceMirror(context) || value == null) return value;
+        return value.startsWith(HUGGING_FACE_ORIGIN + "/")
+            ? HUGGING_FACE_MIRROR_ORIGIN + value.substring(HUGGING_FACE_ORIGIN.length())
+            : value;
+    }
+
+    /** ghfast receives the complete, already policy-checked GitHub release URL as its path. */
+    public static String mirrorGithubReleaseUrl(android.content.Context context, String value) {
+        if (!githubMirror(context) || value == null) return value;
+        return value.startsWith(GITHUB_ORIGIN) ? GITHUB_MIRROR_ORIGIN + value : value;
+    }
+
     /** Every persistent downloader uses this exact network/storage policy. */
     public static Constraints constraints(Context context) {
         return new Constraints.Builder()
@@ -75,7 +118,37 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         result.put("threads", threads(context));
         result.put("wifiOnly", wifiOnly(context));
         result.put("retryCount", retryCount(context));
+        result.put("huggingFaceMirror", huggingFaceMirror(context));
+        result.put("githubMirror", githubMirror(context));
+        result.put("regionInitialized", preferences(context).getBoolean(REGION_INITIALIZED, false));
+        result.put("detectedCountry", preferences(context).getString(DETECTED_COUNTRY, ""));
         return result;
+    }
+
+    /** Applies regional defaults once, and never overwrites a user's saved mirror choices. */
+    @PluginMethod
+    public void initializeRegionalDefaults(PluginCall call) {
+        if (preferences(getContext()).getBoolean(REGION_INITIALIZED, false)) {
+            call.resolve(settings(getContext()));
+            return;
+        }
+        regionExecutor.submit(() -> {
+            try {
+                String country = detectCountry();
+                boolean mainlandChina = "CN".equals(country);
+                boolean saved = preferences(getContext()).edit()
+                    .putBoolean(HUGGING_FACE_MIRROR, mainlandChina)
+                    .putBoolean(GITHUB_MIRROR, mainlandChina)
+                    .putBoolean(REGION_INITIALIZED, true)
+                    .putString(DETECTED_COUNTRY, country)
+                    .commit();
+                if (!saved) throw new IllegalStateException("download_region_defaults_save_failed");
+                call.resolve(settings(getContext()));
+            } catch (Exception error) {
+                // A network failure is non-fatal and remains retryable on the next app launch.
+                call.resolve(settings(getContext()));
+            }
+        });
     }
 
     @PluginMethod
@@ -217,6 +290,8 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         int threads = Math.max(1, Math.min(64, call.getInt("threads", DEFAULT_THREADS)));
         int retryCount = Math.max(0, Math.min(16, call.getInt("retryCount", DEFAULT_RETRY)));
         boolean wifiOnly = Boolean.TRUE.equals(call.getBoolean("wifiOnly", false));
+        boolean huggingFaceMirror = Boolean.TRUE.equals(call.getBoolean("huggingFaceMirror", huggingFaceMirror(getContext())));
+        boolean githubMirror = Boolean.TRUE.equals(call.getBoolean("githubMirror", githubMirror(getContext())));
         if (!proxy.isEmpty() && !validProxy(proxy)) {
             call.reject("download_proxy_invalid");
             return;
@@ -227,6 +302,9 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
             .putInt(THREADS, threads)
             .putInt(RETRY_COUNT, retryCount)
             .putBoolean(WIFI_ONLY, wifiOnly)
+            .putBoolean(HUGGING_FACE_MIRROR, huggingFaceMirror)
+            .putBoolean(GITHUB_MIRROR, githubMirror)
+            .putBoolean(REGION_INITIALIZED, true)
             .commit();
         if (!saved) {
             call.reject("download_settings_save_failed");
@@ -262,6 +340,41 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private String detectCountry() throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(COUNTRY_TRACE_URL).openConnection(Proxy.NO_PROXY);
+        connection.setConnectTimeout(5_000);
+        connection.setReadTimeout(5_000);
+        connection.setRequestProperty("Accept-Encoding", "identity");
+        connection.setRequestProperty("User-Agent", "Yachiyo-Claw-Android-Region-Setup");
+        try {
+            if (connection.getResponseCode() != 200) throw new IllegalStateException("download_region_detection_failed");
+            try (InputStream input = new BufferedInputStream(connection.getInputStream());
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[1024];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    if (output.size() + read > COUNTRY_RESPONSE_MAX) throw new IllegalStateException("download_region_response_too_large");
+                    output.write(buffer, 0, read);
+                }
+                String country = parseTraceCountry(output.toString(StandardCharsets.UTF_8));
+                if (country.isEmpty()) throw new IllegalStateException("download_region_missing_country");
+                return country;
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    static String parseTraceCountry(String trace) {
+        if (trace == null) return "";
+        for (String line : trace.split("\\r?\\n")) {
+            if (!line.startsWith("loc=")) continue;
+            String country = line.substring(4).trim().toUpperCase(Locale.ROOT);
+            return country.matches("[A-Z]{2}") ? country : "";
+        }
+        return "";
     }
 
     /** Remove a terminal task row from the unified index (does not touch in-flight work). */
@@ -306,5 +419,11 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     private static String safe(Exception error) {
         String value = error.getMessage();
         return value != null && value.matches("[A-Za-z0-9._-]{1,120}") ? value : "download_request_failed";
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        regionExecutor.shutdownNow();
+        super.handleOnDestroy();
     }
 }

@@ -1,6 +1,7 @@
 import { Menu, UnstyledButton } from '@mantine/core'
 import { IconChevronDown } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   getSessionCharacter,
   listCharacterProfiles,
@@ -9,6 +10,7 @@ import {
 } from '@/mobile/character-profiles'
 
 export function CharacterSelector({ sessionId }: { sessionId?: string }) {
+  const { t } = useTranslation()
   const [profiles, setProfiles] = useState(listCharacterProfiles)
   const [selected, setSelected] = useState(() => getSessionCharacter(sessionId))
   useEffect(() => {
@@ -25,7 +27,7 @@ export function CharacterSelector({ sessionId }: { sessionId?: string }) {
   return (
     <Menu position="top-end" shadow="md">
       <Menu.Target>
-        <UnstyledButton className="yachiyo-character-selector" aria-label="切换人格">
+        <UnstyledButton className="yachiyo-character-selector" aria-label={t('切换人格')}>
           <img src={selected.avatar} alt="" /><span>{selected.name}</span><IconChevronDown size={13} />
         </UnstyledButton>
       </Menu.Target>

@@ -1,26 +1,18 @@
 import { ActionIcon, Flex, Loader, Text, Tooltip } from '@mantine/core'
 import { Link } from '@mui/material'
 import { aiProviderNameHash } from '@shared/models'
-import { ChatboxAIAPIError } from '@shared/models/errors'
 import type { Message } from '@shared/types'
-import { ModelProviderEnum } from '@shared/types/provider'
 import { IconCheck, IconChevronDown, IconChevronUp, IconCopy, IconLanguage, IconReload } from '@tabler/icons-react'
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { trackJkClickEvent } from '@/analytics/jk'
-import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
-import { ChatboxAIErrorMessage } from '@/components/common/ChatboxAIErrorMessage'
-import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { useCopied } from '@/hooks/useCopied'
 import { navigateToSettings } from '@/modals/Settings'
 import { trackingEvent } from '@/packages/event'
-import { buildChatboxUrl } from '@/packages/remote'
 import { translateTexts } from '@/packages/translation'
-import platform from '@/platform'
 import * as settingActions from '@/stores/settingActions'
-import { useLanguage, useSettingsStore } from '@/stores/settingsStore'
-import LinkTargetBlank from '../common/Link'
+import { useLanguage } from '@/stores/settingsStore'
+import { explainRequestError, parseHttpStatus } from './message-error-explanations'
 
 const MAX_CHARS = 200
 const MAX_LINES = 3
@@ -37,34 +29,6 @@ function isHtmlContent(text: string): boolean {
  * i18n keys for common HTTP status code errors.
  * These provide user-friendly, translatable messages for server errors.
  */
-const httpStatusCodeI18nKeys: Record<number, string> = {
-  401: 'HTTP error: Unauthorized (401). Your authentication credentials are invalid or have expired. Please check your API key or login status.',
-  403: 'HTTP error: Forbidden (403). You do not have permission to access this resource. Please check your API key permissions or account status.',
-  408: 'HTTP error: Request Timeout (408). The server took too long to respond. Please try again later.',
-  429: 'HTTP error: Too Many Requests (429). The service is currently experiencing high demand or resource limitations. Please wait a moment and try again.',
-  500: 'HTTP error: Internal Server Error (500). The server encountered an unexpected error. Please try again later.',
-  502: 'HTTP error: Bad Gateway (502). The server received an invalid response from the upstream service. This is usually a temporary issue, please try again later.',
-  503: 'HTTP error: Service Unavailable (503). The server is temporarily unavailable, possibly due to maintenance or overload. Please try again later.',
-  504: 'HTTP error: Gateway Timeout (504). The server did not receive a timely response from the upstream service. This is usually a temporary issue, please try again later.',
-}
-
-/**
- * Extract HTTP status code from error message or errorExtra.
- */
-function getHttpStatusCode(msg: Message): number | undefined {
-  // First check errorExtra.httpStatusCode (set by our request layer)
-  const extraCode = msg.errorExtra?.['httpStatusCode']
-  if (typeof extraCode === 'number' && extraCode >= 400) {
-    return extraCode
-  }
-  // Fallback: parse from error message like "API Error: Status Code 504, ..."
-  const match = msg.error?.match(/Status Code (\d{3})/)
-  if (match) {
-    return parseInt(match[1], 10)
-  }
-  return undefined
-}
-
 function getRequestId(msg: Message): string | undefined {
   const requestId = msg.errorExtra?.['requestId']
   if (typeof requestId !== 'string' || requestId.length === 0) {
@@ -146,9 +110,7 @@ function ErrorActionButtons(props: {
 export default function MessageErrTips(props: { msg: Message; onRetry?: () => void; isBubbleLayout?: boolean }) {
   const { msg, onRetry, isBubbleLayout } = props
   const { t } = useTranslation()
-  const inAndroidAppShell = useInAndroidAppShell()
   const [expanded, setExpanded] = useState(false)
-  const licenseKey = useSettingsStore((state) => state.licenseKey)
   const language = useLanguage()
   const [translatedText, setTranslatedText] = useState<string | null>(null)
   const [isTranslating, setIsTranslating] = useState(false)
@@ -201,7 +163,7 @@ export default function MessageErrTips(props: { msg: Message; onRetry?: () => vo
   }
 
   const tips: React.ReactNode[] = []
-  let onlyShowTips = false // 是否只显示提示，不显示错误信息详情
+  const onlyShowTips = false
 
   if (isContextLengthError(msg.error) || isContextLengthError(errorMessage)) {
     tips.push(
@@ -227,70 +189,23 @@ export default function MessageErrTips(props: { msg: Message; onRetry?: () => vo
       />
     )
   } else if (msg.error.startsWith('API Error')) {
-    const httpStatusCode = getHttpStatusCode(msg)
-    const httpStatusI18nKey = httpStatusCode ? httpStatusCodeI18nKeys[httpStatusCode] : undefined
-    if (httpStatusI18nKey) {
-      // Show specific i18n-translated HTTP status error tip (keep error details visible below)
-      tips.push(
-        <Trans
-          i18nKey={httpStatusI18nKey}
-          values={{
-            aiProvider: msg.aiProvider
-              ? aiProviderNameHash[msg.aiProvider as keyof typeof aiProviderNameHash]
-              : 'AI Provider',
-          }}
-        />
-      )
-    } else if (msg.aiProvider === ModelProviderEnum.ChatboxAI) {
-      tips.push(
-        <Trans
-          i18nKey="Connection to {{aiProvider}} failed. This typically occurs due to a temporary service issue. Please try again later or <buttonOpenSettings>check your settings</buttonOpenSettings>."
-          values={{
-            aiProvider: aiProviderNameHash[ModelProviderEnum.ChatboxAI],
-          }}
-          components={{
-            buttonOpenSettings: (
-              <a
-                className="cursor-pointer underline font-bold hover:text-blue-600 transition-colors"
-                onClick={() => {
-                  navigateToSettings(`/provider/${ModelProviderEnum.ChatboxAI}`)
-                }}
-              />
-            ),
-          }}
-        />
-      )
-    } else {
-      tips.push(
-        <Trans
-          i18nKey="Connection to {{aiProvider}} failed. This typically occurs due to incorrect configuration or {{aiProvider}} account issues. Please <buttonOpenSettings>check your settings</buttonOpenSettings> and verify your {{aiProvider}} account status, or purchase a <LinkToLicensePricing>Chatbox AI License</LinkToLicensePricing> to unlock all advanced models instantly without any configuration."
-          values={{
-            aiProvider: msg.aiProvider
-              ? aiProviderNameHash[msg.aiProvider as keyof typeof aiProviderNameHash]
-              : 'AI Provider',
-          }}
-          components={{
-            buttonOpenSettings: (
-              <a
-                className="cursor-pointer underline font-bold hover:text-blue-600 transition-colors"
-                onClick={() => {
-                  navigateToSettings(msg.aiProvider ? `/provider/${msg.aiProvider}` : '/provider')
-                }}
-              />
-            ),
-            LinkToLicensePricing: (
-              <LinkTargetBlank
-                className="!font-bold !text-gray-700 hover:!text-blue-600 transition-colors"
-                href={buildChatboxUrl(
-                  `/redirect_app/advanced_url_processing/${settingActions.getLanguage()}?utm_source=app&utm_content=msg_bad_provider`
-                )}
-              />
-            ),
-            a: <a href={buildChatboxUrl(`/redirect_app/faqs/${settingActions.getLanguage()}`)} target="_blank" />,
-          }}
-        />
-      )
-    }
+    const explanation = explainRequestError(
+      msg.error,
+      errorMessage,
+      parseHttpStatus(msg.error, msg.errorExtra?.['httpStatusCode'])
+    )
+    tips.push(
+      <span>
+        {t(explanation)}{' '}
+        <button
+          type="button"
+          className="cursor-pointer border-0 bg-transparent p-0 font-bold underline"
+          onClick={() => navigateToSettings(msg.aiProvider ? `/provider/${msg.aiProvider}` : '/provider')}
+        >
+          {t('检查提供商设置')}
+        </button>
+      </span>
+    )
   } else if (msg.error.startsWith('Network Error')) {
     tips.push(
       <Trans
@@ -324,24 +239,8 @@ export default function MessageErrTips(props: { msg: Message; onRetry?: () => vo
         ]}
       />
     )
-  } else if (msg.errorCode && ChatboxAIAPIError.getDetail(msg.errorCode)) {
-    onlyShowTips = true
-    tips.push(<ChatboxAIErrorMessage errorCode={msg.errorCode} model={msg.model} />)
   } else {
-    tips.push(
-      <Trans
-        i18nKey="unknown error tips"
-        components={[
-          <a
-            key="a"
-            href={buildChatboxUrl(
-              `/redirect_app/faqs/${settingActions.getLanguage()}?utm_source=app&utm_content=msg_error_unknown`
-            )}
-            target="_blank"
-          ></a>,
-        ]}
-      />
-    )
+    tips.push(<span>{t(explainRequestError(msg.error, errorMessage, parseHttpStatus(msg.error, msg.errorExtra?.['httpStatusCode'])))}</span>)
   }
   return (
     <div
@@ -422,39 +321,6 @@ export default function MessageErrTips(props: { msg: Message; onRetry?: () => vo
             </div>
           )}
         </>
-      )}
-      {/* Free trial suggestion for users without license (skip for ChatboxAI errors) */}
-      {!inAndroidAppShell && !licenseKey && msg.aiProvider !== ModelProviderEnum.ChatboxAI && (
-        <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800/30 text-right">
-          <Tooltip
-            label={t(
-              'If you have never had a license before, you can claim it after logging in on the official website.'
-            )}
-            withArrow
-            multiline
-            maw={240}
-            position="bottom-end"
-            styles={{
-              tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.75)',
-                backdropFilter: 'blur(4px)',
-              },
-            }}
-          >
-            <span
-              className="text-sm font-medium text-blue-600 cursor-pointer hover:text-blue-700 hover:underline transition-colors"
-              onClick={() => {
-                trackJkClickEvent(JK_EVENTS.FREE_LICENSE_CLAIM_CLICK, {
-                  pageName: JK_PAGE_NAMES.CHAT_PAGE,
-                  content: 'chat_error',
-                })
-                platform.openLink('https://chatboxai.app/login')
-              }}
-            >
-              {t('Chatbox AI free trial available')} →
-            </span>
-          </Tooltip>
-        </div>
       )}
     </div>
   )

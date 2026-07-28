@@ -335,6 +335,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const [autoSpeak, setAutoSpeak] = useState(() => localStorage.getItem('yachiyo.chat.auto-speak') === 'true')
     const [speechRecording, setSpeechRecording] = useState(false)
     const [speechProcessing, setSpeechProcessing] = useState(false)
+    const [liquidToolsExpanded, setLiquidToolsExpanded] = useState(false)
     const speechInFlightRef = useRef(false)
     const speechAttemptRef = useRef(0)
     const spokenAssistantRef = useRef<string>()
@@ -1663,12 +1664,12 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                 {platform.type === 'mobile' && (
                   <>
                     <Tooltip
-                      label={speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '语音输入'}
+                      label={t(speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '语音输入')}
                       position="top"
                       withArrow
                     >
                       <UnstyledButton
-                        aria-label={speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '开始语音输入'}
+                        aria-label={t(speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '开始语音输入')}
                         aria-pressed={speechRecording}
                         className="yachiyo-chat-voice-button flex items-center px-2 py-1 rounded-lg"
                         data-recording={speechRecording ? 'true' : 'false'}
@@ -1679,9 +1680,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                         <IconMicrophone size={toolbarIconSize} stroke={speechRecording ? 2.5 : 2} />
                       </UnstyledButton>
                     </Tooltip>
-                    <Tooltip label="自动播放回答" position="top" withArrow>
+                    <Tooltip label={t('自动播放回答')} position="top" withArrow>
                       <UnstyledButton
-                        aria-label="自动播放回答"
+                        aria-label={t('自动播放回答')}
                         className="flex items-center px-2 py-1 rounded-lg"
                         onClick={() =>
                           setAutoSpeak((current) => {
@@ -1693,21 +1694,46 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                         {autoSpeak ? <IconVolume size={toolbarIconSize} /> : <IconVolumeOff size={toolbarIconSize} />}
                       </UnstyledButton>
                     </Tooltip>
+                  </>
+                )}
+                {platform.type === 'mobile' && (
+                  <Tooltip
+                    label={t(liquidToolsExpanded ? '收起更多工具' : '展开更多工具')}
+                    position="top"
+                    withArrow
+                  >
+                    <UnstyledButton
+                      className="yachiyo-liquid-tools-toggle"
+                      data-expanded={liquidToolsExpanded ? 'true' : 'false'}
+                      aria-label={t(liquidToolsExpanded ? '收起更多工具' : '展开更多工具')}
+                      aria-expanded={liquidToolsExpanded}
+                      onClick={() => setLiquidToolsExpanded((value) => !value)}
+                    >
+                      <IconChevronRight size={toolbarIconSize} strokeWidth={1.8} />
+                    </UnstyledButton>
+                  </Tooltip>
+                )}
+                <Flex
+                  className="yachiyo-secondary-tools"
+                  data-expanded={liquidToolsExpanded ? 'true' : 'false'}
+                  align="center"
+                  gap={0}
+                >
+                  {platform.type === 'mobile' && (
                     <ReasoningStrengthControl
                       settings={currentSessionMergedSettings}
                       onChange={(value) => void handleReasoningStrengthChange(value)}
                       compact
                     />
-                  </>
-                )}
-                <AttachmentMenu
-                  onImageUploadClick={onImageUploadClick}
-                  onFileUploadClick={onFileUploadClick}
-                  handleAttachLink={handleAttachLink}
-                  t={t}
-                />
+                  )}
+                  <AttachmentMenu
+                    onImageUploadClick={onImageUploadClick}
+                    onFileUploadClick={onFileUploadClick}
+                    handleAttachLink={handleAttachLink}
+                    t={t}
+                  />
 
-                {enabledFeatureIds.has('mcp') && (
+                  {enabledFeatureIds.has('mcp') && (
                   <MCPMenu>
                     {(enabledTools) => (
                       <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
@@ -1728,9 +1754,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                       </UnstyledButton>
                     )}
                   </MCPMenu>
-                )}
+                  )}
 
-                {enabledFeatureIds.has('knowledge-base') && !isSmallScreen && (
+                  {enabledFeatureIds.has('knowledge-base') && !isSmallScreen && (
                   <KnowledgeBaseMenu currentKnowledgeBaseId={knowledgeBase?.id} onSelect={handleKnowledgeBaseSelect}>
                     <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
                       <IconVocabulary
@@ -1742,9 +1768,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                       />
                     </UnstyledButton>
                   </KnowledgeBaseMenu>
-                )}
+                  )}
 
-                {enabledFeatureIds.has('web-search') && <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
+                  {enabledFeatureIds.has('web-search') && <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
                   <UnstyledButton
                     onClick={() => {
                       setWebBrowsingMode(!webBrowsingMode)
@@ -1760,7 +1786,8 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                       }
                     />
                   </UnstyledButton>
-                </Tooltip>}
+                  </Tooltip>}
+                </Flex>
 
                 {!isSmallScreen &&
                   (showRollbackThreadButton ? (

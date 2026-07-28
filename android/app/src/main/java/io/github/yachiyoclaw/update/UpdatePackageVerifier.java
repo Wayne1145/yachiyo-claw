@@ -27,6 +27,13 @@ final class UpdatePackageVerifier {
         if (trusted.isEmpty() || candidate.isEmpty() || java.util.Collections.disjoint(trusted, candidate)) {
             throw new SecurityException("update_signature_mismatch");
         }
+        requireVersionIncrease(installed.getLongVersionCode(), archive.getLongVersionCode());
+    }
+
+    static void requireVersionIncrease(long installedVersion, long candidateVersion) {
+        if (candidateVersion <= installedVersion) {
+            throw new IllegalArgumentException("update_version_not_newer");
+        }
     }
 
     private static Set<String> fingerprints(SigningInfo info) throws Exception {

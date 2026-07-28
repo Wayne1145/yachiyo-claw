@@ -3,6 +3,7 @@ import type { MemoryItem } from '@shared/memory'
 import { IconRefresh, IconTrash } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { createDefaultLongTermMemoryService } from '@/mobile/long-term-memory'
 import {
   getSharedUserContext,
@@ -13,6 +14,7 @@ import {
 export const Route = createFileRoute('/settings/user-memory')({ component: UserMemorySettingsPage })
 
 function UserMemorySettingsPage() {
+  const { t } = useTranslation()
   const [value, setValue] = useState(getSharedUserContext)
   const [saved, setSaved] = useState(false)
   const [records, setRecords] = useState<MemoryItem[]>([])
@@ -36,7 +38,7 @@ function UserMemorySettingsPage() {
     try {
       setRecords((await memoryService.list({ includeSensitive: false })).sort((a, b) => b.updatedAt - a.updatedAt))
     } catch (cause) {
-      setRecordError(cause instanceof Error ? cause.message : '无法读取长期记忆')
+      setRecordError(cause instanceof Error ? cause.message : String(t('无法读取长期记忆')))
     } finally {
       setLoadingRecords(false)
     }
@@ -52,7 +54,7 @@ function UserMemorySettingsPage() {
       await memoryService.update(record.id, { content: record.content, kind: record.kind, tags: record.tags })
       await refreshRecords()
     } catch (cause) {
-      setRecordError(cause instanceof Error ? cause.message : '无法保存记忆')
+      setRecordError(cause instanceof Error ? cause.message : String(t('无法保存记忆')))
     }
   }
 
@@ -80,15 +82,15 @@ function UserMemorySettingsPage() {
 
   return (
     <main className="yachiyo-character-settings">
-      <Title order={1}>用户与记忆</Title>
+      <Title order={1}>{t('用户与记忆')}</Title>
       <Text c="dimmed" mb="md">
-        这些内容会作为隐藏上下文用于普通聊天和 Agent，不会显示在聊天记录中。
+        {t('这些内容会作为隐藏上下文用于普通聊天和 Agent，不会显示在聊天记录中。')}
       </Text>
       <section className="yachiyo-character-editor">
         <Textarea
-          label="用户画像"
-          description="填写称呼、偏好、背景和沟通习惯。"
-          placeholder="例如：称呼我为 Wayne；优先使用中文回答。"
+          label={t('用户画像')}
+          description={t('填写称呼、偏好、背景和沟通习惯。')}
+          placeholder={String(t('例如：称呼我为 Wayne；优先使用中文回答。'))}
           autosize
           minRows={7}
           maxRows={16}
@@ -96,9 +98,9 @@ function UserMemorySettingsPage() {
           onChange={(event) => patch({ userProfile: event.currentTarget.value })}
         />
         <Textarea
-          label="长期记忆"
-          description="记录需要跨对话保留的事实和约定。"
-          placeholder="例如：项目默认使用 pnpm；修改后运行 Android 检查。"
+          label={t('长期记忆')}
+          description={t('记录需要跨对话保留的事实和约定。')}
+          placeholder={String(t('例如：项目默认使用 pnpm；修改后运行 Android 检查。'))}
           autosize
           minRows={10}
           maxRows={22}
@@ -106,30 +108,30 @@ function UserMemorySettingsPage() {
           onChange={(event) => patch({ memory: event.currentTarget.value })}
         />
         <Stack gap="xs">
-          <Button onClick={save}>保存用户与记忆</Button>
+          <Button onClick={save}>{t('保存用户与记忆')}</Button>
           {saved && (
             <Text size="sm" c="green">
-              已保存，将从下一次模型请求开始生效。
+              {t('已保存，将从下一次模型请求开始生效。')}
             </Text>
           )}
         </Stack>
         <Divider my="sm" />
         <Group justify="space-between" align="center">
           <div>
-            <Text fw={700}>自动长期记忆</Text>
+            <Text fw={700}>{t('自动长期记忆')}</Text>
             <Text size="sm" c="dimmed">
-              模型和宿主从明确表达中保存的稳定信息。凭据和敏感内容不会写入。
+              {t('模型和宿主从明确表达中保存的稳定信息。凭据和敏感内容不会写入。')}
             </Text>
           </div>
-          <ActionIcon variant="subtle" color="gray" aria-label="刷新长期记忆" onClick={() => void refreshRecords()}>
+          <ActionIcon variant="subtle" color="gray" aria-label={t('刷新长期记忆')} onClick={() => void refreshRecords()}>
             <IconRefresh size={18} />
           </ActionIcon>
         </Group>
         {lastDeleted && (
           <Group justify="space-between" p="sm" style={{ borderRadius: 12, background: '#fff2f6' }}>
-            <Text size="sm">已删除一条记忆</Text>
+            <Text size="sm">{t('已删除一条记忆')}</Text>
             <Button size="compact-sm" variant="subtle" color="chatbox-brand" onClick={() => void undoDelete()}>
-              撤销
+              {t('撤销')}
             </Button>
           </Group>
         )}
@@ -141,7 +143,7 @@ function UserMemorySettingsPage() {
         {loadingRecords ? (
           <Loader color="chatbox-brand" size="sm" />
         ) : records.length === 0 ? (
-          <Text size="sm" c="dimmed">还没有自动长期记忆。</Text>
+          <Text size="sm" c="dimmed">{t('还没有自动长期记忆。')}</Text>
         ) : (
           <Stack gap="sm">
             {records.map((record) => (
@@ -153,7 +155,7 @@ function UserMemorySettingsPage() {
                       <Badge key={tag} color="gray" variant="light">{tag}</Badge>
                     ))}
                   </Group>
-                  <ActionIcon color="red" variant="subtle" aria-label="删除记忆" onClick={() => void deleteRecord(record)}>
+                  <ActionIcon color="red" variant="subtle" aria-label={t('删除记忆')} onClick={() => void deleteRecord(record)}>
                     <IconTrash size={17} />
                   </ActionIcon>
                 </Group>
@@ -169,11 +171,11 @@ function UserMemorySettingsPage() {
                 />
                 <Group justify="space-between" mt="xs">
                   <Text size="xs" c="dimmed">
-                    {record.sourceSessionId ? `来源对话 ${record.sourceSessionId.slice(0, 8)} · ` : ''}
+                    {record.sourceSessionId ? `${t('来源对话')} ${record.sourceSessionId.slice(0, 8)} · ` : ''}
                     {new Date(record.updatedAt).toLocaleString()}
                   </Text>
                   <Button size="compact-sm" radius="xl" variant="light" color="chatbox-brand" onClick={() => void updateRecord(record)}>
-                    保存修改
+                    {t('保存修改')}
                   </Button>
                 </Group>
               </section>
@@ -182,11 +184,11 @@ function UserMemorySettingsPage() {
               variant="subtle"
               color="red"
               onClick={() => {
-                if (!window.confirm('确定清空全部自动长期记忆吗？此操作不可撤销。')) return
+                if (!window.confirm(String(t('确定清空全部自动长期记忆吗？此操作不可撤销。')))) return
                 void memoryService.clear().then(refreshRecords)
               }}
             >
-              清空自动长期记忆
+              {t('清空自动长期记忆')}
             </Button>
           </Stack>
         )}

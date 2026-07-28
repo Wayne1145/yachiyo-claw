@@ -112,6 +112,12 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    // Configure regional download defaults once. Failure is intentionally silent and retried at
+    // the next launch; explicit settings saved by the user are never overwritten.
+    void yachiyoDownloadsNative.initializeRegionalDefaults().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
     // Register installed plugins' tools into the Agent toolset registry (grant-gated per session build).
     initPluginTools()
     void usePluginStore.getState().refresh()
@@ -369,80 +375,75 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
           onClose={() => setHistoryOpened(false)}
         />
         {!isInteractive && (
-          <div
-            className="yachiyo-mobile-header-drawer"
-            data-collapsed={activeTab === 'chat' && conversationHeaderCollapsed ? 'true' : 'false'}
-          >
+          <div className="yachiyo-mobile-header-drawer">
             <div className="yachiyo-mobile-header-drawer-inner">
               <header className="yachiyo-mobile-header">
-                {isSettingsDetail ? (
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    size={36}
-                    aria-label={String(t('返回设置'))}
-                    onClick={() => router.navigate({ to: '/settings' })}
-                  >
-                    <IconChevronLeft size={22} />
-                  </ActionIcon>
-                ) : (
-                  <YachiyoMark size={36} />
-                )}
-                <div className="yachiyo-mobile-title">
-                  <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
-                  <span>{isAgentTaskPath ? t('Agent 对话') : activeTabLabel}</span>
-                </div>
-                {showConversationTools && (
-                  <div className="yachiyo-mobile-conversation-tools">
-                    <Toolbar sessionId={toolbarSessionId} androidShell />
+                <div className="yachiyo-mobile-header-primary">
+                  {isSettingsDetail ? (
                     <ActionIcon
                       variant="subtle"
                       color="gray"
                       size={36}
-                      aria-label={String(t('会话记录'))}
-                      onClick={() => setHistoryOpened(true)}
+                      aria-label={String(t('返回设置'))}
+                      onClick={() => router.navigate({ to: '/settings' })}
                     >
-                      <IconHistory size={21} />
+                      <IconChevronLeft size={22} />
                     </ActionIcon>
+                  ) : (
+                    <YachiyoMark size={36} />
+                  )}
+                  <div className="yachiyo-mobile-title">
+                    <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
+                    <span>{isAgentTaskPath ? t('Agent 对话') : activeTabLabel}</span>
                   </div>
-                )}
-                <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
-                  <span aria-hidden="true" />
-                  {hasProvider ? t('已连接') : t('未连接')}
+                  {showConversationTools && (
+                    <div className="yachiyo-mobile-conversation-tools">
+                      <Toolbar sessionId={toolbarSessionId} androidShell />
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size={36}
+                        aria-label={String(t('会话记录'))}
+                        onClick={() => setHistoryOpened(true)}
+                      >
+                        <IconHistory size={21} />
+                      </ActionIcon>
+                    </div>
+                  )}
+                  <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
+                    <span aria-hidden="true" />
+                    {hasProvider ? t('已连接') : t('未连接')}
+                  </div>
+                  {activeTab === 'chat' && (
+                    <ActionIcon
+                      className="yachiyo-mobile-header-collapse"
+                      variant="subtle"
+                      color="gray"
+                      size={30}
+                      aria-label={String(conversationHeaderCollapsed ? t('展开顶部') : t('收起顶部'))}
+                      aria-expanded={!conversationHeaderCollapsed}
+                      onClick={() => setConversationHeaderCollapsed((value) => !value)}
+                    >
+                      {conversationHeaderCollapsed ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+                    </ActionIcon>
+                  )}
                 </div>
                 {activeTab === 'chat' && (
-                  <AgentSessionControls
-                    sessionId={conversationConfigId}
-                    enabled={isAgentTaskPath}
-                    onToggle={handleAgentToggle}
-                  />
-                )}
-                {activeTab === 'chat' && (
-                  <ActionIcon
-                    className="yachiyo-mobile-header-collapse"
-                    variant="subtle"
-                    color="gray"
-                    size={30}
-                    aria-label={String(t('收起顶部'))}
-                    onClick={() => setConversationHeaderCollapsed(true)}
+                  <div
+                    className="yachiyo-mobile-header-collapsible"
+                    data-collapsed={conversationHeaderCollapsed ? 'true' : 'false'}
                   >
-                    <IconChevronUp size={18} />
-                  </ActionIcon>
+                    <div className="yachiyo-mobile-header-collapsible-inner">
+                      <AgentSessionControls
+                        sessionId={conversationConfigId}
+                        enabled={isAgentTaskPath}
+                        onToggle={handleAgentToggle}
+                      />
+                    </div>
+                  </div>
                 )}
               </header>
             </div>
-            {activeTab === 'chat' && conversationHeaderCollapsed && (
-              <ActionIcon
-                className="yachiyo-mobile-header-expand"
-                variant="subtle"
-                color="gray"
-                size={34}
-                aria-label={String(t('展开顶部'))}
-                onClick={() => setConversationHeaderCollapsed(false)}
-              >
-                <IconChevronDown size={19} />
-              </ActionIcon>
-            )}
           </div>
         )}
 

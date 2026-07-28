@@ -11,6 +11,7 @@ public class ModelDownloadPolicyTest {
     @Test
     public void acceptsOnlyOfficialCatalogDownloadOrigins() throws Exception {
         assertEquals("huggingface.co", ModelDownloadPolicy.requireInitialUrl("https://huggingface.co/org/model/resolve/abc/model.litertlm").getHost());
+        assertEquals("hf-mirror.com", ModelDownloadPolicy.requireInitialUrl("https://hf-mirror.com/org/model/resolve/abc/model.gguf").getHost());
         assertEquals("www.modelscope.cn", ModelDownloadPolicy.requireInitialUrl("https://www.modelscope.cn/api/v1/models/org/model/repo").getHost());
         assertThrows(IllegalArgumentException.class, () -> ModelDownloadPolicy.requireInitialUrl("https://example.com/model.litertlm"));
         assertThrows(IllegalArgumentException.class, () -> ModelDownloadPolicy.requireInitialUrl("http://huggingface.co/model.litertlm"));

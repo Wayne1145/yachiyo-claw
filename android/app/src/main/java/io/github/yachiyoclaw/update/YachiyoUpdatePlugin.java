@@ -55,10 +55,14 @@ public final class YachiyoUpdatePlugin extends Plugin {
         final long expectedSize = Math.max(0L, NativeCallValues.getLong(call, "size", 0L));
         try {
             version = UpdateDownloadPolicy.safeVersion(call.getString("version"));
-            apkUrl = UpdateDownloadPolicy.requireInitialReleaseUrl(call.getString("url"));
+            apkUrl = UpdateDownloadPolicy.requireInitialReleaseUrl(
+                io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin.mirrorGithubReleaseUrl(getContext(), call.getString("url"))
+            );
             providedDigest = UpdateDownloadPolicy.parseSha256(call.getString("sha256"));
             String sidecar = call.getString("sha256SidecarUrl");
-            sidecarUrl = sidecar == null || sidecar.trim().isEmpty() ? null : UpdateDownloadPolicy.requireInitialReleaseUrl(sidecar);
+            sidecarUrl = sidecar == null || sidecar.trim().isEmpty() ? null : UpdateDownloadPolicy.requireInitialReleaseUrl(
+                io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin.mirrorGithubReleaseUrl(getContext(), sidecar)
+            );
             if (providedDigest == null && sidecarUrl == null) throw new IllegalArgumentException("update_digest_required");
             if (expectedSize <= 0 || expectedSize > UpdateDownloadPolicy.MAX_APK_BYTES) throw new IllegalArgumentException("update_size_invalid");
         } catch (Exception error) {
@@ -94,6 +98,7 @@ public final class YachiyoUpdatePlugin extends Plugin {
             String version = name.startsWith("update-") && name.endsWith(".apk") ? name.substring(7, name.length() - 4) : "";
             result.put("ready", true).put("version", version).put("status", "completed").put("progress", 100);
         } catch (Exception ignored) {
+            clearUninstallableVerifiedUpdate();
             android.content.SharedPreferences prefs = getContext().getSharedPreferences(PREFS, 0);
             String version = prefs.getString(PREF_PENDING_VERSION, "");
             result.put("ready", false).put("version", version == null ? "" : version);
@@ -227,7 +232,30 @@ public final class YachiyoUpdatePlugin extends Plugin {
             if (verified.getName().equals("update-" + version + ".apk")) return;
             if (!verified.delete()) verified.deleteOnExit();
         } catch (Exception ignored) {}
-        getContext().getSharedPreferences(PREFS, 0).edit().remove(PREF_FILE).remove(PREF_DIGEST).apply();
+        clearUninstallableVerifiedUpdate();
+    }
+
+    private void clearUninstallableVerifiedUpdate() {
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences(PREFS, 0);
+        String path = prefs.getString(PREF_FILE, null);
+        if (path != null) {
+            try {
+                File root = new File(getContext().getFilesDir(), UPDATE_DIR).getCanonicalFile();
+                File apk = new File(path).getCanonicalFile();
+                if (root.equals(apk.getParentFile()) && apk.isFile() && !apk.delete()) apk.deleteOnExit();
+            } catch (Exception ignored) {}
+        }
+        String pendingVersion = prefs.getString(PREF_PENDING_VERSION, "");
+        android.content.SharedPreferences.Editor editor = prefs.edit().remove(PREF_FILE).remove(PREF_DIGEST);
+        if (pendingVersion != null && !pendingVersion.isEmpty()) {
+            String status = DownloadTaskStore.status(getContext(), "update-" + pendingVersion);
+            if ("completed".equals(status)) {
+                DownloadTaskStore.remove(getContext(), "update-" + pendingVersion);
+                editor.remove(PREF_PENDING_VERSION).remove(PREF_PENDING_URL).remove(PREF_PENDING_SIZE)
+                    .remove(PREF_PENDING_DIGEST).remove(PREF_PENDING_SIDECAR);
+            }
+        }
+        editor.apply();
     }
 
     @PluginMethod
@@ -291,6 +319,9 @@ public final class YachiyoUpdatePlugin extends Plugin {
             while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
         }
         if (!MessageDigest.isEqual(hexBytes(expected), digest.digest())) throw new IOException("update_digest_mismatch");
+        // A verified package must still be newer than the app currently installed. This also
+        // invalidates a previously downloaded APK immediately after a successful upgrade.
+        UpdatePackageVerifier.requireTrusted(getContext(), apk);
         return apk;
     }
 

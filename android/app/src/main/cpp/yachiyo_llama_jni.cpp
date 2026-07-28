@@ -20,6 +20,7 @@ std::atomic<bool> g_cancelled{false};
 std::atomic<float> g_load_progress{0.0F};
 llama_model * g_model = nullptr;
 std::string g_model_path;
+bool g_model_eager = false;
 std::string g_request_id;
 std::once_flag g_backend_once;
 
@@ -130,8 +131,10 @@ void ensure_backend() {
     });
 }
 
-void ensure_model(const std::string & path) {
-    if (g_model != nullptr && g_model_path == path) {
+void ensure_model(const std::string & path, bool eager) {
+    // An eager instance satisfies ordinary inference too. A mmap instance must be reloaded when
+    // the user explicitly requests that all model weights be read into process memory.
+    if (g_model != nullptr && g_model_path == path && (!eager || g_model_eager)) {
         g_load_progress.store(1.0F, std::memory_order_relaxed);
         return;
     }
@@ -140,10 +143,11 @@ void ensure_model(const std::string & path) {
         llama_model_free(g_model);
         g_model = nullptr;
         g_model_path.clear();
+        g_model_eager = false;
     }
     llama_model_params params = llama_model_default_params();
     params.n_gpu_layers = 0;
-    params.use_mmap = true;
+    params.use_mmap = !eager;
     params.use_mlock = false;
     params.progress_callback = continue_loading;
     g_model = llama_model_load_from_file(path.c_str(), params);
@@ -152,6 +156,7 @@ void ensure_model(const std::string & path) {
         throw std::runtime_error("local_model_load_failed");
     }
     g_model_path = path;
+    g_model_eager = eager;
     g_load_progress.store(1.0F, std::memory_order_relaxed);
 }
 
@@ -248,7 +253,7 @@ std::string generate(
 ) {
     std::lock_guard<std::mutex> model_lock(g_model_mutex);
     ensure_backend();
-    ensure_model(path);
+    ensure_model(path, false);
 
     const llama_vocab * vocab = llama_model_get_vocab(g_model);
     std::vector<llama_token> prompt_tokens = tokenize(vocab, apply_chat_template(roles, contents));
@@ -315,7 +320,8 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoad(
     JNIEnv * env,
     jclass,
     jstring model_path,
-    jstring request_id
+    jstring request_id,
+    jboolean eager
 ) {
     try {
         const std::string path = from_jstring(env, model_path);
@@ -324,7 +330,7 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoad(
         try {
             std::lock_guard<std::mutex> model_lock(g_model_mutex);
             ensure_backend();
-            ensure_model(path);
+            ensure_model(path, eager == JNI_TRUE);
             end_request();
         } catch (...) {
             end_request();
@@ -395,5 +401,6 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeUnload(JNIEnv *, jclass) {
     if (g_model != nullptr) llama_model_free(g_model);
     g_model = nullptr;
     g_model_path.clear();
+    g_model_eager = false;
     g_load_progress.store(0.0F, std::memory_order_relaxed);
 }
