@@ -2473,6 +2473,15 @@ html[data-yachiyo-appearance='liquid-glass'] .yachiyo-secondary-tools[data-expan
 }
 
 @media (orientation: landscape) and (max-height: 700px) {
+  .yachiyo-chat-landing-slot {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .yachiyo-chat-landing-slot .yachiyo-chat-landing {
+    display: none;
+  }
+
   .yachiyo-mobile-header-primary {
     min-height: calc(44px + var(--mobile-safe-area-inset-top, 0px));
     padding-top: calc(4px + var(--mobile-safe-area-inset-top, 0px));

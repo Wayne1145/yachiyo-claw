@@ -136,7 +136,6 @@ function pluginCenterErrorMessage(t: Translate, cause: unknown, fallback: string
     github_release_plugin_asset_missing: t('最新 GitHub Release 中没有找到可安装的插件 ZIP。'),
     plugin_feature_disabled: t('第三方插件功能已在功能管理中关闭。'),
   }
-  const code = message.split(':', 1)[0]
   if (code && knownMessages[code]) return withCode(knownMessages[code])
   if (cause instanceof SyntaxError) return t('插件市场返回的数据格式无效，请稍后重试。')
   if (/invalid url|failed to fetch|networkerror/i.test(message)) return fallback

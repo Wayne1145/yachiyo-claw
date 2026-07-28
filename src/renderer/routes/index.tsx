@@ -233,7 +233,13 @@ function Index() {
     <Page title="">
       <div className="p-0 flex flex-col h-full">
         {inAndroidAppShell || messageLayout || welcomeCardMode !== 'none' ? (
-          <Stack align="center" justify="center" gap="sm" flex={1}>
+          <Stack
+            align="center"
+            justify="center"
+            gap="sm"
+            flex={1}
+            className={inAndroidAppShell ? 'yachiyo-chat-landing-slot' : undefined}
+          >
             {inAndroidAppShell ? (
               <YachiyoChatLanding />
             ) : (

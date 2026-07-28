@@ -6,7 +6,6 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconFileText,
-  IconHelpCircle,
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
@@ -63,11 +62,6 @@ const CORE_ITEMS = [
     label: 'General Settings',
     icon: <IconAdjustmentsHorizontal className="w-full h-full" />,
   },
-  {
-    key: 'help',
-    label: 'Help Center',
-    icon: <IconHelpCircle className="w-full h-full" />,
-  },
 ]
 
 const DESKTOP_ITEM_ORDER: Readonly<Record<string, number>> = {
@@ -82,7 +76,6 @@ const DESKTOP_ITEM_ORDER: Readonly<Record<string, number>> = {
   chat: 900,
   hotkeys: 1000,
   general: 1100,
-  help: 1200,
 }
 
 export const Route = createFileRoute('/settings')({

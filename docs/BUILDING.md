@@ -93,6 +93,29 @@ powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 adb shell pidof
 
 `mobile:sync:android` 必须在 Gradle 构建前执行。它会构建 Android 专用 renderer、递归删除 sourcemap，再同步 Web assets 与 Capacitor 插件。不要调用 `mobile:sync`，因为该聚合命令还要求本项目当前不维护的 iOS 工程。
 
+### 插件与 Android Studio 手动构建
+
+项目中有两类名称相近、打包方式不同的插件：
+
+- Capacitor 原生桥接插件是 Android Gradle 模块，由 `mobile:sync:android` 生成
+  `android/capacitor.settings.gradle` 和 `android/app/capacitor.build.gradle` 中的依赖；Yachiyo 自有的
+  原生桥接由 `MainActivity` 显式注册。
+- 第三方 Yachiyo 插件是运行时安装的 ZIP/Web Worker 包。插件管理页、隔离运行时和 SDK 属于 renderer
+  Web Bundle，本来就不会、也不应被加入 `build.gradle`。
+
+`android/app/src/main/assets/public/` 是生成目录并被 Git 忽略。Gradle 的 `preBuild` 已强制依赖
+`syncAndroidWebAssets`，因此从 Android Studio 点击 Build 也会先构建 renderer 并同步 Capacitor，
+不会静默打入缺失或旧版本的插件界面。首次构建前仍须按本文准备工作区工具链与依赖。
+
+需要在启动 Android Studio 前预生成资源、或单独排查同步问题时，可在仓库根目录运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run mobile:sync:android
+```
+
+不要手工把第三方插件声明加入 `build.gradle`，也不要提交生成的 `assets/public`；Release、命令行
+Gradle 与 Android Studio 均遵循同一同步顺序。
+
 Android 启动图由原创品牌 SVG 确定性生成。Android-only 依赖安装使用 `--ignore-scripts` 时，首次生成前只需重建白名单中的 `sharp`；随后修改 `assets/brand/yachiyo-claw-mark.svg` 后直接运行生成命令：
 
 ```powershell
