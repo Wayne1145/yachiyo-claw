@@ -18,6 +18,9 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <!-- androidx.biometric declares both names transitively. The app does not use biometric auth, so
+         remove both from the merged manifest. USE_FINGERPRINT remains the exact legacy declaration
+         name to remove even though Android Studio correctly labels that constant deprecated. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" tools:node="remove" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove" />
 

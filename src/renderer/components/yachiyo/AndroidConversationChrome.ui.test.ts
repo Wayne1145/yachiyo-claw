@@ -10,6 +10,7 @@ const toolbarSource = fs.readFileSync(path.join(__dirname, '../layout/Toolbar.ts
 const taskSource = fs.readFileSync(path.join(__dirname, '../../routes/task/$taskId.tsx'), 'utf8')
 const messageListSource = fs.readFileSync(path.join(__dirname, '../chat/MessageList.tsx'), 'utf8')
 const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
+const newChatSource = fs.readFileSync(path.join(__dirname, '../../routes/index.tsx'), 'utf8')
 
 describe('Android conversation chrome UI contract', () => {
   it('uses one Android-owned header with search, menu, and history in a stable order', () => {
@@ -60,5 +61,14 @@ describe('Android conversation chrome UI contract', () => {
     expect(inputBoxSource).toContain('className="yachiyo-secondary-tools"')
     expect(shellStyles).toContain('.yachiyo-secondary-tools[data-expanded="true"]')
     expect(shellStyles).toContain('backdrop-filter: blur(16px)')
+  })
+
+  it('keeps the composer above navigation in short landscape viewports', () => {
+    expect(newChatSource).toContain("className={inAndroidAppShell ? 'yachiyo-chat-landing-slot' : undefined}")
+    expect(inputBoxSource).toContain('minRows={isSmallScreen && viewportHeight < 500 ? 1 : 2}')
+    expect(shellStyles).toMatch(
+      /@media \(orientation: landscape\) and \(max-height: 700px\)[\s\S]*?\.yachiyo-chat-landing-slot\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/,
+    )
+    expect(shellStyles).toMatch(/\.yachiyo-chat-landing-slot \.yachiyo-chat-landing\s*{[^}]*display:\s*none;/)
   })
 })
