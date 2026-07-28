@@ -5,6 +5,10 @@ export interface DownloadSettings {
   threads: number
   wifiOnly: boolean
   retryCount: number
+  huggingFaceMirror: boolean
+  githubMirror: boolean
+  regionInitialized?: boolean
+  detectedCountry?: string
 }
 
 interface YachiyoDownloadsPlugin {
@@ -23,6 +27,7 @@ interface YachiyoDownloadsPlugin {
   }>
   removeArtifact(options: { id: string; keepRecord?: boolean }): Promise<void>
   getSettings(): Promise<DownloadSettings>
+  initializeRegionalDefaults(): Promise<DownloadSettings>
   saveSettings(options: DownloadSettings): Promise<DownloadSettings>
   /** Remove a terminal task row from the unified index (does not touch in-flight work). */
   remove(options: { id: string }): Promise<{ tasks: NativeDownloadTask[] }>

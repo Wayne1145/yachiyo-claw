@@ -29,14 +29,20 @@ Yachiyo Claw Android 将软件更新、本地模型、Linux 环境、插件、Sk
   自动回退到单流下载。应用还有全局连接上限，多个任务不会各自无限占用连接。
 - **失败重试次数：** 默认 3，范围为 0-16。
 - **仅在 Wi-Fi 下下载：** 使用 Android 的非计量网络约束；修改后会重新调度活动任务。
+- **使用 Hugging Face 镜像：** 将 Hugging Face 模型搜索和文件请求切换到 `hf-mirror.com`。
+- **使用 GitHub 镜像：** 将 Yachiyo Claw Release 的 APK 与 SHA-256 sidecar 下载切换到
+  `ghfast.top`；Release 版本与更新日志仍直接从 GitHub API 获取。
+
+第一次成功获取地区信息时，若 Cloudflare `cdn-cgi/trace` 返回 `CN`，上述两个镜像开关默认开启。
+检测失败不会误判为中国大陆，也不会阻止应用启动；用户保存过下载设置后，自动检测不会覆盖选择。
 
 下载器同时要求设备网络可用且存储空间不处于系统“低”状态。代理设置只用于应用下载器，不会自动修改
 LLM Provider、MCP、插件运行时或 Linux 环境内程序的网络配置。
 
 ## 完整性与网络边界
 
-- 软件更新必须来自本项目允许的 GitHub Release 路径，并具有 GitHub asset SHA-256 或匹配的
-  `.sha256` 文件；下载后还会验证包名和签名链。
+- 软件更新必须来自本项目允许的 GitHub Release 路径或其固定 `ghfast.top` 代理路径，并具有 GitHub
+  asset SHA-256 或匹配的 `.sha256` 文件；下载后还会验证包名、签名链和 `versionCode` 必须高于当前版本。
 - 模型、插件和 Skill 在来源提供摘要时进行 SHA-256 校验；插件市场包还验证受信任发布者签名。
 - 通用下载只接受公开 HTTPS 地址，限制重定向和最大体积，并拒绝回环、链路本地和私网目标。
 - 断点续传会校验远端响应与分段长度。摘要不匹配的分段会丢弃并重新下载，不会发布为完成文件。

@@ -56,8 +56,8 @@ interface NativeModelManagerPlugin {
       | { type: 'status'; status: string }
     >
   }>
-  loadModel(options: { modelId: string }): Promise<{ modelId: string; loaded: boolean; runtime?: string }>
-  runtimeState(options: { modelId: string }): Promise<{ modelId: string; loaded: boolean; runtime?: string }>
+  loadModel(options: { modelId: string }): Promise<NativeModelRuntimeState>
+  runtimeState(options: { modelId: string }): Promise<NativeModelRuntimeState>
   cancelInference(options: { requestId: string }): Promise<{ cancelled: boolean }>
   embed(options: { modelId: string; texts: string[] }): Promise<{ modelId: string; embeddings: number[][] }>
   unload(options?: { modelId?: string }): Promise<void>
@@ -67,6 +67,16 @@ interface NativeModelManagerPlugin {
     eventName: 'loadProgress',
     listener: (event: NativeModelLoadProgressEvent) => void,
   ): Promise<PluginListenerHandle>
+}
+
+export interface NativeModelRuntimeState {
+  modelId: string
+  loaded: boolean
+  runtime?: string
+  eager?: boolean
+  modelBytes?: number
+  residentBytes?: number
+  loadDurationMs?: number
 }
 
 export const yachiyoModelManagerNative = createFeatureGatedPlugin(

@@ -11,16 +11,15 @@ final class UpdateDownloadPolicy {
     static final int MAX_SIDECAR_BYTES = 4096;
     static final int MAX_REDIRECTS = 5;
     private static final String RELEASE_PREFIX = "/wayne1145/yachiyo-claw/releases/download/";
+    private static final String GITHUB_MIRROR_HOST = "ghfast.top";
+    private static final String GITHUB_MIRROR_PREFIX = "/https://github.com" + RELEASE_PREFIX;
     private static final Pattern SHA256 = Pattern.compile("(?i)^\\s*(?:sha256:)?([0-9a-f]{64})(?:\\s+[*]?.+)?\\s*$");
 
     private UpdateDownloadPolicy() {}
 
     static URL requireInitialReleaseUrl(String value) throws MalformedURLException {
         URL url = new URL(value == null ? "" : value);
-        if (!isHttps(url) || !"github.com".equalsIgnoreCase(url.getHost()) || url.getPort() != -1) {
-            throw new IllegalArgumentException("update_url_not_allowed");
-        }
-        if (!url.getPath().toLowerCase(Locale.ROOT).startsWith(RELEASE_PREFIX)) {
+        if (!isHttps(url) || url.getPort() != -1 || !isReleaseSource(url)) {
             throw new IllegalArgumentException("update_url_not_allowed");
         }
         return url;
@@ -30,8 +29,10 @@ final class UpdateDownloadPolicy {
         if (!isHttps(url) || url.getPort() != -1) throw new IllegalArgumentException("update_redirect_not_allowed");
         String host = url.getHost().toLowerCase(Locale.ROOT);
         boolean githubRelease = "github.com".equals(host) && url.getPath().toLowerCase(Locale.ROOT).startsWith(RELEASE_PREFIX);
+        boolean githubMirror = GITHUB_MIRROR_HOST.equals(host)
+            && url.getPath().toLowerCase(Locale.ROOT).startsWith(GITHUB_MIRROR_PREFIX);
         boolean githubAssetCdn = "release-assets.githubusercontent.com".equals(host);
-        if (!githubRelease && !githubAssetCdn) throw new IllegalArgumentException("update_redirect_not_allowed");
+        if (!githubRelease && !githubMirror && !githubAssetCdn) throw new IllegalArgumentException("update_redirect_not_allowed");
     }
 
     static String parseSha256(String value) {
@@ -49,5 +50,12 @@ final class UpdateDownloadPolicy {
 
     private static boolean isHttps(URL url) {
         return "https".equalsIgnoreCase(url.getProtocol()) && url.getUserInfo() == null;
+    }
+
+    private static boolean isReleaseSource(URL url) {
+        String host = url.getHost().toLowerCase(Locale.ROOT);
+        String path = url.getPath().toLowerCase(Locale.ROOT);
+        return ("github.com".equals(host) && path.startsWith(RELEASE_PREFIX))
+            || (GITHUB_MIRROR_HOST.equals(host) && path.startsWith(GITHUB_MIRROR_PREFIX));
     }
 }

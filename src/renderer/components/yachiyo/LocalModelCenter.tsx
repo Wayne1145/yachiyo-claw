@@ -68,6 +68,10 @@ type ModelRuntimeState = {
   stage?: string
   percent: number
   runtime?: string
+  eager?: boolean
+  modelBytes?: number
+  residentBytes?: number
+  loadDurationMs?: number
   error?: string
 }
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -424,6 +428,10 @@ export function LocalModelCenter() {
               stage: runtime.loaded ? 'ready' : 'idle',
               percent: runtime.loaded ? 100 : 0,
               runtime: 'runtime' in runtime ? runtime.runtime : undefined,
+              eager: 'eager' in runtime ? runtime.eager : undefined,
+              modelBytes: 'modelBytes' in runtime ? runtime.modelBytes : undefined,
+              residentBytes: 'residentBytes' in runtime ? runtime.residentBytes : undefined,
+              loadDurationMs: 'loadDurationMs' in runtime ? runtime.loadDurationMs : undefined,
             },
           ])
         ),
@@ -482,6 +490,10 @@ export function LocalModelCenter() {
           stage: result.loaded ? 'ready' : 'idle',
           percent: result.loaded ? 100 : 0,
           runtime: result.runtime,
+          eager: result.eager,
+          modelBytes: result.modelBytes,
+          residentBytes: result.residentBytes,
+          loadDurationMs: result.loadDurationMs,
         },
       }))
     } catch (cause) {
@@ -585,6 +597,7 @@ export function LocalModelCenter() {
                 defaultChatModel?.provider === ModelProviderEnum.Local && defaultChatModel.model === job.modelId
               const pending = pendingJobIds.has(job.id)
               const runtimeState = runtimeByModelId[job.modelId]
+              const fullyPreloaded = Boolean(runtimeState?.loaded && runtimeState.eager)
               return (
                 <section key={job.modelId} className="local-model-installed-row">
                   <div className="local-model-installed-heading">
@@ -657,6 +670,14 @@ export function LocalModelCenter() {
                       )}
                     </div>
                   )}
+                  {runtimeState?.loaded && (
+                    <Text size="xs" c="dimmed">
+                      {runtimeState.eager ? t('完整预加载') : t('按需映射')} · {t('模型 {{size}}', {
+                        size: formatBytes(t, runtimeState.modelBytes),
+                      })} · {t('推理进程内存 {{size}}', { size: formatBytes(t, runtimeState.residentBytes) })} ·{' '}
+                      {t('耗时 {{seconds}} 秒', { seconds: ((runtimeState.loadDurationMs || 0) / 1000).toFixed(1) })}
+                    </Text>
+                  )}
                   <Group gap="xs" justify="flex-end">
                     {!job.artifacts.some((item) => item.format === 'tflite') && (
                       <Button
@@ -673,14 +694,20 @@ export function LocalModelCenter() {
                     <Button
                       size="compact-sm"
                       radius="xl"
-                      color={runtimeState?.loaded ? 'green' : 'chatbox-brand'}
-                      variant={runtimeState?.loaded ? 'light' : 'filled'}
-                      leftSection={!runtimeState?.loaded ? <IconPlayerPlay size={15} /> : <IconCheck size={15} />}
+                      color={fullyPreloaded ? 'green' : 'chatbox-brand'}
+                      variant={fullyPreloaded ? 'light' : 'filled'}
+                      leftSection={!fullyPreloaded ? <IconPlayerPlay size={15} /> : <IconCheck size={15} />}
                       loading={runtimeState?.loading}
-                      disabled={pending || runtimeState?.loaded || health?.status === 'unsupported'}
+                      disabled={pending || fullyPreloaded || health?.status === 'unsupported'}
                       onClick={() => void runJobAction(job.id, () => loadIntoMemory(job.modelId))}
                     >
-                      {runtimeState?.loaded ? t('已加载') : runtimeState?.loading ? t('加载中') : t('加载到内存')}
+                      {fullyPreloaded
+                        ? t('已完整预加载')
+                        : runtimeState?.loading
+                          ? t('加载中')
+                          : runtimeState?.loaded
+                            ? t('转为完整预加载')
+                            : t('加载到内存')}
                     </Button>
                     <Button
                       size="compact-sm"

@@ -55,7 +55,13 @@ describe('Android update download recovery', () => {
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'error',
       progress: 12,
-      error: 'update_digest_mismatch',
+      error: '更新包完整性校验失败，请重新下载。',
     })
+  })
+
+  it('clears a stale install prompt when native state is idle', () => {
+    useUpdateStore.setState({ status: 'downloaded', version: '0.0.11', progress: 100 })
+    applyNativeUpdateDownloadStatus({ ready: false, version: '', status: 'idle', progress: 0 })
+    expect(useUpdateStore.getState()).toMatchObject({ status: 'idle', version: null, progress: 0, error: null })
   })
 })

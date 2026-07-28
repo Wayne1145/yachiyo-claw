@@ -6,13 +6,19 @@ The native updater accepts only HTTPS assets under:
 
 ```text
 https://github.com/Wayne1145/yachiyo-claw/releases/download/
+https://ghfast.top/https://github.com/Wayne1145/yachiyo-claw/releases/download/
 ```
 
-It follows downloads only to GitHub's release asset CDN, stores the APK under the app-private cache, verifies SHA-256 after download and again before installation, and checks the APK package ID. Android PackageManager performs the final signer and signing-lineage verification.
+It follows downloads only to the fixed mirror, GitHub release path, or GitHub's release asset CDN,
+stores the APK under app-private files, verifies SHA-256 after download and again before installation,
+and checks the APK package ID, signing lineage, and that its `versionCode` is greater than the installed
+app. A package left after a successful upgrade is removed when startup recovery sees that it is no
+longer newer. Android PackageManager performs the final installation verification.
 
-## 0.0.5 To Next Version
+## Current Version To Next Version
 
-Before building, update `package.json` and Android `versionName` to the same stable `x.y.z` value. Increase Android `versionCode` above `5`. Do not reuse a tag or version code.
+Before building, update `package.json` and Android `versionName` to the same stable `x.y.z` value.
+Increase Android `versionCode` above the latest published build. Do not reuse a tag or version code.
 
 Build the release APK with the same NewDreamStudio signing key used for `0.0.5`. Create a sidecar without modifying the APK:
 

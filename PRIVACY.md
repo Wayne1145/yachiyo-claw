@@ -1,6 +1,6 @@
 # Yachiyo Claw Privacy Notice
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 This notice describes the official open-source Yachiyo Claw Android build published by
 NewDreamStudio. A fork, custom build, model provider, MCP server, Skill, plugin, theme host, or model
@@ -49,6 +49,14 @@ Yachiyo Claw makes external requests only for configured or user-invoked functio
 - **Catalogs and downloads:** model searches and downloads contact Hugging Face or ModelScope.
   update checks contact GitHub. Skill discovery can contact `skills.sh`, SkillHub, or GitHub. Plugin
   and theme imports contact the marketplace or public HTTPS URL chosen by the user.
+- **Regional download defaults:** until a regional choice has been initialized, app startup can make
+  a short request to Cloudflare's `cdn-cgi/trace` endpoint and read only its two-letter country code.
+  A `CN` result enables the optional Hugging Face and GitHub download mirrors by default. A failed
+  check is retried on a later launch; manually saved mirror choices are never overwritten.
+- **Optional mirrors:** when enabled, Hugging Face catalog/file requests can use `hf-mirror.com`, and
+  Yachiyo Claw release assets can use `ghfast.top`. GitHub release metadata continues to come from
+  GitHub. Mirror operators necessarily observe the requested URL and connection metadata; package
+  hashes, package identity, signing lineage, and version progression are still verified locally.
 - **Plugins:** an enabled plugin can make only the host calls covered by its declared and granted
   capabilities. A network grant exposes requests to the listed domains. A Linux sandbox grant can
   execute programs that make their own network connections and is therefore a high-risk permission.

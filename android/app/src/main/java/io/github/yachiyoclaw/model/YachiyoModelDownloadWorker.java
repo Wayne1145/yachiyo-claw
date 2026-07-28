@@ -152,7 +152,8 @@ public final class YachiyoModelDownloadWorker extends Worker {
     }
 
     private HttpURLConnection open(String value, long start, long end) throws Exception {
-        URL current = ModelDownloadPolicy.requireInitialUrl(value);
+        String resolved = YachiyoDownloadSettingsPlugin.mirrorHuggingFaceUrl(getApplicationContext(), value);
+        URL current = ModelDownloadPolicy.requireInitialUrl(resolved);
         for (int redirects = 0; redirects <= ModelDownloadPolicy.MAX_REDIRECTS; redirects++) {
             HttpURLConnection connection = (HttpURLConnection) current.openConnection(resolveProxy());
             connection.setInstanceFollowRedirects(false);

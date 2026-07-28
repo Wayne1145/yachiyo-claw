@@ -8,7 +8,24 @@ import {
   type RemoteModel,
 } from '@shared/models/model-catalog'
 import { createNativeModelDownloadSink } from '@/platform/native/yachiyo_model_manager'
+import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
 import { fetchWithProxy } from '@/utils/request'
+
+const HUGGING_FACE_ORIGIN = 'https://huggingface.co'
+const HUGGING_FACE_MIRROR_ORIGIN = 'https://hf-mirror.com'
+
+async function fetchHuggingFaceCatalog(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  let value = input.toString()
+  try {
+    const settings = await yachiyoDownloadsNative.getSettings()
+    if (settings.huggingFaceMirror && value.startsWith(`${HUGGING_FACE_ORIGIN}/`)) {
+      value = HUGGING_FACE_MIRROR_ORIGIN + value.slice(HUGGING_FACE_ORIGIN.length)
+    }
+  } catch {
+    // The official origin remains the deterministic fallback when the native bridge is unavailable.
+  }
+  return fetchWithProxy(value, init)
+}
 
 export const MOBILE_MODEL_SEARCH_TIMEOUT_MS: Record<ModelCatalogSource, number> = {
   huggingface: 12_000,
@@ -94,7 +111,7 @@ export function createMobileModelCatalogController(options: ModelCatalogControll
   return new ModelCatalogController({
     ...options,
     adapters: {
-      huggingface: new HuggingFaceModelCatalogAdapter({ fetch: fetchWithProxy }),
+      huggingface: new HuggingFaceModelCatalogAdapter({ fetch: fetchHuggingFaceCatalog }),
       modelscope: new ModelScopeModelCatalogAdapter({ fetch: fetchWithProxy }),
       ...options.adapters,
     },

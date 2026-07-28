@@ -86,6 +86,8 @@ export function DownloadsCenter() {
   const [threads, setThreads] = useState(8)
   const [wifiOnly, setWifiOnly] = useState(false)
   const [retryCount, setRetryCount] = useState(3)
+  const [huggingFaceMirror, setHuggingFaceMirror] = useState(false)
+  const [githubMirror, setGithubMirror] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(
@@ -118,6 +120,8 @@ export function DownloadsCenter() {
         setThreads(value.threads)
         setWifiOnly(value.wifiOnly)
         setRetryCount(value.retryCount)
+        setHuggingFaceMirror(value.huggingFaceMirror)
+        setGithubMirror(value.githubMirror)
       })
       .catch((cause) =>
         setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载设置读取失败'))
@@ -191,11 +195,20 @@ export function DownloadsCenter() {
 
   const saveSettings = async () => {
     try {
-      const value = await yachiyoDownloadsNative.saveSettings({ proxy, threads, wifiOnly, retryCount })
+      const value = await yachiyoDownloadsNative.saveSettings({
+        proxy,
+        threads,
+        wifiOnly,
+        retryCount,
+        huggingFaceMirror,
+        githubMirror,
+      })
       setProxy(value.proxy)
       setThreads(value.threads)
       setWifiOnly(value.wifiOnly)
       setRetryCount(value.retryCount)
+      setHuggingFaceMirror(value.huggingFaceMirror)
+      setGithubMirror(value.githubMirror)
       setSettingsOpen(false)
       setError(null)
     } catch (cause) {
@@ -281,6 +294,18 @@ export function DownloadsCenter() {
               checked={wifiOnly}
               onChange={(event) => setWifiOnly(event.currentTarget.checked)}
               label={t('仅在 Wi-Fi 下下载')}
+            />
+            <Switch
+              checked={huggingFaceMirror}
+              onChange={(event) => setHuggingFaceMirror(event.currentTarget.checked)}
+              label={t('使用 Hugging Face 镜像')}
+              description={t('模型搜索和模型文件下载通过 hf-mirror.com 访问。')}
+            />
+            <Switch
+              checked={githubMirror}
+              onChange={(event) => setGithubMirror(event.currentTarget.checked)}
+              label={t('使用 GitHub 镜像')}
+              description={t('软件更新安装包通过 ghfast.top 下载；版本信息仍从 GitHub 获取。')}
             />
             <Button onClick={() => void saveSettings()}>{t('保存下载设置')}</Button>
           </Stack>

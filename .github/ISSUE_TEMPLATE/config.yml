@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Wayne1145/yachiyo-claw/security/advisories/new
+    about: Report credential exposure, approval bypasses, sandbox escapes, or update vulnerabilities privately.

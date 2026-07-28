@@ -233,7 +233,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
                 String modelPath = store.resolveRuntimeFile(job).getPath();
-                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath);
+                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath, false);
                 JSONObject payload = new JSONObject().put("op", "chat").put("modelPath", modelPath)
                     .put("messages", new JSONArray(messages.toString()))
                     .put("tools", new JSONObject(tools.toString())).put("requestId", requestId).put("maxTokens", maxTokens);
@@ -256,9 +256,9 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
                 String modelPath = store.resolveRuntimeFile(job).getPath();
-                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath);
+                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath, true);
                 JSONObject payload = new JSONObject().put("op", "load").put("modelId", modelId)
-                    .put("modelPath", modelPath).put("requestId", requestId);
+                    .put("modelPath", modelPath).put("requestId", requestId).put("eager", true);
                 JSObject result = runInIsolatedProcess(payload, requestId, modelId);
                 result.put("modelId", modelId);
                 call.resolve(result);
@@ -515,15 +515,17 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         return value;
     }
 
-    private void requireInferenceMemory(String modelPath) {
+    private void requireInferenceMemory(String modelPath, boolean eager) {
         File model = new File(modelPath);
         ActivityManager manager = getContext().getSystemService(ActivityManager.class);
         ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
         manager.getMemoryInfo(memory);
-        // llama.cpp mmaps the weights (so it does not need file-size RAM) but still needs KV cache, compute
-        // buffers and allocator headroom. This is a heuristic floor pending calibration on real 2B/4B GGUF
-        // models; the disposable :local_model process contains a genuine native OOM if the estimate is low.
-        long required = Math.max(768L * 1024L * 1024L, 512L * 1024L * 1024L + model.length() / 6L);
+        long runtimeHeadroom = Math.max(768L * 1024L * 1024L, model.length() / 5L);
+        // Explicit preload disables mmap, so model bytes plus compute/KV headroom must fit before
+        // starting. Ordinary inference retains mmap and needs only runtime buffers up front.
+        long required = eager
+            ? Math.addExact(model.length(), runtimeHeadroom)
+            : Math.max(768L * 1024L * 1024L, 512L * 1024L * 1024L + model.length() / 6L);
         if (memory.availMem < required || memory.lowMemory) throw new IllegalStateException("local_model_memory_insufficient");
     }
 

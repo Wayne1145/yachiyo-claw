@@ -1,6 +1,7 @@
 import { Button, PasswordInput, Select, Stack, Text, Textarea, TextInput, Title } from '@mantine/core'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getSpeechCredentials, saveSpeechCredentials, type SpeechCredentials } from '@/mobile/speech-credentials'
 import {
   type ASRProvider,
@@ -33,6 +34,7 @@ const TTS_PROVIDERS = [
 ]
 
 function SpeechSettingsPage() {
+  const { t } = useTranslation()
   const [value, setValue] = useState(getSpeechSettings)
   const [credentials, setCredentials] = useState<SpeechCredentials>({
     asrApiKey: '',
@@ -83,40 +85,40 @@ function SpeechSettingsPage() {
 
   return (
     <main className="yachiyo-character-settings">
-      <Title order={1}>语音服务</Title>
+      <Title order={1}>{t('语音服务')}</Title>
       <Text c="dimmed" mb="md">
-        ASR 与 TTS 独立配置。API Key 在 Android 上由系统 Keystore 加密保存。
+        {t('ASR 与 TTS 独立配置。API Key 在 Android 上由系统 Keystore 加密保存。')}
       </Text>
       <section className="yachiyo-character-editor">
-        <Title order={2}>语音识别（ASR）</Title>
+        <Title order={2}>{t('语音识别（ASR）')}</Title>
         <Select
-          label="ASR 提供商"
+          label={t('ASR 提供商')}
           value={value.asrProvider}
           allowDeselect={false}
-          data={ASR_PROVIDERS}
+          data={ASR_PROVIDERS.map((provider) => ({ ...provider, label: String(t(provider.label)) }))}
           onChange={(provider) => provider && changeAsrProvider(provider as ASRProvider)}
         />
         {value.asrProvider === 'yachiyo-offline' && (
           <Text size="sm" c="dimmed">
-            模型随应用安装，不依赖 Google 服务，也无需额外下载。
+            {t('模型随应用安装，不依赖 Google 服务，也无需额外下载。')}
           </Text>
         )}
         {remoteAsr && (
           <>
             <TextInput
-              label="ASR API 地址"
+              label={t('ASR API 地址')}
               value={value.asrBaseUrl}
               placeholder="https://example.com/v1"
               onChange={(event) => patch({ asrBaseUrl: event.currentTarget.value })}
             />
             <PasswordInput
-              label="ASR API Key"
+              label={t('ASR API Key')}
               value={credentials.asrApiKey}
               onChange={(event) => setCredentials((current) => ({ ...current, asrApiKey: event.currentTarget.value }))}
             />
-            <TextInput label="ASR 模型" value={value.asrModel} onChange={(event) => patch({ asrModel: event.currentTarget.value })} />
+            <TextInput label={t('ASR 模型')} value={value.asrModel} onChange={(event) => patch({ asrModel: event.currentTarget.value })} />
             <Textarea
-              label="ASR 附加请求头（JSON，可选）"
+              label={t('ASR 附加请求头（JSON，可选）')}
               value={credentials.asrHeaders}
               autosize
               minRows={2}
@@ -126,31 +128,31 @@ function SpeechSettingsPage() {
             />
           </>
         )}
-        <TextInput label="识别语言" value={value.language} onChange={(event) => patch({ language: event.currentTarget.value })} />
+        <TextInput label={t('识别语言')} value={value.language} onChange={(event) => patch({ language: event.currentTarget.value })} />
 
-        <Title order={2}>语音合成（TTS）</Title>
+        <Title order={2}>{t('语音合成（TTS）')}</Title>
         <Select
-          label="TTS 提供商"
+          label={t('TTS 提供商')}
           value={value.ttsProvider}
           allowDeselect={false}
-          data={TTS_PROVIDERS}
+          data={TTS_PROVIDERS.map((provider) => ({ ...provider, label: String(t(provider.label)) }))}
           onChange={(provider) => provider && changeTtsProvider(provider as TTSProvider)}
         />
         {remoteTts && (
           <>
             <TextInput
-              label="TTS API 地址"
+              label={t('TTS API 地址')}
               value={value.ttsBaseUrl}
               placeholder="https://example.com/v1"
               onChange={(event) => patch({ ttsBaseUrl: event.currentTarget.value })}
             />
             <PasswordInput
-              label="TTS API Key（可选）"
+              label={t('TTS API Key（可选）')}
               value={credentials.ttsApiKey}
               onChange={(event) => setCredentials((current) => ({ ...current, ttsApiKey: event.currentTarget.value }))}
             />
             <Textarea
-              label="TTS 附加请求头（JSON，可选）"
+              label={t('TTS 附加请求头（JSON，可选）')}
               value={credentials.ttsHeaders}
               autosize
               minRows={2}
@@ -161,18 +163,18 @@ function SpeechSettingsPage() {
           </>
         )}
         {value.ttsProvider !== 'bing' && value.ttsProvider !== 'android-system' && (
-          <TextInput label="TTS 模型" value={value.ttsModel} onChange={(event) => patch({ ttsModel: event.currentTarget.value })} />
+          <TextInput label={t('TTS 模型')} value={value.ttsModel} onChange={(event) => patch({ ttsModel: event.currentTarget.value })} />
         )}
         <TextInput
-          label={value.ttsProvider === 'gpt-sovits' ? '参考音频路径' : '音色'}
+          label={value.ttsProvider === 'gpt-sovits' ? t('参考音频路径') : t('音色')}
           value={value.voice}
           onChange={(event) => patch({ voice: event.currentTarget.value })}
         />
         <Stack gap="xs">
           <Button loading={saving} onClick={() => void save()}>
-            保存语音设置
+            {t('保存语音设置')}
           </Button>
-          {saved && <Text size="sm" c="green">语音设置已保存</Text>}
+          {saved && <Text size="sm" c="green">{t('语音设置已保存')}</Text>}
         </Stack>
       </section>
     </main>

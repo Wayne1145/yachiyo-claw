@@ -9,6 +9,7 @@ const layoutHeaderSource = fs.readFileSync(path.join(__dirname, '../layout/Heade
 const toolbarSource = fs.readFileSync(path.join(__dirname, '../layout/Toolbar.tsx'), 'utf8')
 const taskSource = fs.readFileSync(path.join(__dirname, '../../routes/task/$taskId.tsx'), 'utf8')
 const messageListSource = fs.readFileSync(path.join(__dirname, '../chat/MessageList.tsx'), 'utf8')
+const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
 
 describe('Android conversation chrome UI contract', () => {
   it('uses one Android-owned header with search, menu, and history in a stable order', () => {
@@ -46,9 +47,18 @@ describe('Android conversation chrome UI contract', () => {
   })
 
   it('limits top-drawer behavior to the liquid-glass theme and respects reduced motion', () => {
-    expect(shellStyles).toContain('html[data-yachiyo-appearance="liquid-glass"] .yachiyo-mobile-header-drawer')
+    expect(shellSource).toMatch(/yachiyo-mobile-header-primary[\s\S]*?yachiyo-mobile-header-collapsible/)
+    expect(shellStyles).toContain('html[data-yachiyo-appearance="liquid-glass"] .yachiyo-mobile-header-collapsible')
+    expect(shellStyles).toContain('.yachiyo-mobile-header-collapsible[data-collapsed="true"]')
     expect(shellStyles).toContain('@media (prefers-reduced-motion: reduce)')
     expect(shellSource).toContain("t('收起顶部')")
     expect(shellSource).toContain("t('展开顶部')")
+  })
+
+  it('keeps Liquid Glass secondary tools collapsed behind a horizontal toggle', () => {
+    expect(inputBoxSource).toContain('className="yachiyo-liquid-tools-toggle"')
+    expect(inputBoxSource).toContain('className="yachiyo-secondary-tools"')
+    expect(shellStyles).toContain('.yachiyo-secondary-tools[data-expanded="true"]')
+    expect(shellStyles).toContain('backdrop-filter: blur(16px)')
   })
 })

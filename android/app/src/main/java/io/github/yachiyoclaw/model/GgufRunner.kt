@@ -12,10 +12,10 @@ object GgufRunner {
 
   @JvmStatic
   @Synchronized
-  fun load(modelPath: String, requestId: String) {
+  fun load(modelPath: String, requestId: String, eager: Boolean) {
     require(File(modelPath).isFile) { "local_model_file_missing" }
     require(LocalModelFormat.isRunnableGgufPath(modelPath)) { "local_model_not_gguf" }
-    nativeLoad(modelPath, requestId)
+    nativeLoad(modelPath, requestId, eager)
   }
 
   @JvmStatic
@@ -78,7 +78,7 @@ object GgufRunner {
   }
 
   @JvmStatic
-  private external fun nativeLoad(modelPath: String, requestId: String)
+  private external fun nativeLoad(modelPath: String, requestId: String, eager: Boolean)
 
   @JvmStatic private external fun nativeLoadProgress(): Float
 
