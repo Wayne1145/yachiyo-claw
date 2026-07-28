@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "title": "错误帮助中心",
+  "children": [
+    { "type": "heading", "key": "title", "content": "错误帮助中心", "level": 2 },
+    { "type": "text", "key": "intro", "content": "按错误代码查找原因与安全的处理方式。", "dimmed": true },
+    { "type": "alert", "key": "safety", "tone": "info", "content": "正在加载错误代码索引。" }
+  ]
+}
