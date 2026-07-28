@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "error-help-center",
+  "version": "1.0.2",
+  "displayName": "错误帮助中心",
+  "description": "按错误代码查找原因与安全的解决方式。",
+  "author": { "name": "NewDreamStudio" },
+  "license": "GPL-3.0-only",
+  "mode": "script-enabled",
+  "entry": "main.js",
+  "capabilities": [
+    { "name": "ui", "reason": "在宿主设置页中显示错误代码帮助页面。" },
+    { "name": "tools", "reason": "在受限 Worker 中根据输入的错误代码筛选帮助内容。" }
+  ],
+  "contributions": {
+    "view": "ui/main.json",
+    "settingsEntries": [
+      {
+        "group": "app",
+        "label": "帮助中心",
+        "detail": "搜索错误代码、原因与解决方式",
+        "route": "/plugin/error-help-center",
+        "order": 650
+      }
+    ]
+  }
+}

@@ -1,7 +1,8 @@
-import { Alert, Button, Switch, Text, Title } from '@mantine/core'
+import { Alert, Button, Switch, Text, Title, UnstyledButton } from '@mantine/core'
 import {
   IconAlertTriangle,
   IconDeviceMobile,
+  IconExternalLink,
   IconFolderOpen,
   IconListCheck,
   IconPlayerPlay,
@@ -44,7 +45,7 @@ function StatusRow({
 }) {
   return (
     <div className="yachiyo-status-row">
-      <span>{label}</span>
+      <span className="yachiyo-status-label">{label}</span>
       <div className="yachiyo-status-value">
         <strong data-tone={tone} title={value}>
           {value}
@@ -89,7 +90,7 @@ export function AndroidAgentWorkspace() {
             ? String(t('Shizuku 已授权'))
             : permissions.shizukuRunning
               ? String(t('Shizuku 已连接，等待授权'))
-              : String(t('Shizuku 服务未运行'))
+              : String(t('Shizuku 服务未运行')),
         )
         return
       }
@@ -351,15 +352,17 @@ export function AndroidAboutWorkspace() {
           value={needCheckUpdate ? t('发现新版本') : t('已是最新版本')}
           tone={needCheckUpdate ? 'ready' : 'neutral'}
           action={
-            <Button
-              size="compact-xs"
-              variant="light"
+            <UnstyledButton
+              className="yachiyo-about-release-action"
+              type="button"
+              aria-label={String(t('查看 Releases'))}
               onClick={() =>
                 void platform.openLink(needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL)
               }
             >
               {t('查看 Releases')}
-            </Button>
+              <IconExternalLink size={14} stroke={1.8} aria-hidden="true" />
+            </UnstyledButton>
           }
         />
       </section>
