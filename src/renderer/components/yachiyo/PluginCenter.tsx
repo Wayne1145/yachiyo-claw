@@ -139,7 +139,7 @@ function pluginCenterErrorMessage(t: Translate, cause: unknown, fallback: string
   if (code && knownMessages[code]) return withCode(knownMessages[code])
   if (cause instanceof SyntaxError) return t('插件市场返回的数据格式无效，请稍后重试。')
   if (/invalid url|failed to fetch|networkerror/i.test(message)) return fallback
-  if (/^(?:plugin|github|download)_[a-z0-9_.-]+$/i.test(code)) return fallback
+  if (code && /^(?:plugin|github|download)_[a-z0-9_.-]+$/i.test(code)) return fallback
   return message
 }
 

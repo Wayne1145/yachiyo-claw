@@ -24,8 +24,14 @@ import { removeBuiltInDemoSessions } from '@/mobile/demo-session-cleanup'
 import { syncInstalledLocalModelsIntoSettings } from '@/mobile/local-model-provider-sync'
 import { fetchYachiyoModels } from '@/mobile/yachiyo-api'
 import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
+import { syncAndroidSystemBars } from '@/platform/native/yachiyo_appearance'
 import { router } from '@/router'
 import { initThemeApplication } from '@/stores/themeStore'
+import { useUIStore } from '@/stores/uiStore'
+import {
+  LIQUID_GLASS_QUALITY_STORAGE_KEY,
+  observeLiquidGlassQuality,
+} from '@/themes/liquid-glass-quality'
 import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
 import { startPendingPluginInstallRecovery } from '@/plugins/install-recovery'
 import { startPendingThemeImportRecovery } from '@/themes/remote-theme'
@@ -43,7 +49,9 @@ import { AndroidAboutWorkspace, AndroidTasksWorkspace } from './AndroidWorkspace
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
 import { YachiyoChatLanding } from './YachiyoChatLanding'
 import { YachiyoMark } from './YachiyoMark'
+import { AndroidFlowGlassEnvironment, FlowGlassFilterDefinitions } from './AndroidFlowGlassEnvironment'
 import './android-app-shell.css'
+import './flow-glass.css'
 import './local-model-center.css'
 
 export function AndroidAppShell({ children }: { children: ReactNode }) {
@@ -61,6 +69,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const licenseKey = useSettingsStore((state) => state.licenseKey)
   const providers = useSettingsStore((state) => state.providers)
   const featureOverrides = useSettingsStore((state) => state.featureOverrides)
+  const realTheme = useUIStore((state) => state.realTheme)
   const installedPlugins = usePluginStore((state) => state.installed)
   const contributionPluginIds = usePluginStore((state) => state.contributionPluginIds)
   const settings = useMemo(
@@ -110,6 +119,17 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
     // Apply persisted theme tokens before the shell is painted to avoid a default-color flash.
     initThemeApplication()
   }, [])
+
+  useEffect(() => {
+    const stored = localStorage.getItem(LIQUID_GLASS_QUALITY_STORAGE_KEY)
+    const preference =
+      stored === 'full' || stored === 'balanced' || stored === 'reduced' || stored === 'auto' ? stored : 'auto'
+    return observeLiquidGlassQuality(preference)
+  }, [])
+
+  useEffect(() => {
+    void syncAndroidSystemBars({ scheme: realTheme }).catch(() => undefined)
+  }, [realTheme])
 
   useEffect(() => {
     // Configure regional download defaults once. Failure is intentionally silent and retried at
@@ -365,6 +385,8 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   return (
     <AndroidAppShellContext.Provider value={true}>
       <div className="yachiyo-mobile-shell">
+        <AndroidFlowGlassEnvironment pathname={location.pathname} />
+        <FlowGlassFilterDefinitions />
         {shellOverlays.map((Overlay, index) => (
           <Overlay key={`${Overlay.displayName || Overlay.name || 'feature-overlay'}-${index}`} />
         ))}

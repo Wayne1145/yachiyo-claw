@@ -229,7 +229,7 @@ export function applyActiveTheme(): void {
   const themeSupportsScheme = selectedTheme?.mode === 'both' || selectedTheme?.mode === scheme
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.yachiyoAppearance =
-      selectedTheme?.id === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'liquid-glass' : 'default'
+      selectedTheme?.id === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'flow-glass' : 'default'
   }
   applyVariables({
     ...BUILT_IN_ANDROID_BRAND_VARIABLES,

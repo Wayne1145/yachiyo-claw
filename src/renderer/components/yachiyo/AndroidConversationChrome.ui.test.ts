@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 const shellSource = fs.readFileSync(path.join(__dirname, 'AndroidAppShell.tsx'), 'utf8')
 const historySource = fs.readFileSync(path.join(__dirname, 'AndroidConversationHistory.tsx'), 'utf8')
 const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'), 'utf8')
+const flowStyles = fs.readFileSync(path.join(__dirname, 'flow-glass.css'), 'utf8')
 const layoutHeaderSource = fs.readFileSync(path.join(__dirname, '../layout/Header.tsx'), 'utf8')
 const toolbarSource = fs.readFileSync(path.join(__dirname, '../layout/Toolbar.tsx'), 'utf8')
 const taskSource = fs.readFileSync(path.join(__dirname, '../../routes/task/$taskId.tsx'), 'utf8')
@@ -41,17 +42,19 @@ describe('Android conversation chrome UI contract', () => {
     expect(historySource).toContain('onRename={() => openRename(record)}')
     expect(shellStyles).toMatch(/\.yachiyo-history-list\s*{[^}]*flex:\s*1 1 auto;[^}]*overflow-y:\s*auto;/s)
     expect(shellStyles).toMatch(/\.yachiyo-history-actions\s*{[^}]*grid-template-columns:\s*repeat\(4, 66px\);/s)
-    expect(shellStyles).toMatch(/\.yachiyo-history-actions\[aria-hidden="true"\]\s*{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s)
-    expect(shellStyles).toMatch(/\.yachiyo-history-item\[data-active="true"\]\s*{[^}]*#fcebf1/s)
+    expect(shellStyles).toMatch(
+      /\.yachiyo-history-actions\[aria-hidden=["']true["']\]\s*{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
+    )
+    expect(shellStyles).toMatch(/\.yachiyo-history-item\[data-active=["']true["']\]\s*{[^}]*#fcebf1/s)
     expect(historySource).toContain('opened={opened}')
     expect(historySource).toMatch(/useEffect\(\(\) => \{[\s\S]*?setOffset\(0\)[\s\S]*?\}, \[opened, active\]\)/)
   })
 
   it('limits top-drawer behavior to the liquid-glass theme and respects reduced motion', () => {
     expect(shellSource).toMatch(/yachiyo-mobile-header-primary[\s\S]*?yachiyo-mobile-header-collapsible/)
-    expect(shellStyles).toContain('html[data-yachiyo-appearance="liquid-glass"] .yachiyo-mobile-header-collapsible')
-    expect(shellStyles).toContain('.yachiyo-mobile-header-collapsible[data-collapsed="true"]')
-    expect(shellStyles).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(flowStyles).toContain("html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapsible")
+    expect(flowStyles).toContain('.yachiyo-mobile-header-collapsible[data-collapsed=\'true\']')
+    expect(flowStyles).toContain('@media (prefers-reduced-motion: reduce)')
     expect(shellSource).toContain("t('收起顶部')")
     expect(shellSource).toContain("t('展开顶部')")
   })
@@ -59,8 +62,8 @@ describe('Android conversation chrome UI contract', () => {
   it('keeps Liquid Glass secondary tools collapsed behind a horizontal toggle', () => {
     expect(inputBoxSource).toContain('className="yachiyo-liquid-tools-toggle"')
     expect(inputBoxSource).toContain('className="yachiyo-secondary-tools"')
-    expect(shellStyles).toContain('.yachiyo-secondary-tools[data-expanded="true"]')
-    expect(shellStyles).toContain('backdrop-filter: blur(16px)')
+    expect(flowStyles).toContain('.yachiyo-secondary-tools[data-expanded=\'true\']')
+    expect(flowStyles).toContain('backdrop-filter: blur(14px)')
   })
 
   it('keeps the composer above navigation in short landscape viewports', () => {

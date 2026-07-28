@@ -205,6 +205,21 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapsible-in
   pointer-events: auto;
 }
 
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapsible {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  opacity: 1;
+  transition:
+    grid-template-rows 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 220ms ease;
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapsible[data-collapsed='true'] {
+  grid-template-rows: minmax(0, 0fr);
+  opacity: 0;
+  pointer-events: none;
+}
+
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-primary {
   min-height: calc(60px + var(--mobile-safe-area-inset-top, 0px));
   padding: calc(8px + var(--mobile-safe-area-inset-top, 0px)) calc(12px + var(--mobile-safe-area-inset-right, 0px)) 6px
@@ -380,6 +395,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens {
     0 5px 18px rgba(34, 77, 120, 0.14);
   backdrop-filter: blur(18px) saturate(1.42);
   -webkit-backdrop-filter: blur(18px) saturate(1.42);
+  transform: translateX(calc(var(--yachiyo-active-tab) * 100%));
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
   will-change: transform;
 }
 
@@ -397,6 +414,7 @@ html[data-yachiyo-appearance='flow-glass'][data-theme='dark'] .yachiyo-bottom-na
 :dir(rtl) .yachiyo-bottom-nav-lens {
   right: 5px;
   left: auto;
+  transform: translateX(calc(var(--yachiyo-active-tab) * -100%));
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-item {
@@ -500,6 +518,13 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .manti
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-liquid-tools-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  border-radius: 50%;
   border: 1px solid var(--flow-edge-mid);
   color: var(--flow-text-secondary);
   background: color-mix(in srgb, var(--flow-control-fill) 86%, var(--flow-blue) 14%);
@@ -508,6 +533,34 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-liquid-tools-toggle {
     inset 0 -1px 0 var(--flow-edge-dark);
   backdrop-filter: blur(14px) saturate(1.24);
   -webkit-backdrop-filter: blur(14px) saturate(1.24);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-liquid-tools-toggle svg {
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-liquid-tools-toggle[data-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-secondary-tools {
+  display: inline-flex;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-10px);
+  pointer-events: none;
+  transition:
+    max-width 320ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 180ms ease,
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-secondary-tools[data-expanded='true'] {
+  max-width: 300px;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-liquid-tools-toggle:active:not(:disabled) {
@@ -1143,6 +1196,34 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
     animation-duration: 180ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 180ms !important;
+  }
+}
+
+@media (max-width: 440px) {
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-primary {
+    gap: 5px;
+  }
+
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-title strong {
+    font-size: 15px;
+  }
+
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-title span,
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-connection-status {
+    display: none;
+  }
+
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools {
+    padding: 1px;
+    border-radius: 20px;
+  }
+
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools .mantine-ActionIcon-root,
+  html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
   }
 }
 

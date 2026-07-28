@@ -67,7 +67,7 @@ describe('themeStore', () => {
     useThemeStore.getState().setActive(BUILT_IN_LIQUID_GLASS_THEME_ID)
 
     expect(useThemeStore.getState().activeThemeId).toBe(BUILT_IN_LIQUID_GLASS_THEME_ID)
-    expect(document.documentElement.dataset.yachiyoAppearance).toBe('liquid-glass')
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('flow-glass')
     expect(document.documentElement.style.getPropertyValue('--chatbox-background-primary')).toBe('#ffffff')
 
     useThemeStore.getState().remove(BUILT_IN_LIQUID_GLASS_THEME_ID)

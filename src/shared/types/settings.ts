@@ -281,6 +281,8 @@ export enum Theme {
   System,
 }
 
+export type LiquidGlassQuality = 'auto' | 'full' | 'balanced' | 'reduced'
+
 export const SettingsSchema = GlobalSessionSettingsSchema.extend({
   /** Runtime feature-module overrides. Only values differing from the module default are persisted. */
   featureOverrides: z.record(z.string(), z.boolean()).optional().catch(undefined),

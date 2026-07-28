@@ -320,6 +320,7 @@
     "zustand": "^5.0.6"
   },
   "dependencies": {
+    "@capacitor/haptics": "7.0.0",
     "@libsql/client": "^0.15.6",
     "@lobehub/icons": "^4.0.2",
     "@mastra/core": "^0.13.2",
