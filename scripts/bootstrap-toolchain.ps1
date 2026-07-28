@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [switch]$VerifyOnly,
-  [switch]$AcceptAndroidLicenses
+  [switch]$AcceptAndroidLicenses,
+  [switch]$NoProxy
 )
 
 Set-StrictMode -Version Latest
@@ -24,20 +25,24 @@ if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
 }
 
 $toolchain = Get-Content -Raw -LiteralPath $lockPath | ConvertFrom-Json
-$proxyUrl = if ([string]::IsNullOrWhiteSpace($env:YACHIYO_PROXY_URL)) {
-  'http://127.0.0.1:7890'
-} else {
-  $env:YACHIYO_PROXY_URL
-}
+$proxyUrl = $null
+$proxyUri = $null
+if (-not $NoProxy) {
+  $proxyUrl = if ([string]::IsNullOrWhiteSpace($env:YACHIYO_PROXY_URL)) {
+    'http://127.0.0.1:7890'
+  } else {
+    $env:YACHIYO_PROXY_URL
+  }
 
-try {
-  $proxyUri = [Uri]$proxyUrl
-} catch {
-  throw "YACHIYO_PROXY_URL is not a valid URI: $proxyUrl"
-}
+  try {
+    $proxyUri = [Uri]$proxyUrl
+  } catch {
+    throw "YACHIYO_PROXY_URL is not a valid URI: $proxyUrl"
+  }
 
-if (-not $proxyUri.IsAbsoluteUri -or $proxyUri.Scheme -notin @('http', 'https', 'socks', 'socks5')) {
-  throw "YACHIYO_PROXY_URL must be an absolute HTTP, HTTPS, SOCKS, or SOCKS5 URI: $proxyUrl"
+  if (-not $proxyUri.IsAbsoluteUri -or $proxyUri.Scheme -notin @('http', 'https', 'socks', 'socks5')) {
+    throw "YACHIYO_PROXY_URL must be an absolute HTTP, HTTPS, SOCKS, or SOCKS5 URI: $proxyUrl"
+  }
 }
 
 function Get-NormalizedPath {
@@ -342,7 +347,7 @@ function Test-CommandLineToolsInstallation {
     return $false
   }
 
-  $result = Get-NativeResult -Executable $sdkManager -Arguments @('--version')
+  $result = Get-NativeResult -Executable $sdkManager -Arguments @("--sdk_root=$androidSdkRoot", '--version')
   return $result.ExitCode -eq 0 -and (($result.Output -split "`r?`n") -contains [string]$toolchain.android.commandLineTools.version)
 }
 
@@ -393,9 +398,11 @@ function Get-VerifiedArchive {
     $request = @{
       Uri = $Url
       OutFile = $partial
-      Proxy = $proxyUrl
       UseBasicParsing = $true
       UserAgent = 'Yachiyo-Claw-Toolchain-Bootstrap/1'
+    }
+    if (-not $NoProxy) {
+      $request.Proxy = $proxyUrl
     }
     Invoke-WebRequest @request
     Assert-ArchiveHash -ArchivePath $partial -Sha256 $Sha256 -Sha1 $Sha1
@@ -561,6 +568,10 @@ function Test-AndroidLicenseMarker {
 function Get-SdkManagerArguments {
   param([Parameter(Mandatory = $true)][string]$SdkRoot)
 
+  if ($NoProxy) {
+    return @("--sdk_root=$SdkRoot")
+  }
+
   $proxyType = if ($proxyUri.Scheme -in @('socks', 'socks5')) { 'socks' } else { 'http' }
   return @(
     "--sdk_root=$SdkRoot",
@@ -662,7 +673,7 @@ function Test-Cmake {
     return $true
   }
   $result = Get-NativeResult -Executable $cmake -Arguments @('--version')
-  return $result.ExitCode -eq 0 -and $result.Output -match ('^cmake version ' + [regex]::Escape([string]$toolchain.android.cmake) + '(?:\s|$)')
+  return $result.ExitCode -eq 0 -and $result.Output -match ('^cmake version ' + [regex]::Escape([string]$toolchain.android.cmake) + '(?:[-+\s]|$)')
 }
 
 function Get-MissingAndroidPackages {

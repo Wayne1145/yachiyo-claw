@@ -158,17 +158,16 @@ describe('PluginCenter', () => {
     expect(await screen.findByText('尚未安装任何插件')).toBeTruthy()
   })
 
-  it('shows a Chinese message instead of a marketplace HTTP error code', async () => {
+  it('shows a Chinese message and the marketplace HTTP error code', async () => {
     mocks.loadMarketplace.mockRejectedValueOnce(new Error('plugin_marketplace_http_404'))
     renderCenter()
 
     fireEvent.click(screen.getByRole('button', { name: '浏览插件市场' }))
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe('插件市场地址不存在或尚未发布，请稍后重试。')
-    expect(screen.queryByText('plugin_marketplace_http_404')).toBeNull()
+    expect(alert.textContent).toBe('插件市场地址不存在或尚未发布，请稍后重试。（错误代码：plugin_marketplace_http_404）')
   })
 
-  it('shows a Chinese message instead of a plugin download HTTP error code', async () => {
+  it('shows a Chinese message and the plugin download HTTP error code', async () => {
     mocks.resolvePackageSource.mockRejectedValueOnce(new Error('plugin_package_probe_http_404'))
     renderCenter()
 
@@ -177,8 +176,16 @@ describe('PluginCenter', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '下载并检查' }))
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe('插件下载地址不存在或文件已被移除，请检查地址后重试。')
-    expect(screen.queryByText('plugin_package_probe_http_404')).toBeNull()
+    expect(alert.textContent).toBe('插件下载地址不存在或文件已被移除，请检查地址后重试。（错误代码：plugin_package_probe_http_404）')
+  })
+
+  it('explains Android private-host download failures with the error code', async () => {
+    mocks.loadMarketplace.mockRejectedValueOnce(new Error('download_host_private'))
+    renderCenter()
+
+    fireEvent.click(screen.getByRole('button', { name: '浏览插件市场' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('下载器拒绝访问局域网地址（错误代码：download_host_private）')
   })
 
   it('can select several capabilities before confirming installation', async () => {

@@ -55,6 +55,7 @@ import {
 import { clearPendingPluginInstall, savePendingPluginInstall } from '@/plugins/pending-install'
 import { describePluginUpdate, findMarketplacePluginUpdates } from '@/plugins/plugin-updates'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
+import { errorCodeFromMessage, formatErrorWithCode, getErrorHelp } from './error-help'
 
 /**
  * Plugin management UI (platform-30 minimal + platform-23 consent).
@@ -94,21 +95,26 @@ function sourceLabel(t: Translate, source: string): string {
 function pluginCenterErrorMessage(t: Translate, cause: unknown, fallback: string): string {
   const message = cause instanceof Error ? cause.message.trim() : ''
   if (!message) return fallback
+  const code = errorCodeFromMessage(message)
+  const withCode = (value: string) => formatErrorWithCode(value, code)
+
+  const errorHelp = getErrorHelp(code)
+  if (errorHelp) return withCode(t(errorHelp.title))
 
   const marketplaceHttp = /^plugin_marketplace_http_(\d{3})$/i.exec(message)
   if (marketplaceHttp) {
-    return marketplaceHttp[1] === '404'
+    return withCode(marketplaceHttp[1] === '404'
       ? t('插件市场地址不存在或尚未发布，请稍后重试。')
-      : t('插件市场暂时无法访问（服务器返回 {{status}}），请稍后重试。', { status: marketplaceHttp[1] })
+      : t('插件市场暂时无法访问（服务器返回 {{status}}），请稍后重试。', { status: marketplaceHttp[1] }))
   }
 
   const downloadHttp = /^(?:(?:plugin_)?download_http|plugin_package_probe_http|github_release_http)_(\d{3})$/i.exec(
     message,
   )
   if (downloadHttp) {
-    return downloadHttp[1] === '404'
+    return withCode(downloadHttp[1] === '404'
       ? t('插件下载地址不存在或文件已被移除，请检查地址后重试。')
-      : t('插件下载失败（服务器返回 {{status}}），请稍后重试。', { status: downloadHttp[1] })
+      : t('插件下载失败（服务器返回 {{status}}），请稍后重试。', { status: downloadHttp[1] }))
   }
 
   const knownMessages: Record<string, string> = {
@@ -131,7 +137,7 @@ function pluginCenterErrorMessage(t: Translate, cause: unknown, fallback: string
     plugin_feature_disabled: t('第三方插件功能已在功能管理中关闭。'),
   }
   const code = message.split(':', 1)[0]
-  if (knownMessages[code]) return knownMessages[code]
+  if (code && knownMessages[code]) return withCode(knownMessages[code])
   if (cause instanceof SyntaxError) return t('插件市场返回的数据格式无效，请稍后重试。')
   if (/invalid url|failed to fetch|networkerror/i.test(message)) return fallback
   if (/^(?:plugin|github|download)_[a-z0-9_.-]+$/i.test(code)) return fallback

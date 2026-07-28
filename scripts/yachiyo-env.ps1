@@ -1,4 +1,6 @@
 param(
+  [switch]$NoProxy,
+
   [Parameter(Position = 0)]
   [ValidateSet('doctor', 'pnpm', 'gradle', 'adb', 'sdkmanager')]
   [string]$Action = 'doctor',
@@ -12,41 +14,44 @@ $workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $toolsRoot = Join-Path $workspaceRoot '.tools'
 $cacheRoot = Join-Path $workspaceRoot '.cache'
 $androidSdk = Join-Path $toolsRoot 'android-sdk'
-$proxyUrl = if ($env:YACHIYO_PROXY_URL) { $env:YACHIYO_PROXY_URL } else { 'http://127.0.0.1:7890' }
+$proxyUrl = $null
 $toolchainLockPath = Join-Path $workspaceRoot 'toolchain.lock.json'
 $toolchainLock = Get-Content -Raw $toolchainLockPath | ConvertFrom-Json
 $workspaceNode = Join-Path $workspaceRoot $toolchainLock.node.path
 $androidNdk = Join-Path $androidSdk ("ndk\$($toolchainLock.android.ndk)")
 $androidCmake = Join-Path $androidSdk ("cmake\$($toolchainLock.android.cmake)")
 
-try {
-  $proxyUri = [Uri]$proxyUrl
-} catch {
-  throw "YACHIYO_PROXY_URL is not a valid URI: $proxyUrl"
-}
+if (-not $NoProxy) {
+  $proxyUrl = if ($env:YACHIYO_PROXY_URL) { $env:YACHIYO_PROXY_URL } else { 'http://127.0.0.1:7890' }
+  try {
+    $proxyUri = [Uri]$proxyUrl
+  } catch {
+    throw "YACHIYO_PROXY_URL is not a valid URI: $proxyUrl"
+  }
 
-if (-not $proxyUri.IsAbsoluteUri) {
-  throw "YACHIYO_PROXY_URL must be an absolute HTTP or HTTPS URI: $proxyUrl"
-}
-if ($proxyUri.Scheme -in @('socks', 'socks5')) {
-  throw 'YACHIYO_PROXY_URL cannot use SOCKS because Gradle does not support SOCKS proxy configuration.'
-}
-if ($proxyUri.Scheme -notin @('http', 'https')) {
-  throw "YACHIYO_PROXY_URL must use HTTP or HTTPS: $proxyUrl"
-}
-if ([string]::IsNullOrWhiteSpace($proxyUri.DnsSafeHost)) {
-  throw "YACHIYO_PROXY_URL must include a proxy host: $proxyUrl"
-}
-if (-not [string]::IsNullOrEmpty($proxyUri.UserInfo)) {
-  throw 'YACHIYO_PROXY_URL must not contain credentials because Gradle proxy properties are stored on disk.'
-}
-if ($proxyUri.AbsolutePath -ne '/' -or $proxyUri.Query -or $proxyUri.Fragment) {
-  throw "YACHIYO_PROXY_URL must contain only a scheme, host, and optional port: $proxyUrl"
-}
+  if (-not $proxyUri.IsAbsoluteUri) {
+    throw "YACHIYO_PROXY_URL must be an absolute HTTP or HTTPS URI: $proxyUrl"
+  }
+  if ($proxyUri.Scheme -in @('socks', 'socks5')) {
+    throw 'YACHIYO_PROXY_URL cannot use SOCKS because Gradle does not support SOCKS proxy configuration.'
+  }
+  if ($proxyUri.Scheme -notin @('http', 'https')) {
+    throw "YACHIYO_PROXY_URL must use HTTP or HTTPS: $proxyUrl"
+  }
+  if ([string]::IsNullOrWhiteSpace($proxyUri.DnsSafeHost)) {
+    throw "YACHIYO_PROXY_URL must include a proxy host: $proxyUrl"
+  }
+  if (-not [string]::IsNullOrEmpty($proxyUri.UserInfo)) {
+    throw 'YACHIYO_PROXY_URL must not contain credentials because Gradle proxy properties are stored on disk.'
+  }
+  if ($proxyUri.AbsolutePath -ne '/' -or $proxyUri.Query -or $proxyUri.Fragment) {
+    throw "YACHIYO_PROXY_URL must contain only a scheme, host, and optional port: $proxyUrl"
+  }
 
-$proxyUrl = $proxyUri.GetLeftPart([UriPartial]::Authority)
-$proxyHost = $proxyUri.DnsSafeHost
-$proxyPort = $proxyUri.Port
+  $proxyUrl = $proxyUri.GetLeftPart([UriPartial]::Authority)
+  $proxyHost = $proxyUri.DnsSafeHost
+  $proxyPort = $proxyUri.Port
+}
 
 if (-not (Test-Path -LiteralPath (Join-Path $workspaceNode 'node.exe'))) {
   throw "Workspace Node.js is missing. Expected $workspaceNode"
@@ -92,8 +97,8 @@ $env:JAVA_HOME = $workspaceJdk
 function Set-GradleProxyProperties {
   param(
     [Parameter(Mandatory = $true)][string]$Path,
-    [Parameter(Mandatory = $true)][string]$HostName,
-    [Parameter(Mandatory = $true)][int]$Port,
+    [string]$HostName,
+    [int]$Port,
     [Parameter(Mandatory = $true)][string]$NonProxyHosts
   )
 
@@ -142,14 +147,16 @@ function Set-GradleProxyProperties {
     $preserved.Add('')
   }
 
-  $preserved.Add($managedStart)
-  $preserved.Add("systemProp.http.proxyHost=$HostName")
-  $preserved.Add("systemProp.http.proxyPort=$Port")
-  $preserved.Add("systemProp.https.proxyHost=$HostName")
-  $preserved.Add("systemProp.https.proxyPort=$Port")
-  $preserved.Add("systemProp.http.nonProxyHosts=$NonProxyHosts")
-  $preserved.Add("systemProp.https.nonProxyHosts=$NonProxyHosts")
-  $preserved.Add($managedEnd)
+  if ($HostName) {
+    $preserved.Add($managedStart)
+    $preserved.Add("systemProp.http.proxyHost=$HostName")
+    $preserved.Add("systemProp.http.proxyPort=$Port")
+    $preserved.Add("systemProp.https.proxyHost=$HostName")
+    $preserved.Add("systemProp.https.proxyPort=$Port")
+    $preserved.Add("systemProp.http.nonProxyHosts=$NonProxyHosts")
+    $preserved.Add("systemProp.https.nonProxyHosts=$NonProxyHosts")
+    $preserved.Add($managedEnd)
+  }
 
   $temporaryPath = Join-Path (Split-Path -Parent $Path) ('.gradle-properties-' + [guid]::NewGuid().ToString('N') + '.tmp')
   $backupPath = $temporaryPath + '.bak'
@@ -178,11 +185,12 @@ try {
   if (-not $gradleProxyMutexAcquired) {
     throw 'Timed out waiting to configure the workspace Gradle proxy.'
   }
-  Set-GradleProxyProperties `
-    -Path $gradleProperties `
-    -HostName $proxyHost `
-    -Port $proxyPort `
-    -NonProxyHosts 'localhost|127.*|[::1]'
+  $proxyArguments = @{ Path = $gradleProperties; NonProxyHosts = 'localhost|127.*|[::1]' }
+  if (-not $NoProxy) {
+    $proxyArguments.HostName = $proxyHost
+    $proxyArguments.Port = $proxyPort
+  }
+  Set-GradleProxyProperties @proxyArguments
 } finally {
   if ($gradleProxyMutexAcquired) {
     $gradleProxyMutex.ReleaseMutex()

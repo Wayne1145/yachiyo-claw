@@ -1,6 +1,32 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
+def workspaceRoot = rootProject.projectDir.parentFile
+
+def syncAndroidWebAssets = tasks.register('syncAndroidWebAssets', Exec) {
+    group = 'build setup'
+    description = 'Builds the Android renderer and synchronizes Capacitor assets before packaging.'
+    workingDir workspaceRoot
+    commandLine 'powershell.exe', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/yachiyo-env.ps1', '-NoProxy',
+        'pnpm', 'run', 'mobile:sync:android'
+    // Renderer source is outside Gradle's normal input graph, so always synchronize before an Android build.
+    outputs.upToDateWhen { false }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn(syncAndroidWebAssets)
+}
+
+// Capacitor sync rewrites the generated Cordova plugin project. Make it complete before any
+// Android subproject starts, otherwise a stale plugin manifest can be removed mid-build.
+gradle.projectsEvaluated {
+    rootProject.subprojects { project ->
+        project.tasks.matching { it.name == 'preBuild' }.configureEach {
+            dependsOn(syncAndroidWebAssets)
+        }
+    }
+}
+
 def newDreamStudioKeystore = rootProject.file('../.keys/newdreamstudio.keystore')
 def hasNewDreamStudioKeystore = newDreamStudioKeystore.exists()
 def releaseStorePassword = System.getenv('YACHIYO_KEYSTORE_PASSWORD')

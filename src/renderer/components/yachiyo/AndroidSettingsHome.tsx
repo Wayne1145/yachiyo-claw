@@ -10,6 +10,7 @@ import {
   IconSettings,
   IconSparkles,
   IconDownload,
+  IconHelpCircle,
   IconPalette,
   IconPuzzle,
   IconTestPipe,
@@ -100,6 +101,13 @@ const CORE_GROUPS: Array<{ id: 'model' | 'capability' | 'app' | 'developer'; tit
         icon: IconAdjustments,
         order: 600,
         open: () => void router.navigate({ to: '/settings/general' }),
+      },
+      {
+        label: '帮助中心',
+        detail: '搜索错误代码、原因与解决方式',
+        icon: IconHelpCircle,
+        order: 650,
+        open: () => void router.navigate({ to: '/settings/help' }),
       },
       {
         label: '关于 Yachiyo Claw',
