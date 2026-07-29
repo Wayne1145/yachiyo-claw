@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next'
 import { router } from '@/router'
 import { BUILT_IN_LIQUID_GLASS_THEME_ID, useThemeStore } from '@/stores/themeStore'
 import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
 
 const MODE_LABEL_KEYS: Record<ThemeManifest['mode'], string> = { light: '浅色', dark: '深色', both: '浅色 / 深色' }
@@ -333,6 +334,75 @@ export function ThemeCenter() {
           {installed.map((theme) => {
             const isActive = activeThemeId === theme.id
             const isPreviewing = previewingTheme?.id === theme.id
+            const previewLabel = String(isPreviewing ? t('结束预览') : t('预览'))
+            const themeActions: AdaptiveActionDescriptor[] = [
+              {
+                id: 'preview',
+                label: previewLabel,
+                icon: isPreviewing ? IconEyeOff : IconEye,
+                priority: 70,
+                collapseStrategy: 'icon-then-overflow',
+                renderControl: ({ presentation }) =>
+                  presentation === 'labelled' ? (
+                    <Button
+                      variant="default"
+                      leftSection={isPreviewing ? <IconEyeOff size={17} /> : <IconEye size={17} />}
+                      onClick={() => (isPreviewing ? clearPreview() : preview(theme))}
+                    >
+                      {previewLabel}
+                    </Button>
+                  ) : (
+                    <ActionIcon
+                      size={44}
+                      variant="default"
+                      aria-label={`${previewLabel} ${theme.name}`}
+                      onClick={() => (isPreviewing ? clearPreview() : preview(theme))}
+                    >
+                      {isPreviewing ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                    </ActionIcon>
+                  ),
+                menuAction: {
+                  onSelect: () => (isPreviewing ? clearPreview() : preview(theme)),
+                },
+              },
+              ...(!isActive
+                ? [
+                    {
+                      id: 'activate',
+                      label: String(t('使用')),
+                      icon: IconCheck,
+                      priority: 100,
+                      collapseStrategy: 'keep' as const,
+                      renderControl: () => (
+                        <Button leftSection={<IconCheck size={17} />} onClick={() => setActive(theme.id)}>
+                          {t('使用')}
+                        </Button>
+                      ),
+                    },
+                  ]
+                : []),
+              {
+                id: 'delete',
+                label: String(t('删除')),
+                icon: IconTrash,
+                priority: 10,
+                collapseStrategy: 'overflow',
+                renderControl: () => (
+                  <ActionIcon
+                    size={44}
+                    color="red"
+                    variant="subtle"
+                    aria-label={t('删除主题 {{name}}', { name: theme.name })}
+                    onClick={() => setRemoveTarget(theme)}
+                  >
+                    <IconTrash size={17} />
+                  </ActionIcon>
+                ),
+                menuAction: {
+                  onSelect: () => setRemoveTarget(theme),
+                },
+              },
+            ]
             return (
               <article
                 key={theme.id}
@@ -364,30 +434,38 @@ export function ThemeCenter() {
                     </Badge>
                   )}
                 </div>
-                <Group justify="space-between" gap="xs" wrap="nowrap">
-                  <Group gap="xs" wrap="nowrap">
-                    <Button
-                      size="compact-sm"
-                      variant="default"
-                      onClick={() => (isPreviewing ? clearPreview() : preview(theme))}
-                    >
-                      {isPreviewing ? t('结束预览') : t('预览')}
-                    </Button>
-                    {!isActive && (
-                      <Button size="compact-sm" onClick={() => setActive(theme.id)}>
-                        {t('使用')}
+                {inAndroidAppShell ? (
+                  <AdaptiveActionCluster
+                    className="yachiyo-theme-card-actions"
+                    ariaLabel={`${theme.name} ${String(t('主题操作'))}`}
+                    actions={themeActions}
+                  />
+                ) : (
+                  <Group justify="space-between" gap="xs" wrap="nowrap">
+                    <Group gap="xs" wrap="nowrap">
+                      <Button
+                        size="compact-sm"
+                        variant="default"
+                        onClick={() => (isPreviewing ? clearPreview() : preview(theme))}
+                      >
+                        {previewLabel}
                       </Button>
-                    )}
+                      {!isActive && (
+                        <Button size="compact-sm" onClick={() => setActive(theme.id)}>
+                          {t('使用')}
+                        </Button>
+                      )}
+                    </Group>
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      aria-label={t('删除主题 {{name}}', { name: theme.name })}
+                      onClick={() => setRemoveTarget(theme)}
+                    >
+                      <IconTrash size={17} />
+                    </ActionIcon>
                   </Group>
-                  <ActionIcon
-                    color="red"
-                    variant="subtle"
-                    aria-label={t('删除主题 {{name}}', { name: theme.name })}
-                    onClick={() => setRemoveTarget(theme)}
-                  >
-                    <IconTrash size={17} />
-                  </ActionIcon>
-                </Group>
+                )}
               </article>
             )
           })}

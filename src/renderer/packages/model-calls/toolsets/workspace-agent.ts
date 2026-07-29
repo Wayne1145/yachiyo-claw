@@ -49,9 +49,9 @@ export function createWorkspaceAgentToolSet(sessionId?: string) {
       })
     },
     remove: async (path: string) => {
-      if (platform.type !== 'mobile') throw new Error('workspace_delete_unavailable')
-      const { Directory, Filesystem } = await import('@capacitor/filesystem')
-      await Filesystem.deleteFile({ path: `yachiyo-workspace/${path}`, directory: Directory.Data })
+      if (!platform.sandboxDelete) throw new Error('workspace_delete_unavailable')
+      const result = await platform.sandboxDelete({ filePath: path })
+      if (!result.success) throw new Error(result.error || 'workspace_delete_failed')
     },
     run: async (command: string, timeout?: number) => {
       if (!platform.sandboxExec) return unavailable('workspace_command_unavailable')

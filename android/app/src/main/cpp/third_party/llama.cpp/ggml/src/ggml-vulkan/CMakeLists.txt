@@ -36,13 +36,19 @@ endfunction()
 #  TEST_SHADER_FILE - Path to the test shader file
 #  RESULT_VARIABLE - Name of the variable to set (ON/OFF) based on test result
 function(test_shader_extension_support EXTENSION_NAME TEST_SHADER_FILE RESULT_VARIABLE)
+    if (ANDROID)
+        set(${RESULT_VARIABLE} OFF CACHE BOOL "" FORCE)
+        set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
+        return()
+    endif()
     execute_process(
         COMMAND ${Vulkan_GLSLC_EXECUTABLE} -o - -fshader-stage=compute --target-env=vulkan1.3 "${TEST_SHADER_FILE}"
         OUTPUT_VARIABLE glslc_output
         ERROR_VARIABLE glslc_error
+        RESULT_VARIABLE glslc_result
     )
 
-    if (${glslc_error} MATCHES ".*extension not supported: ${EXTENSION_NAME}.*")
+    if (NOT glslc_result EQUAL 0 OR glslc_error MATCHES ".*extension not supported: ${EXTENSION_NAME}.*")
         message(STATUS "${EXTENSION_NAME} not supported by glslc")
         set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
     else()
@@ -65,6 +71,21 @@ if (Vulkan_FOUND)
                             )
 
     set(VULKAN_SHADER_GEN_CMAKE_ARGS "")
+    if (ANDROID)
+        list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS
+            -DGGML_VULKAN_COOPMAT_GLSLC_SUPPORT=OFF
+            -DGGML_VULKAN_COOPMAT2_GLSLC_SUPPORT=OFF
+            -DGGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT=OFF
+            -DGGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT=OFF
+            -DGGML_VULKAN_BFLOAT16_GLSLC_SUPPORT=OFF
+            -DGGML_VULKAN_FLOAT_E2M1_GLSLC_SUPPORT=OFF
+            -DGGML_VULKAN_FLOAT_E4M3_GLSLC_SUPPORT=OFF
+        )
+        if (CMAKE_HOST_WIN32)
+            # Android Studio does not inherit the workspace LLVM-MinGW runtime path.
+            list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS -DCMAKE_EXE_LINKER_FLAGS=-static)
+        endif()
+    endif()
 
     # Test all shader extensions
     test_shader_extension_support(
@@ -176,6 +197,7 @@ if (Vulkan_FOUND)
 
     ExternalProject_Add(
         vulkan-shaders-gen
+        PREFIX ${CMAKE_BINARY_DIR}/vulkan-shaders-gen
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/$<CONFIG>
                    -DCMAKE_INSTALL_BINDIR=.
@@ -202,6 +224,17 @@ if (Vulkan_FOUND)
     set (_ggml_vk_output_dir "${CMAKE_CURRENT_BINARY_DIR}/vulkan-shaders.spv")
 
     file(GLOB _ggml_vk_shader_files CONFIGURE_DEPENDS "${_ggml_vk_input_dir}/*.comp")
+
+    # Sources with no enabled variants do not produce the DEPFILE required below.
+    if (NOT GGML_VULKAN_COOPMAT_GLSLC_SUPPORT)
+        list(FILTER _ggml_vk_shader_files EXCLUDE REGEX "flash_attn_cm1\\.comp$")
+    endif()
+    if (NOT GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT)
+        list(FILTER _ggml_vk_shader_files EXCLUDE REGEX "(flash_attn_cm2|mul_mm_cm2)\\.comp$")
+    endif()
+    if (NOT GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
+        list(FILTER _ggml_vk_shader_files EXCLUDE REGEX "(mul_mmq|mul_mat_vecq)\\.comp$")
+    endif()
 
     # Because external projects do not provide source-level tracking,
     # the vulkan-shaders-gen sources need to be explicitly added to

@@ -1,16 +1,20 @@
 package io.github.yachiyoclaw.model
 
+import android.content.Context
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.BenchmarkInfo
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.OpenApiTool
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.ToolCall
 import com.google.ai.edge.litertlm.ToolProvider
+import com.google.ai.edge.litertlm.benchmark as runBenchmark
 import com.google.ai.edge.litertlm.tool
 import java.io.File
 import android.util.Base64
@@ -21,7 +25,13 @@ import org.json.JSONObject
 object LiteRtLmRunner {
   private const val MAX_TOOLS = 64
   private const val MAX_TOOL_DESCRIPTION_CHARS = 4_096
-  private data class LoadedEngine(val path: String, val engine: Engine)
+  private data class LoadedEngine(
+    val path: String,
+    val maxNumTokens: Int,
+    val engine: Engine,
+    val backend: String,
+    val fallbackReason: String?,
+  )
   private class InertOpenApiTool(private val descriptor: String) : OpenApiTool {
     override fun getToolDescriptionJsonString(): String = descriptor
 
@@ -34,22 +44,39 @@ object LiteRtLmRunner {
 
   @JvmStatic
   @Synchronized
-  fun load(modelPath: String) {
+  fun load(
+    context: Context,
+    modelPath: String,
+    requestedBackend: String,
+    declaredNpuCompatible: Boolean,
+    cpuThreads: Int,
+  ) {
     require(File(modelPath).isFile) { "local_model_file_missing" }
-    ensureEngine(modelPath, 2048)
+    ensureEngine(context, modelPath, 2048, requestedBackend, declaredNpuCompatible, cpuThreads)
   }
 
   @JvmStatic
   @Synchronized
   fun infer(
+    context: Context,
     modelPath: String,
     messages: JSONArray,
     toolDefinitions: JSONObject,
     requestId: String,
     maxTokens: Int,
+    requestedBackend: String,
+    declaredNpuCompatible: Boolean,
+    cpuThreads: Int,
   ): JSONArray {
     require(File(modelPath).isFile) { "local_model_file_missing" }
-    val engine = ensureEngine(modelPath, maxTokens.coerceIn(256, 8192))
+    val engine = ensureEngine(
+      context,
+      modelPath,
+      maxTokens.coerceIn(256, 8192),
+      requestedBackend,
+      declaredNpuCompatible,
+      cpuThreads,
+    )
     var systemInstruction = ""
     val turns = mutableListOf<Message>()
 
@@ -100,20 +127,97 @@ object LiteRtLmRunner {
     loaded = null
   }
 
-  private fun ensureEngine(path: String, maxTokens: Int): Engine {
-    loaded?.takeIf { it.path == path }?.let { return it.engine }
+  @JvmStatic
+  @Synchronized
+  fun activeBackend(): String = loaded?.backend ?: ""
+
+  @JvmStatic
+  @Synchronized
+  fun fallbackReason(): String? = loaded?.fallbackReason
+
+  @JvmStatic
+  @OptIn(ExperimentalApi::class)
+  fun benchmarkBackend(
+    context: Context,
+    modelPath: String,
+    backendName: String,
+    declaredNpuCompatible: Boolean,
+    cpuThreads: Int,
+  ): JSONObject {
+    require(File(modelPath).isFile) { "local_model_file_missing" }
+    val backend = createBackend(context, modelPath, backendName, declaredNpuCompatible, cpuThreads)
+    val npuLibraryDir = if (backendName == AccelerationPolicy.BACKEND_NPU) {
+      AccelerationRuntimeSupport.npuLibraryDir(context, modelPath, declaredNpuCompatible).orEmpty()
+    } else ""
+    val measured = mutableListOf<BenchmarkInfo>()
+    repeat(4) { iteration ->
+      val result = runBenchmark(modelPath, backend, 128, 32, npuLibraryDir)
+      if (iteration > 0) measured += result
+    }
+    fun median(values: List<Double>): Double = values.sorted()[values.size / 2]
+    return JSONObject()
+      .put("backend", backendName)
+      .put("initializationMs", median(measured.map { it.initTimeInSecond }) * 1000.0)
+      .put("firstTokenMs", median(measured.map { it.timeToFirstTokenInSecond }) * 1000.0)
+      .put("prefillTokensPerSecond", median(measured.map { it.lastPrefillTokensPerSecond }))
+      .put("decodeTokensPerSecond", median(measured.map { it.lastDecodeTokensPerSecond }))
+  }
+
+  private fun ensureEngine(
+    context: Context,
+    path: String,
+    maxTokens: Int,
+    requestedBackend: String,
+    declaredNpuCompatible: Boolean,
+    cpuThreads: Int,
+  ): Engine {
+    val normalized = AccelerationPolicy.normalizeBackend(requestedBackend)
+    val normalizedBackend = if (normalized == AccelerationPolicy.BACKEND_AUTO) AccelerationPolicy.BACKEND_CPU else normalized
+    loaded?.takeIf {
+      it.path == path && it.maxNumTokens >= maxTokens && it.backend.lowercase() == normalizedBackend
+    }?.let { return it.engine }
     unload()
-    val engine =
-      Engine(
-        EngineConfig(
-          modelPath = path,
-          backend = Backend.CPU(),
-          maxNumTokens = maxTokens,
+    val candidates = mutableListOf(normalizedBackend)
+    if (normalizedBackend != AccelerationPolicy.BACKEND_CPU) candidates += AccelerationPolicy.BACKEND_CPU
+    val failures = mutableListOf<String>()
+    for (candidate in candidates.distinct()) {
+      val engine = Engine(EngineConfig(
+        modelPath = path,
+        backend = createBackend(context, path, candidate, declaredNpuCompatible, cpuThreads),
+        maxNumTokens = maxTokens,
+      ))
+      try {
+        engine.initialize()
+        loaded = LoadedEngine(
+          path,
+          maxTokens,
+          engine,
+          candidate.uppercase(),
+          failures.takeIf { it.isNotEmpty() }?.joinToString(","),
         )
-      )
-    engine.initialize()
-    loaded = LoadedEngine(path, engine)
-    return engine
+        return engine
+      } catch (error: Throwable) {
+        if (error is VirtualMachineError || error is ThreadDeath) throw error
+        runCatching { engine.close() }
+        failures += "${candidate}_initialization_failed"
+      }
+    }
+    throw IllegalStateException("local_acceleration_backends_unavailable")
+  }
+
+  private fun createBackend(
+    context: Context,
+    modelPath: String,
+    backendName: String,
+    declaredNpuCompatible: Boolean,
+    cpuThreads: Int,
+  ): Backend = when (AccelerationPolicy.normalizeBackend(backendName)) {
+    AccelerationPolicy.BACKEND_NPU -> Backend.NPU(
+      AccelerationRuntimeSupport.npuLibraryDir(context, modelPath, declaredNpuCompatible)
+        ?: throw IllegalStateException("local_npu_runtime_unavailable")
+    )
+    AccelerationPolicy.BACKEND_GPU -> Backend.GPU()
+    else -> Backend.CPU(cpuThreads.coerceAtLeast(1))
   }
 
   private fun messageContents(message: JSONObject): Contents {

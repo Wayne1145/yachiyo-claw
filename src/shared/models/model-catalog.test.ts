@@ -401,6 +401,78 @@ describe('ModelCatalogController', () => {
     ])
   })
 
+  it('pairs an exact-SoC NPU LiteRT variant with its generic fallback', async () => {
+    const base = createCompatibilityModel().artifacts[0]
+    const generic = {
+      ...base,
+      id: 'generic',
+      path: 'gemma-generic.litertlm',
+      filename: 'gemma-generic.litertlm',
+      format: 'litertlm' as const,
+      runtime: 'litert-lm' as const,
+      backendTargets: ['cpu', 'gpu'] as Array<'cpu' | 'gpu'>,
+    }
+    const npu = {
+      ...generic,
+      id: 'sm8650',
+      path: 'gemma-sm8650.litertlm',
+      filename: 'gemma-sm8650.litertlm',
+      backendTargets: ['npu'] as Array<'npu'>,
+      socModels: ['SM8650'],
+      vendorRuntime: { vendor: 'qualcomm' as const },
+    }
+    const model = createCompatibilityModel({
+      formats: ['litertlm'],
+      runtimeCandidates: ['litert-lm'],
+      artifacts: [generic, npu],
+    })
+    const controller = new ModelCatalogController({ createId: () => 'job-npu' })
+
+    const job = await controller.createDownloadJob({
+      model,
+      runtime: 'litert-lm',
+      device: {
+        soc: 'Qualcomm SM8650',
+        npu: 'Qualcomm SM8650',
+        supportedRuntimes: ['litert-lm'],
+        supportedFormats: ['litertlm'],
+        ramBytes: 8_000_000_000,
+        availableStorageBytes: 8_000_000_000,
+      },
+    })
+
+    expect(job.artifacts.map((artifact) => artifact.id)).toEqual(['generic', 'sm8650'])
+    expect(job.artifacts.find((artifact) => artifact.id === 'sm8650')?.fallbackArtifactId).toBe('generic')
+  })
+
+  it('does not select a partial SoC-name NPU variant', async () => {
+    const base = createCompatibilityModel().artifacts[0]
+    const generic = {
+      ...base,
+      id: 'generic',
+      path: 'gemma-generic.litertlm',
+      filename: 'gemma-generic.litertlm',
+      format: 'litertlm' as const,
+      runtime: 'litert-lm' as const,
+      backendTargets: ['cpu', 'gpu'] as Array<'cpu' | 'gpu'>,
+    }
+    const npu = { ...generic, id: 'sm8650', backendTargets: ['npu'] as Array<'npu'>, socModels: ['SM8650'] }
+    const model = createCompatibilityModel({
+      formats: ['litertlm'],
+      runtimeCandidates: ['litert-lm'],
+      artifacts: [generic, npu],
+    })
+    const controller = new ModelCatalogController({ createId: () => 'job-generic' })
+
+    const job = await controller.createDownloadJob({
+      model,
+      runtime: 'litert-lm',
+      device: { soc: 'Qualcomm SM86500', npu: 'present', supportedRuntimes: ['litert-lm'], supportedFormats: ['litertlm'] },
+    })
+
+    expect(job.artifacts.map((artifact) => artifact.id)).toEqual(['generic'])
+  })
+
   it('does not queue an unpinned or incomplete artifact by default', async () => {
     const model = createCompatibilityModel({ revisionPinned: false })
     const controller = new ModelCatalogController({ createId: () => 'job-1' })

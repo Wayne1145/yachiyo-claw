@@ -63,6 +63,19 @@ export function resolveAndroidShellBackAction(pathname: string): AndroidShellBac
   return 'minimize'
 }
 
+export function resolveAndroidShellParentPath(pathname: string): string | undefined {
+  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  const providerDetail = normalizedPath.match(/^\/settings\/provider\/[^/]+(?:\/.*)?$/)
+  if (providerDetail) return '/settings/provider'
+
+  const pluginChild = normalizedPath.match(/^\/plugin\/([^/]+)\/.+$/)
+  if (pluginChild?.[1]) return `/plugin/${pluginChild[1]}`
+
+  if (normalizedPath !== '/settings' && normalizedPath.startsWith('/settings/')) return '/settings'
+  if (normalizedPath === '/about') return '/settings'
+  return undefined
+}
+
 export function isAllowedAndroidShellPath(pathname: string): boolean {
   const corePath =
     pathname === '/' ||

@@ -159,13 +159,14 @@ export const ModelItemInDrawer = ({
     <Flex
       component="button"
       key={model.modelId}
+      data-selected={isSelected ? 'true' : undefined}
       align="center"
       gap="xs"
       px="sm"
       py="xs"
       c={isRecommended ? 'chatbox-brand' : 'chatbox-secondary'}
       className={clsx(
-        'outline-none rounded-md border-0',
+        'yachiyo-mobile-model-item outline-none rounded-md border-0',
         isSelected ? SELECTED_BG_CLASS : 'bg-transparent active:bg-chatbox-background-brand-secondary-hover',
       )}
       onClick={() => {

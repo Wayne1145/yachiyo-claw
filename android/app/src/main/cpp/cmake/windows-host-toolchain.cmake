@@ -1,0 +1,5 @@
+get_filename_component(_yachiyo_root "${CMAKE_CURRENT_LIST_DIR}/../../../../../.." ABSOLUTE)
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_C_COMPILER "${_yachiyo_root}/.tools/llvm-mingw/bin/clang.exe")
+set(CMAKE_CXX_COMPILER "${_yachiyo_root}/.tools/llvm-mingw/bin/clang++.exe")
+set(CMAKE_RC_COMPILER "${_yachiyo_root}/.tools/llvm-mingw/bin/llvm-rc.exe")

@@ -56,7 +56,7 @@ export function AgentApprovalDialog() {
               ? t('“继续一次”允许下一次重复；“更换策略”会要求模型改用不同的方法。')
               : t('“此对话允许”仅作用于当前对话，可以在 Agent 设置中重新恢复审批。')}
           </Text>
-          <div className="yachiyo-approval-actions">
+          <AdaptiveModal.Actions>
             <Button variant="default" onClick={() => decide('deny')}>
               {t(isLoopWarning ? '停止' : '拒绝')}
             </Button>
@@ -64,7 +64,7 @@ export function AgentApprovalDialog() {
               {t(isLoopWarning ? '继续一次' : '仅本次允许')}
             </Button>
             <Button onClick={() => decide('conversation')}>{t(isLoopWarning ? '更换策略' : '此对话允许')}</Button>
-          </div>
+          </AdaptiveModal.Actions>
         </Stack>
       )}
     </AdaptiveModal>

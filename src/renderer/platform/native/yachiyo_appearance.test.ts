@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { syncAndroidSystemBars } from './yachiyo_appearance'
+import {
+  getAndroidInteractionState,
+  onAndroidInteractionStateChanged,
+  syncAndroidSystemBars,
+} from './yachiyo_appearance'
 
 const bridgeState = vi.hoisted(() => ({
   platform: 'android',
   native: true,
   plugin: {
     setSystemBars: vi.fn(),
+    getInteractionState: vi.fn(),
+    addListener: vi.fn(),
   },
 }))
 
@@ -26,7 +32,15 @@ describe('YachiyoAppearance bridge', () => {
       applied: true,
       edgeToEdge: true,
       navigationMode: 'gesture',
+      systemGestureInsetsCssPx: { left: 18, right: 18 },
+      touchExplorationEnabled: false,
     })
+    bridgeState.plugin.getInteractionState.mockResolvedValue({
+      navigationMode: 'gesture',
+      systemGestureInsetsCssPx: { left: 18, right: 18 },
+      touchExplorationEnabled: false,
+    })
+    bridgeState.plugin.addListener.mockResolvedValue({ remove: vi.fn() })
   })
 
   it('sends the scheme and a conservative three-button fallback color', async () => {
@@ -51,13 +65,43 @@ describe('YachiyoAppearance bridge', () => {
       applied: false,
       edgeToEdge: false,
       navigationMode: 'not-android',
+      systemGestureInsetsCssPx: { left: 0, right: 0 },
+      touchExplorationEnabled: false,
     })
     expect(bridgeState.plugin.setSystemBars).not.toHaveBeenCalled()
   })
 
+  it('reads the current Android interaction state', async () => {
+    await expect(getAndroidInteractionState()).resolves.toEqual({
+      navigationMode: 'gesture',
+      systemGestureInsetsCssPx: { left: 18, right: 18 },
+      touchExplorationEnabled: false,
+    })
+    expect(bridgeState.plugin.getInteractionState).toHaveBeenCalledOnce()
+  })
+
+  it('subscribes to typed interaction state changes on Android', async () => {
+    const listener = vi.fn()
+    await onAndroidInteractionStateChanged(listener)
+    expect(bridgeState.plugin.addListener).toHaveBeenCalledWith('interactionStateChanged', listener)
+  })
+
+  it('uses a removable no-op interaction subscription outside Android', async () => {
+    bridgeState.platform = 'web'
+    bridgeState.native = false
+    const handle = await onAndroidInteractionStateChanged(vi.fn())
+    await expect(handle.remove()).resolves.toBeUndefined()
+    expect(bridgeState.plugin.addListener).not.toHaveBeenCalled()
+    await expect(getAndroidInteractionState()).resolves.toEqual({
+      navigationMode: 'not-android',
+      systemGestureInsetsCssPx: { left: 0, right: 0 },
+      touchExplorationEnabled: false,
+    })
+  })
+
   it('rejects unsupported navigation color syntax before crossing the bridge', async () => {
     await expect(
-      syncAndroidSystemBars({ scheme: 'light', navigationBarColor: 'rgba(255, 255, 255, .5)' })
+      syncAndroidSystemBars({ scheme: 'light', navigationBarColor: 'rgba(255, 255, 255, .5)' }),
     ).rejects.toThrow('CSS #RRGGBB or #RRGGBBAA')
   })
 })

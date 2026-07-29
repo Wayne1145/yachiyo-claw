@@ -8,6 +8,7 @@ import {
   FileButton,
   Group,
   List,
+  Menu,
   Modal,
   Stack,
   Switch,
@@ -20,6 +21,7 @@ import {
   IconArrowLeft,
   IconBrandGithub,
   IconDownload,
+  IconExternalLink,
   IconPuzzle,
   IconRefresh,
   IconTrash,
@@ -54,6 +56,7 @@ import {
 } from '@/plugins/package-source'
 import { clearPendingPluginInstall, savePendingPluginInstall } from '@/plugins/pending-install'
 import { describePluginUpdate, findMarketplacePluginUpdates } from '@/plugins/plugin-updates'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
 import { errorCodeFromMessage, formatErrorWithCode, getErrorHelp } from './error-help'
 
@@ -103,18 +106,22 @@ function pluginCenterErrorMessage(t: Translate, cause: unknown, fallback: string
 
   const marketplaceHttp = /^plugin_marketplace_http_(\d{3})$/i.exec(message)
   if (marketplaceHttp) {
-    return withCode(marketplaceHttp[1] === '404'
-      ? t('插件市场地址不存在或尚未发布，请稍后重试。')
-      : t('插件市场暂时无法访问（服务器返回 {{status}}），请稍后重试。', { status: marketplaceHttp[1] }))
+    return withCode(
+      marketplaceHttp[1] === '404'
+        ? t('插件市场地址不存在或尚未发布，请稍后重试。')
+        : t('插件市场暂时无法访问（服务器返回 {{status}}），请稍后重试。', { status: marketplaceHttp[1] })
+    )
   }
 
   const downloadHttp = /^(?:(?:plugin_)?download_http|plugin_package_probe_http|github_release_http)_(\d{3})$/i.exec(
-    message,
+    message
   )
   if (downloadHttp) {
-    return withCode(downloadHttp[1] === '404'
-      ? t('插件下载地址不存在或文件已被移除，请检查地址后重试。')
-      : t('插件下载失败（服务器返回 {{status}}），请稍后重试。', { status: downloadHttp[1] }))
+    return withCode(
+      downloadHttp[1] === '404'
+        ? t('插件下载地址不存在或文件已被移除，请检查地址后重试。')
+        : t('插件下载失败（服务器返回 {{status}}），请稍后重试。', { status: downloadHttp[1] })
+    )
   }
 
   const knownMessages: Record<string, string> = {
@@ -315,7 +322,7 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
           </Alert>
           <Text size="sm">
             {t(
-              '此插件将能够读取当前屏幕上的全部文字内容（包括其他应用里的）、点击和滚动界面元素、代你输入文字、启动任意已安装应用，以及按下返回、主屏和最近任务等系统按键。',
+              '此插件将能够读取当前屏幕上的全部文字内容（包括其他应用里的）、点击和滚动界面元素、代你输入文字、启动任意已安装应用，以及按下返回、主屏和最近任务等系统按键。'
             )}
           </Text>
           <Code block>
@@ -455,8 +462,8 @@ export function PluginCenter() {
                 dataBytes: await pluginDataStore.usedBytes(`plugin:${record.manifest.id}:`),
                 health: await pluginHealthStore.get(record.manifest.id),
               },
-            ] as const,
-        ),
+            ] as const
+        )
       ),
     ]).then(([version, entries]) => {
       if (!active) return
@@ -528,7 +535,7 @@ export function PluginCenter() {
 
   const installMarketplaceEntry = async (
     entry: PluginMarketplaceEntry,
-    marketplaceUrl = DEFAULT_PLUGIN_MARKETPLACE_URL,
+    marketplaceUrl = DEFAULT_PLUGIN_MARKETPLACE_URL
   ) => {
     setError(null)
     setNotice(null)
@@ -581,25 +588,25 @@ export function PluginCenter() {
       const catalogUrls = new Set(
         installed
           .filter((record) => record.source === 'marketplace' || record.updateSource?.kind === 'marketplace')
-          .map((record) => record.updateSource?.url ?? DEFAULT_PLUGIN_MARKETPLACE_URL),
+          .map((record) => record.updateSource?.url ?? DEFAULT_PLUGIN_MARKETPLACE_URL)
       )
       const updates = new Map<string, PluginMarketplaceEntry>()
       for (const catalogUrl of catalogUrls) {
         const entries = await loadPluginMarketplace(catalogUrl)
         const records = installed.filter(
-          (record) => (record.updateSource?.url ?? DEFAULT_PLUGIN_MARKETPLACE_URL) === catalogUrl,
+          (record) => (record.updateSource?.url ?? DEFAULT_PLUGIN_MARKETPLACE_URL) === catalogUrl
         )
         for (const [id, entry] of findMarketplacePluginUpdates(records, entries)) updates.set(id, entry)
       }
       setAvailableUpdates(updates)
       const manualCount = installed.filter(
-        (record) => record.source !== 'marketplace' && record.updateSource?.kind !== 'marketplace',
+        (record) => record.source !== 'marketplace' && record.updateSource?.kind !== 'marketplace'
       ).length
       const manualNotice = manualCount > 0 ? t('另有 {{count}} 个非市场插件需单独检查。', { count: manualCount }) : ''
       setNotice(
         updates.size > 0
           ? t('发现 {{count}} 个可用更新。{{manualNotice}}', { count: updates.size, manualNotice })
-          : t('市场插件均为最新版本。{{manualNotice}}', { manualNotice }),
+          : t('市场插件均为最新版本。{{manualNotice}}', { manualNotice })
       )
     } catch (checkError) {
       setError(pluginCenterErrorMessage(t, checkError, t('插件更新检查失败，请稍后重试。')))
@@ -636,7 +643,7 @@ export function PluginCenter() {
         const source = await resolvePluginPackageSource(record.updateSource.url)
         const request = await pluginPackageDownloadRequest(
           source,
-          t('{{name}} 更新检查', { name: record.manifest.displayName }),
+          t('{{name}} 更新检查', { name: record.manifest.displayName })
         )
         savePendingPluginInstall({
           schemaVersion: 1,
@@ -650,7 +657,7 @@ export function PluginCenter() {
         })
         const downloaded = await downloadPluginPackage(
           source,
-          t('{{name}} 更新检查', { name: record.manifest.displayName }),
+          t('{{name}} 更新检查', { name: record.manifest.displayName })
         )
         try {
           await requestInstall(downloaded.bytes, 'https', {
@@ -687,8 +694,8 @@ export function PluginCenter() {
         pluginCenterErrorMessage(
           t,
           uninstallError,
-          t('卸载未完全完成。插件已停止并移除权限，但仍有文件或数据残留，请稍后重试。'),
-        ),
+          t('卸载未完全完成。插件已停止并移除权限，但仍有文件或数据残留，请稍后重试。')
+        )
       )
     } finally {
       setBusy(false)
@@ -773,7 +780,7 @@ export function PluginCenter() {
                 void loadPluginMarketplace()
                   .then(setMarketplace)
                   .catch((marketError) =>
-                    setError(pluginCenterErrorMessage(t, marketError, t('插件市场加载失败，请稍后重试。'))),
+                    setError(pluginCenterErrorMessage(t, marketError, t('插件市场加载失败，请稍后重试。')))
                   )
                   .finally(() => setMarketLoading(false))
               }}
@@ -851,6 +858,158 @@ export function PluginCenter() {
               : { label: t('正常'), color: 'green' }
         const signerLabel = record.signerKeyId?.split(':')[0]?.slice(0, 24)
         const available = availableUpdates.get(record.manifest.id)
+        const detailLabel = String(detailId === record.manifest.id ? t('收起') : t('权限与活动'))
+        const pluginActions: AdaptiveActionDescriptor[] = [
+          {
+            id: 'enabled',
+            label: String(record.enabled === false ? t('启用插件') : t('停用插件')),
+            priority: 95,
+            collapseStrategy: 'keep',
+            renderControl: () => (
+              <Switch
+                size="sm"
+                label={record.enabled === false ? t('已停用') : t('已启用')}
+                checked={record.enabled !== false}
+                onChange={(event) => void setEnabled(record.manifest.id, event.currentTarget.checked)}
+              />
+            ),
+          },
+          ...(record.updateSource || record.source === 'marketplace'
+            ? [
+                {
+                  id: 'check-update',
+                  label: String(available ? t('查看更新') : t('检查更新')),
+                  icon: IconRefresh,
+                  priority: 50,
+                  collapseStrategy: 'icon-then-overflow' as const,
+                  disabled: busy || marketLoading,
+                  renderControl: ({ presentation }: { presentation: 'labelled' | 'icon' }) =>
+                    presentation === 'labelled' ? (
+                      <Button
+                        variant="default"
+                        leftSection={<IconRefresh size={14} />}
+                        loading={busy || marketLoading}
+                        onClick={() => void checkOneUpdate(record)}
+                      >
+                        {available ? t('查看更新') : t('检查更新')}
+                      </Button>
+                    ) : (
+                      <ActionIcon
+                        size={44}
+                        variant="default"
+                        loading={busy || marketLoading}
+                        aria-label={available ? t('查看更新') : t('检查更新')}
+                        onClick={() => void checkOneUpdate(record)}
+                      >
+                        <IconRefresh size={18} />
+                      </ActionIcon>
+                    ),
+                  menuAction: {
+                    disabled: busy || marketLoading,
+                    onSelect: () => void checkOneUpdate(record),
+                  },
+                },
+              ]
+            : []),
+          {
+            id: 'update-package',
+            label: String(t('更新包')),
+            icon: IconUpload,
+            priority: 40,
+            collapseStrategy: 'icon-then-overflow',
+            disabled: busy,
+            renderControl: ({ presentation }) => (
+              <FileButton accept=".zip,application/zip" onChange={(file) => void installFromFile(file)}>
+                {(props) =>
+                  presentation === 'labelled' ? (
+                    <Button variant="default" leftSection={<IconUpload size={14} />} loading={busy} {...props}>
+                      {t('更新包')}
+                    </Button>
+                  ) : (
+                    <ActionIcon size={44} variant="default" loading={busy} aria-label={t('更新包')} {...props}>
+                      <IconUpload size={18} />
+                    </ActionIcon>
+                  )
+                }
+              </FileButton>
+            ),
+            menuAction: {
+              render: ({ closeMenu }) => (
+                <FileButton
+                  accept=".zip,application/zip"
+                  onChange={(file) => {
+                    closeMenu()
+                    void installFromFile(file)
+                  }}
+                >
+                  {(props) => (
+                    <Menu.Item leftSection={<IconUpload size={18} />} disabled={busy} {...props}>
+                      {t('更新包')}
+                    </Menu.Item>
+                  )}
+                </FileButton>
+              ),
+            },
+          },
+          {
+            id: 'details',
+            label: detailLabel,
+            icon: IconPuzzle,
+            priority: 30,
+            collapseStrategy: 'overflow',
+            renderControl: () => (
+              <Button
+                variant="default"
+                onClick={() => setDetailId(detailId === record.manifest.id ? null : record.manifest.id)}
+              >
+                {detailLabel}
+              </Button>
+            ),
+            menuAction: {
+              onSelect: () => setDetailId(detailId === record.manifest.id ? null : record.manifest.id),
+            },
+          },
+          {
+            id: 'open',
+            label: String(t('打开')),
+            icon: IconExternalLink,
+            priority: 100,
+            collapseStrategy: 'keep',
+            disabled: record.enabled === false || !compatible,
+            renderControl: () => (
+              <Button
+                disabled={record.enabled === false || !compatible}
+                leftSection={<IconExternalLink size={16} />}
+                onClick={() =>
+                  void router.navigate({ to: '/plugin/$pluginId', params: { pluginId: record.manifest.id } })
+                }
+              >
+                {t('打开')}
+              </Button>
+            ),
+          },
+          {
+            id: 'uninstall',
+            label: String(t('卸载插件')),
+            icon: IconTrash,
+            priority: 10,
+            collapseStrategy: 'overflow',
+            renderControl: () => (
+              <ActionIcon
+                size={44}
+                color="red"
+                variant="subtle"
+                aria-label={t('卸载插件 {{name}}', { name: record.manifest.displayName })}
+                onClick={() => setUninstallTarget(record)}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            ),
+            menuAction: {
+              onSelect: () => setUninstallTarget(record),
+            },
+          },
+        ]
         return (
           <section key={record.manifest.id} className="local-model-queue-row">
             <Stack gap="sm">
@@ -889,63 +1048,71 @@ export function PluginCenter() {
                   </Badge>
                 </Group>
               </Group>
-              <Group gap="xs" justify="flex-end" wrap="wrap">
-                <Switch
-                  size="sm"
-                  label={record.enabled === false ? t('已停用') : t('已启用')}
-                  checked={record.enabled !== false}
-                  onChange={(event) => void setEnabled(record.manifest.id, event.currentTarget.checked)}
+              {inAndroidAppShell ? (
+                <AdaptiveActionCluster
+                  className="yachiyo-plugin-card-actions"
+                  ariaLabel={`${record.manifest.displayName} ${String(t('插件操作'))}`}
+                  actions={pluginActions}
                 />
-                {(record.updateSource || record.source === 'marketplace') && (
-                  <Button
-                    size="compact-sm"
-                    variant="default"
-                    leftSection={<IconRefresh size={14} />}
-                    loading={busy || marketLoading}
-                    onClick={() => void checkOneUpdate(record)}
-                  >
-                    {available ? t('查看更新') : t('检查更新')}
-                  </Button>
-                )}
-                <FileButton accept=".zip,application/zip" onChange={(file) => void installFromFile(file)}>
-                  {(props) => (
+              ) : (
+                <Group gap="xs" justify="flex-end" wrap="wrap">
+                  <Switch
+                    size="sm"
+                    label={record.enabled === false ? t('已停用') : t('已启用')}
+                    checked={record.enabled !== false}
+                    onChange={(event) => void setEnabled(record.manifest.id, event.currentTarget.checked)}
+                  />
+                  {(record.updateSource || record.source === 'marketplace') && (
                     <Button
                       size="compact-sm"
                       variant="default"
-                      leftSection={<IconUpload size={14} />}
-                      loading={busy}
-                      {...props}
+                      leftSection={<IconRefresh size={14} />}
+                      loading={busy || marketLoading}
+                      onClick={() => void checkOneUpdate(record)}
                     >
-                      {t('更新包')}
+                      {available ? t('查看更新') : t('检查更新')}
                     </Button>
                   )}
-                </FileButton>
-                <Button
-                  size="compact-sm"
-                  variant="default"
-                  onClick={() => setDetailId(detailId === record.manifest.id ? null : record.manifest.id)}
-                >
-                  {detailId === record.manifest.id ? t('收起') : t('权限与活动')}
-                </Button>
-                <Button
-                  disabled={record.enabled === false || !compatible}
-                  size="compact-sm"
-                  variant="default"
-                  onClick={() =>
-                    void router.navigate({ to: '/plugin/$pluginId', params: { pluginId: record.manifest.id } })
-                  }
-                >
-                  {t('打开')}
-                </Button>
-                <ActionIcon
-                  color="red"
-                  variant="subtle"
-                  aria-label={t('卸载插件 {{name}}', { name: record.manifest.displayName })}
-                  onClick={() => setUninstallTarget(record)}
-                >
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Group>
+                  <FileButton accept=".zip,application/zip" onChange={(file) => void installFromFile(file)}>
+                    {(props) => (
+                      <Button
+                        size="compact-sm"
+                        variant="default"
+                        leftSection={<IconUpload size={14} />}
+                        loading={busy}
+                        {...props}
+                      >
+                        {t('更新包')}
+                      </Button>
+                    )}
+                  </FileButton>
+                  <Button
+                    size="compact-sm"
+                    variant="default"
+                    onClick={() => setDetailId(detailId === record.manifest.id ? null : record.manifest.id)}
+                  >
+                    {detailLabel}
+                  </Button>
+                  <Button
+                    disabled={record.enabled === false || !compatible}
+                    size="compact-sm"
+                    variant="default"
+                    onClick={() =>
+                      void router.navigate({ to: '/plugin/$pluginId', params: { pluginId: record.manifest.id } })
+                    }
+                  >
+                    {t('打开')}
+                  </Button>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    aria-label={t('卸载插件 {{name}}', { name: record.manifest.displayName })}
+                    onClick={() => setUninstallTarget(record)}
+                  >
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Group>
+              )}
             </Stack>
             {detailId === record.manifest.id && <PluginDetail record={record} onChanged={refresh} />}
           </section>
@@ -1044,10 +1211,10 @@ export function PluginCenter() {
               <Alert color="yellow" title={t('无法验证发布者')}>
                 {pendingConsent?.verified.source === 'sideload'
                   ? t(
-                      '无法验证这个插件来自它声称的作者，也无法确认它在传递过程中没有被替换。请只安装你能独立核对来源的文件。',
+                      '无法验证这个插件来自它声称的作者，也无法确认它在传递过程中没有被替换。请只安装你能独立核对来源的文件。'
                     )
                   : t(
-                      '无法验证这个插件来自它声称的作者，也无法确认它在下载过程中没有被替换。HTTPS 只保护连接，不证明作者身份。',
+                      '无法验证这个插件来自它声称的作者，也无法确认它在下载过程中没有被替换。HTTPS 只保护连接，不证明作者身份。'
                     )}
               </Alert>
             )}
@@ -1076,7 +1243,7 @@ export function PluginCenter() {
                           setGranted((previous) =>
                             checked
                               ? [...previous, capability.name]
-                              : previous.filter((name) => name !== capability.name),
+                              : previous.filter((name) => name !== capability.name)
                           )
                         }}
                       />
@@ -1113,7 +1280,7 @@ export function PluginCenter() {
                   setBusy(true)
                   void confirmInstall(granted)
                     .catch((confirmError) =>
-                      setError(pluginCenterErrorMessage(t, confirmError, t('插件安装失败，请检查插件包后重试。'))),
+                      setError(pluginCenterErrorMessage(t, confirmError, t('插件安装失败，请检查插件包后重试。')))
                     )
                     .finally(() => setBusy(false))
                 }}

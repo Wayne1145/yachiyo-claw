@@ -118,6 +118,9 @@ import KnowledgeBaseMenu from '../knowledge-base/KnowledgeBaseMenu'
 import ModelSelector from '../ModelSelector'
 import MCPMenu from '../mcp/MCPMenu'
 import { CharacterSelector } from '../yachiyo/CharacterSelector'
+import { useInAndroidAppShell } from '../yachiyo/AndroidAppShellContext'
+import { useAndroidRetainedState } from '../yachiyo/android-retained-state'
+import { resolveMobileComposerPrimaryMode } from './mobile-primary-action'
 import { FileMiniCard, ImageMiniCard, LinkMiniCard } from './Attachments'
 import { ImageUploadInput } from './ImageUploadInput'
 import {
@@ -251,6 +254,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const { t } = useTranslation()
     const navigate = useNavigate()
     const isSmallScreen = useIsSmallScreen()
+    const inAndroidAppShell = useInAndroidAppShell()
     const toolbarIconSize = isSmallScreen ? 22 : 18
     const { height: viewportHeight } = useViewportSize()
     const pasteLongTextAsAFile = useSettingsStore((state) => state.pasteLongTextAsAFile)
@@ -333,9 +337,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
 
     const { session: currentSession } = useSession(sessionId || null)
     const [autoSpeak, setAutoSpeak] = useState(() => localStorage.getItem('yachiyo.chat.auto-speak') === 'true')
+    const [mobileToolsOpened, setMobileToolsOpened] = useState(false)
     const [speechRecording, setSpeechRecording] = useState(false)
     const [speechProcessing, setSpeechProcessing] = useState(false)
-    const [liquidToolsExpanded, setLiquidToolsExpanded] = useState(false)
     const speechInFlightRef = useRef(false)
     const speechAttemptRef = useRef(0)
     const spokenAssistantRef = useRef<string>()
@@ -448,6 +452,13 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const flushRef = useRef(flushPreConstructedMessage)
     flushRef.current = flushPreConstructedMessage
 
+    useEffect(
+      () => () => {
+        flushRef.current()
+      },
+      [],
+    )
+
     // When non-text deps change (pictures, attachments, links), flush immediately
     useEffect(() => {
       flushRef.current()
@@ -505,7 +516,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       () => !(hasTextContent || links?.length || attachments?.length || pictureKeys?.length),
       [hasTextContent, links, attachments, pictureKeys],
     )
-
     const { providers } = useProviders()
     const preprocessedSessionAttachmentIds = useMemo(
       () =>
@@ -642,6 +652,18 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       if (!currentSessionId || isNewSession) return false
       return compactionUIStateMap[currentSessionId]?.status === 'running'
     }, [compactionUIStateMap, currentSessionId, isNewSession])
+    const submitBlocked =
+      isPreprocessing || isSubmitting || isCompactionRunning || hasPreprocessErrors || hasBlockedSessionRagFiles
+    const mobilePrimaryMode = resolveMobileComposerPrimaryMode({
+      generating,
+      speechRecording,
+      speechProcessing,
+      hasContent: !disableSubmit,
+    })
+    const mobilePrimaryDisabled =
+      mobilePrimaryMode === 'processing' ||
+      (mobilePrimaryMode === 'send' && submitBlocked) ||
+      (mobilePrimaryMode === 'speech' && (isSubmitting || isCompactionRunning))
 
     const autoCompactionEnabled = useMemo(() => {
       if (!currentSession) return globalSettings.autoCompaction ?? true
@@ -886,6 +908,16 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       }
     }
     handleSubmitRef.current = handleSubmit
+
+    const handleMobilePrimaryAction = () => {
+      if (mobilePrimaryMode === 'stop') {
+        onStopGenerating?.()
+      } else if (mobilePrimaryMode === 'recording' || mobilePrimaryMode === 'speech') {
+        toggleVoiceInput()
+      } else if (mobilePrimaryMode === 'send') {
+        void handleSubmit()
+      }
+    }
 
     const onKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1335,7 +1367,13 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     // Show deprecated notice for legacy picture sessions
     if (sessionType === 'picture') {
       return (
-        <Box className="shrink-0" pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID}>
+        <Box
+          className="yachiyo-mobile-input-box-root shrink-0"
+          pt={0}
+          pb={isSmallScreen ? 'md' : 'sm'}
+          px="sm"
+          id={dom.InputBoxID}
+        >
           <Stack
             className={cn('rounded-2xl bg-chatbox-background-secondary', widthFull ? 'w-full' : 'max-w-4xl mx-auto')}
             gap="xs"
@@ -1354,86 +1392,261 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     }
 
     return (
-      <Box className="shrink-0" pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID} {...getRootProps()}>
+      <Box
+        className="yachiyo-mobile-input-box-root shrink-0"
+        pt={0}
+        pb={isSmallScreen ? 'md' : 'sm'}
+        px="sm"
+        id={dom.InputBoxID}
+        {...getRootProps()}
+      >
         <input className="hidden" {...getInputProps()} />
         <Stack className={cn(widthFull ? 'w-full' : 'max-w-4xl mx-auto')} gap="xs">
           {currentSessionId && <CompactionStatus sessionId={currentSessionId} />}
           <Stack
             className={cn(
               'yachiyo-chat-composer-surface rounded-md bg-chatbox-background-secondary justify-between px-3 py-2',
+              isSmallScreen && 'yachiyo-mobile-chat-composer',
               !isSmallScreen && 'min-h-[92px]',
             )}
             style={{ border: '1px solid var(--chatbox-border-primary)' }}
             gap="xs"
           >
-            {/* Input Row */}
-            <Flex align="flex-end" gap={4}>
-              <MessageInputField
-                ref={messageInputFieldRef}
-                isNewSession={isNewSession}
-                isSmallScreen={isSmallScreen}
-                viewportHeight={viewportHeight}
-                isReadOnly={isCompactionRunning}
-                placeholder={t('Type your question here...') || ''}
-                autoFocus={!isSmallScreen}
-                onValueChange={onMessageInputValueChange}
-                onUserInput={onUserInput}
-                onKeyDown={onKeyDown}
-                onPaste={onPaste}
-              />
+            <ImageUploadInput ref={pictureInputRef} onChange={onFileInputChange} />
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={onFileInputChange}
+              multiple
+              accept={getFileAcceptString()}
+            />
 
-              {/* Send Button */}
-              <ActionIcon
-                disabled={
-                  (disableSubmit ||
-                    isPreprocessing ||
-                    isSubmitting ||
-                    isCompactionRunning ||
-                    hasPreprocessErrors ||
-                    hasBlockedSessionRagFiles) &&
-                  !generating
-                }
-                size={32}
-                variant="filled"
-                color={generating ? 'dark' : 'chatbox-brand'}
-                radius="xl"
-                onClick={generating ? onStopGenerating : () => handleSubmit()}
-                className={cn(
-                  'shrink-0 mb-1',
-                  !generating &&
-                    (disableSubmit ||
-                      isPreprocessing ||
-                      isSubmitting ||
-                      isCompactionRunning ||
-                      hasPreprocessErrors ||
-                      hasBlockedSessionRagFiles) &&
-                    'disabled:!opacity-100 !text-white',
-                )}
-                style={
-                  !generating &&
-                  (disableSubmit ||
-                    isPreprocessing ||
-                    isSubmitting ||
-                    isCompactionRunning ||
-                    hasPreprocessErrors ||
-                    hasBlockedSessionRagFiles)
-                    ? { backgroundColor: 'rgba(222, 226, 230, 1)' }
-                    : undefined
-                }
-              >
-                {generating ? (
-                  <ScalableIcon icon={IconPlayerStopFilled} size={16} />
-                ) : (
-                  <ScalableIcon icon={IconArrowUp} size={16} />
-                )}
-              </ActionIcon>
-            </Flex>
+            {isSmallScreen ? (
+              <Flex className="yachiyo-mobile-composer-row" align="flex-end" gap={2}>
+                <Menu
+                  trigger="click"
+                  position="top-start"
+                  shadow="md"
+                  keepMounted
+                  opened={mobileToolsOpened}
+                  onChange={setMobileToolsOpened}
+                  closeOnItemClick={false}
+                  transitionProps={{ transition: 'pop', duration: 160 }}
+                >
+                  <Menu.Target>
+                    <ActionIcon className="yachiyo-composer-add" variant="subtle" aria-label={t('更多工具')}>
+                      <IconPlus size={24} stroke={1.8} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown className="yachiyo-composer-menu yachiyo-composer-popover">
+                    <Menu.Item closeMenuOnClick leftSection={<IconPhoto size={18} />} onClick={onImageUploadClick}>
+                      {t('Attach Image')}
+                    </Menu.Item>
+                    <Menu.Item closeMenuOnClick leftSection={<IconFolder size={18} />} onClick={onFileUploadClick}>
+                      {t('Select File')}
+                    </Menu.Item>
+                    <Menu.Item closeMenuOnClick leftSection={<IconLink size={18} />} onClick={handleAttachLink}>
+                      {t('Attach Link')}
+                    </Menu.Item>
+                    <Menu.Divider />
+                    {enabledFeatureIds.has('web-search') && (
+                      <Menu.Item
+                        closeMenuOnClick
+                        leftSection={<IconWorldWww size={18} />}
+                        rightSection={webBrowsingMode ? t('已开启') : undefined}
+                        onClick={() => {
+                          setWebBrowsingMode(!webBrowsingMode)
+                          dom.focusMessageInput()
+                        }}
+                      >
+                        {t('Web Search')}
+                      </Menu.Item>
+                    )}
+                    {enabledFeatureIds.has('mcp') && (
+                      <MCPMenu>
+                        {(enabledTools) => (
+                          <Menu.Item
+                            leftSection={<IconHammer size={18} />}
+                            rightSection={enabledTools || undefined}
+                            onClick={() => setMobileToolsOpened(false)}
+                          >
+                            MCP
+                          </Menu.Item>
+                        )}
+                      </MCPMenu>
+                    )}
+                    {platform.type === 'mobile' && (
+                      <>
+                        <Menu.Divider />
+                        <CharacterSelector sessionId={sessionId} onOpen={() => setMobileToolsOpened(false)} />
+                      </>
+                    )}
+                    <Menu.Divider />
+                    <Menu.Item
+                      closeMenuOnClick
+                      leftSection={autoSpeak ? <IconVolume size={18} /> : <IconVolumeOff size={18} />}
+                      rightSection={autoSpeak ? t('已开启') : undefined}
+                      onClick={() =>
+                        setAutoSpeak((current) => {
+                          localStorage.setItem('yachiyo.chat.auto-speak', String(!current))
+                          return !current
+                        })
+                      }
+                    >
+                      {t('自动播放回答')}
+                    </Menu.Item>
+                    <TokenCountMenu
+                      currentInputTokens={currentInputTokens}
+                      contextTokens={contextTokens}
+                      totalTokens={totalTokens}
+                      isCalculating={isCalculating}
+                      pendingTasks={pendingTasks}
+                      totalContextMessages={messageCount}
+                      contextWindow={effectiveContextWindow ?? undefined}
+                      currentMessageCount={currentContextMessageIds?.length ?? 0}
+                      maxContextMessageCount={currentSessionMergedSettings?.maxContextMessageCount}
+                      onCompressClick={sessionId && !isNewSession ? () => setShowCompressionModal(true) : undefined}
+                      autoCompactionEnabled={autoCompactionEnabled}
+                      isCompacting={isCompacting}
+                      contextWindowKnown={contextWindowKnown}
+                      onAutoCompactionChange={sessionId && !isNewSession ? handleAutoCompactionChange : undefined}
+                    >
+                      <Menu.Item
+                        leftSection={<ScalableIcon icon={IconArrowUp} size={16} />}
+                        onClick={() => setMobileToolsOpened(false)}
+                      >
+                        {t('Estimated Token Usage')} · {isCalculating ? '~' : ''}
+                        {formatNumber(totalTokens)}
+                      </Menu.Item>
+                    </TokenCountMenu>
+                    <Menu.Item
+                      closeMenuOnClick
+                      leftSection={<IconSettings size={18} />}
+                      onClick={onClickSessionSettings}
+                    >
+                      {t('Conversation Settings')}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+
+                <MessageInputField
+                  ref={messageInputFieldRef}
+                  isNewSession={isNewSession}
+                  retainedStateKey={inAndroidAppShell ? `input-box:${currentSessionId || 'new'}` : undefined}
+                  isSmallScreen
+                  viewportHeight={viewportHeight}
+                  isReadOnly={isCompactionRunning}
+                  placeholder={t('询问八千代…') || ''}
+                  autoFocus={false}
+                  onValueChange={onMessageInputValueChange}
+                  onUserInput={onUserInput}
+                  onKeyDown={onKeyDown}
+                  onPaste={onPaste}
+                />
+
+                <ModelSelector
+                  onSelect={onSelectModel}
+                  selectedProviderId={model?.provider}
+                  selectedModelId={model?.modelId}
+                  position="top-end"
+                >
+                  <button
+                    type="button"
+                    className="yachiyo-composer-model"
+                    aria-label={`${t('Select Model')}：${modelSelectorDisplayText}`}
+                    title={modelSelectorDisplayText}
+                  >
+                    {model ? <ProviderImageIcon size={18} provider={model.provider} /> : <IconAlertCircle size={18} />}
+                    <span>{modelSelectorDisplayText}</span>
+                    <IconChevronRight aria-hidden size={13} stroke={2} />
+                  </button>
+                </ModelSelector>
+
+                <ReasoningStrengthControl
+                  settings={currentSessionMergedSettings}
+                  onChange={(value) => void handleReasoningStrengthChange(value)}
+                  compact
+                  display="label"
+                />
+
+                <ActionIcon
+                  className="yachiyo-composer-primary"
+                  data-mode={mobilePrimaryMode}
+                  disabled={mobilePrimaryDisabled}
+                  variant="filled"
+                  radius="xl"
+                  aria-label={t(
+                    mobilePrimaryMode === 'stop'
+                      ? '停止生成'
+                      : mobilePrimaryMode === 'recording'
+                        ? '停止录音'
+                        : mobilePrimaryMode === 'processing'
+                          ? '正在识别'
+                          : mobilePrimaryMode === 'send'
+                            ? '发送消息'
+                            : '开始语音输入',
+                  )}
+                  onClick={handleMobilePrimaryAction}
+                >
+                  {mobilePrimaryMode === 'stop' || mobilePrimaryMode === 'recording' ? (
+                    <ScalableIcon icon={IconPlayerStopFilled} size={16} />
+                  ) : mobilePrimaryMode === 'processing' ? (
+                    <Loader size={17} color="currentColor" />
+                  ) : mobilePrimaryMode === 'send' ? (
+                    <ScalableIcon icon={IconArrowUp} size={18} />
+                  ) : (
+                    <IconMicrophone size={19} stroke={2} />
+                  )}
+                </ActionIcon>
+              </Flex>
+            ) : (
+              <Flex align="flex-end" gap={4}>
+                <MessageInputField
+                  ref={messageInputFieldRef}
+                  isNewSession={isNewSession}
+                  retainedStateKey={inAndroidAppShell ? `input-box:${currentSessionId || 'new'}` : undefined}
+                  isSmallScreen={false}
+                  viewportHeight={viewportHeight}
+                  isReadOnly={isCompactionRunning}
+                  placeholder={t('Type your question here...') || ''}
+                  autoFocus
+                  onValueChange={onMessageInputValueChange}
+                  onUserInput={onUserInput}
+                  onKeyDown={onKeyDown}
+                  onPaste={onPaste}
+                />
+                <ActionIcon
+                  disabled={(disableSubmit || submitBlocked) && !generating}
+                  size={32}
+                  variant="filled"
+                  color={generating ? 'dark' : 'chatbox-brand'}
+                  radius="xl"
+                  onClick={generating ? onStopGenerating : () => handleSubmit()}
+                  className={cn(
+                    'shrink-0 mb-1',
+                    !generating && (disableSubmit || submitBlocked) && 'disabled:!opacity-100 !text-white',
+                  )}
+                  style={
+                    !generating && (disableSubmit || submitBlocked)
+                      ? { backgroundColor: 'rgba(222, 226, 230, 1)' }
+                      : undefined
+                  }
+                >
+                  {generating ? (
+                    <ScalableIcon icon={IconPlayerStopFilled} size={16} />
+                  ) : (
+                    <ScalableIcon icon={IconArrowUp} size={16} />
+                  )}
+                </ActionIcon>
+              </Flex>
+            )}
 
             {(!!pictureKeys.length || !!attachments.length || !!links.length) && (
               <Flex
                 align="center"
                 wrap="wrap"
-                className="max-h-[30vh] overflow-y-auto"
+                className="yachiyo-composer-attachments max-h-[30vh] overflow-y-auto"
                 onClick={() => dom.focusMessageInput()}
               >
                 {showSessionRetrievalToolWarning && (
@@ -1636,96 +1849,11 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
 
             <ContextUsageBar used={totalTokens} limit={effectiveContextWindow} />
 
-            {/* Toolbar Row */}
-            <Flex
-              align="center"
-              gap={isSmallScreen ? 4 : 0}
-              wrap={isSmallScreen ? 'wrap' : 'nowrap'}
-              className="shrink-0 w-full"
-              justify="space-between"
-            >
-              {/* Hidden file inputs */}
-              <ImageUploadInput ref={pictureInputRef} onChange={onFileInputChange} />
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={onFileInputChange}
-                multiple
-                accept={getFileAcceptString()}
-              />
-
-              {/* Left Group: Tool Buttons */}
-              <Flex
-                align="center"
-                gap={0}
-                className={isSmallScreen ? 'order-2 w-full min-w-0 overflow-x-auto yachiyo-chat-toolbar-scroll' : ''}
-              >
-                {platform.type === 'mobile' && (
-                  <>
-                    <Tooltip
-                      label={t(speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '语音输入')}
-                      position="top"
-                      withArrow
-                    >
-                      <UnstyledButton
-                        aria-label={t(speechRecording ? '停止录音' : speechProcessing ? '正在识别' : '开始语音输入')}
-                        aria-pressed={speechRecording}
-                        className="yachiyo-chat-voice-button flex items-center px-2 py-1 rounded-lg"
-                        data-recording={speechRecording ? 'true' : 'false'}
-                        data-processing={speechProcessing ? 'true' : 'false'}
-                        disabled={speechProcessing}
-                        onClick={toggleVoiceInput}
-                      >
-                        <IconMicrophone size={toolbarIconSize} stroke={speechRecording ? 2.5 : 2} />
-                      </UnstyledButton>
-                    </Tooltip>
-                    <Tooltip label={t('自动播放回答')} position="top" withArrow>
-                      <UnstyledButton
-                        aria-label={t('自动播放回答')}
-                        className="flex items-center px-2 py-1 rounded-lg"
-                        onClick={() =>
-                          setAutoSpeak((current) => {
-                            localStorage.setItem('yachiyo.chat.auto-speak', String(!current))
-                            return !current
-                          })
-                        }
-                      >
-                        {autoSpeak ? <IconVolume size={toolbarIconSize} /> : <IconVolumeOff size={toolbarIconSize} />}
-                      </UnstyledButton>
-                    </Tooltip>
-                  </>
-                )}
-                {platform.type === 'mobile' && (
-                  <Tooltip
-                    label={t(liquidToolsExpanded ? '收起更多工具' : '展开更多工具')}
-                    position="top"
-                    withArrow
-                  >
-                    <UnstyledButton
-                      className="yachiyo-liquid-tools-toggle"
-                      data-expanded={liquidToolsExpanded ? 'true' : 'false'}
-                      aria-label={t(liquidToolsExpanded ? '收起更多工具' : '展开更多工具')}
-                      aria-expanded={liquidToolsExpanded}
-                      onClick={() => setLiquidToolsExpanded((value) => !value)}
-                    >
-                      <IconChevronRight size={toolbarIconSize} strokeWidth={1.8} />
-                    </UnstyledButton>
-                  </Tooltip>
-                )}
-                <Flex
-                  className="yachiyo-secondary-tools"
-                  data-expanded={liquidToolsExpanded ? 'true' : 'false'}
-                  align="center"
-                  gap={0}
-                >
-                  {platform.type === 'mobile' && (
-                    <ReasoningStrengthControl
-                      settings={currentSessionMergedSettings}
-                      onChange={(value) => void handleReasoningStrengthChange(value)}
-                      compact
-                    />
-                  )}
+            {/* Desktop and wide-screen toolbar. Small Android screens use the capsule row above. */}
+            {!isSmallScreen && (
+              <Flex align="center" gap={0} wrap="nowrap" className="shrink-0 w-full" justify="space-between">
+                {/* Left Group: Tool Buttons */}
+                <Flex align="center" gap={0}>
                   <AttachmentMenu
                     onImageUploadClick={onImageUploadClick}
                     onFileUploadClick={onFileUploadClick}
@@ -1734,234 +1862,202 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                   />
 
                   {enabledFeatureIds.has('mcp') && (
-                  <MCPMenu>
-                    {(enabledTools) => (
+                    <MCPMenu>
+                      {(enabledTools) => (
+                        <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
+                          <IconHammer
+                            size={toolbarIconSize}
+                            strokeWidth={1.8}
+                            className={
+                              enabledTools > 0
+                                ? 'text-[var(--chatbox-tint-brand)]'
+                                : 'text-[var(--chatbox-tint-secondary)]'
+                            }
+                          />
+                          {enabledTools > 0 && (
+                            <Text size="xs" className="text-[var(--chatbox-tint-brand)]">
+                              {enabledTools}
+                            </Text>
+                          )}
+                        </UnstyledButton>
+                      )}
+                    </MCPMenu>
+                  )}
+
+                  {enabledFeatureIds.has('knowledge-base') && !isSmallScreen && (
+                    <KnowledgeBaseMenu currentKnowledgeBaseId={knowledgeBase?.id} onSelect={handleKnowledgeBaseSelect}>
                       <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
-                        <IconHammer
+                        <IconVocabulary
                           size={toolbarIconSize}
                           strokeWidth={1.8}
                           className={
-                            enabledTools > 0
+                            knowledgeBase ? 'text-[var(--chatbox-tint-brand)]' : 'text-[var(--chatbox-tint-secondary)]'
+                          }
+                        />
+                      </UnstyledButton>
+                    </KnowledgeBaseMenu>
+                  )}
+
+                  {enabledFeatureIds.has('web-search') && (
+                    <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
+                      <UnstyledButton
+                        onClick={() => {
+                          setWebBrowsingMode(!webBrowsingMode)
+                          dom.focusMessageInput()
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors"
+                      >
+                        <IconWorldWww
+                          size={toolbarIconSize}
+                          strokeWidth={1.8}
+                          className={
+                            webBrowsingMode
                               ? 'text-[var(--chatbox-tint-brand)]'
                               : 'text-[var(--chatbox-tint-secondary)]'
                           }
                         />
-                        {enabledTools > 0 && (
-                          <Text size="xs" className="text-[var(--chatbox-tint-brand)]">
-                            {enabledTools}
-                          </Text>
-                        )}
-                      </UnstyledButton>
-                    )}
-                  </MCPMenu>
-                  )}
-
-                  {enabledFeatureIds.has('knowledge-base') && !isSmallScreen && (
-                  <KnowledgeBaseMenu currentKnowledgeBaseId={knowledgeBase?.id} onSelect={handleKnowledgeBaseSelect}>
-                    <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
-                      <IconVocabulary
-                        size={toolbarIconSize}
-                        strokeWidth={1.8}
-                        className={
-                          knowledgeBase ? 'text-[var(--chatbox-tint-brand)]' : 'text-[var(--chatbox-tint-secondary)]'
-                        }
-                      />
-                    </UnstyledButton>
-                  </KnowledgeBaseMenu>
-                  )}
-
-                  {enabledFeatureIds.has('web-search') && <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
-                  <UnstyledButton
-                    onClick={() => {
-                      setWebBrowsingMode(!webBrowsingMode)
-                      dom.focusMessageInput()
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors"
-                  >
-                    <IconWorldWww
-                      size={toolbarIconSize}
-                      strokeWidth={1.8}
-                      className={
-                        webBrowsingMode ? 'text-[var(--chatbox-tint-brand)]' : 'text-[var(--chatbox-tint-secondary)]'
-                      }
-                    />
-                  </UnstyledButton>
-                  </Tooltip>}
-                </Flex>
-
-                {!isSmallScreen &&
-                  (showRollbackThreadButton ? (
-                    <Tooltip label={t('Rollback Thread')} position="top" withArrow>
-                      <UnstyledButton
-                        onClick={rollbackThread}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors"
-                      >
-                        <IconArrowBackUp
-                          size={toolbarIconSize}
-                          strokeWidth={1.8}
-                          className="text-[var(--chatbox-tint-secondary)]"
-                        />
                       </UnstyledButton>
                     </Tooltip>
-                  ) : (
-                    <Tooltip label={t('New Thread')} position="top" withArrow>
+                  )}
+                  {!isSmallScreen &&
+                    (showRollbackThreadButton ? (
+                      <Tooltip label={t('Rollback Thread')} position="top" withArrow>
+                        <UnstyledButton
+                          onClick={rollbackThread}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors"
+                        >
+                          <IconArrowBackUp
+                            size={toolbarIconSize}
+                            strokeWidth={1.8}
+                            className="text-[var(--chatbox-tint-secondary)]"
+                          />
+                        </UnstyledButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip label={t('New Thread')} position="top" withArrow>
+                        <UnstyledButton
+                          onClick={startNewThread}
+                          disabled={!onStartNewThread}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors disabled:opacity-50"
+                        >
+                          <IconFilePencil
+                            size={toolbarIconSize}
+                            strokeWidth={1.8}
+                            className="text-[var(--chatbox-tint-secondary)]"
+                          />
+                        </UnstyledButton>
+                      </Tooltip>
+                    ))}
+
+                  {!isSmallScreen && (
+                    <Tooltip label={t('Conversation Settings')} position="top" withArrow>
                       <UnstyledButton
-                        onClick={startNewThread}
-                        disabled={!onStartNewThread}
+                        onClick={onClickSessionSettings}
+                        disabled={!onClickSessionSettings}
                         className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors disabled:opacity-50"
                       >
-                        <IconFilePencil
+                        <IconAdjustmentsHorizontal
                           size={toolbarIconSize}
                           strokeWidth={1.8}
                           className="text-[var(--chatbox-tint-secondary)]"
                         />
                       </UnstyledButton>
                     </Tooltip>
-                  ))}
+                  )}
+                </Flex>
 
-                {!isSmallScreen && (
-                  <Tooltip label={t('Conversation Settings')} position="top" withArrow>
-                    <UnstyledButton
-                      onClick={onClickSessionSettings}
-                      disabled={!onClickSessionSettings}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors disabled:opacity-50"
-                    >
-                      <IconAdjustmentsHorizontal
-                        size={toolbarIconSize}
-                        strokeWidth={1.8}
-                        className="text-[var(--chatbox-tint-secondary)]"
-                      />
-                    </UnstyledButton>
-                  </Tooltip>
-                )}
-
-                {/* Mobile: Settings menu */}
-                {isSmallScreen && (
-                  <Menu
-                    trigger="click"
-                    openDelay={100}
-                    closeDelay={100}
-                    keepMounted
-                    transitionProps={{
-                      transition: 'pop',
-                      duration: 200,
-                    }}
-                  >
-                    <Menu.Target>
-                      <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
-                        <IconSettings
-                          size={toolbarIconSize}
-                          strokeWidth={1.8}
-                          className="text-[var(--chatbox-tint-secondary)]"
-                        />
-                      </UnstyledButton>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item leftSection={<ScalableIcon icon={IconPlus} size={16} />} onClick={startNewThread}>
-                        {t('New Thread')}
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<ScalableIcon icon={IconAdjustmentsHorizontal} size={16} />}
-                        onClick={onClickSessionSettings}
-                      >
-                        {t('Conversation Settings')}
-                      </Menu.Item>
-                    </Menu.Dropdown>
-                  </Menu>
-                )}
-              </Flex>
-
-              {/* Right Group: Token Count + Model Selector */}
-              <Flex
-                align="center"
-                gap={0}
-                className={isSmallScreen ? 'order-1 w-full min-w-0 justify-end' : 'min-w-0 ml-auto'}
-              >
-                {platform.type === 'mobile' && <CharacterSelector sessionId={sessionId} />}
-                <TokenCountMenu
-                  currentInputTokens={currentInputTokens}
-                  contextTokens={contextTokens}
-                  totalTokens={totalTokens}
-                  isCalculating={isCalculating}
-                  pendingTasks={pendingTasks}
-                  totalContextMessages={messageCount}
-                  contextWindow={effectiveContextWindow ?? undefined}
-                  currentMessageCount={currentContextMessageIds?.length ?? 0}
-                  maxContextMessageCount={currentSessionMergedSettings?.maxContextMessageCount}
-                  onCompressClick={sessionId && !isNewSession ? () => setShowCompressionModal(true) : undefined}
-                  autoCompactionEnabled={autoCompactionEnabled}
-                  isCompacting={isCompacting}
-                  contextWindowKnown={contextWindowKnown}
-                  onAutoCompactionChange={sessionId && !isNewSession ? handleAutoCompactionChange : undefined}
+                {/* Right Group: Token Count + Model Selector */}
+                <Flex
+                  align="center"
+                  gap={0}
+                  className={isSmallScreen ? 'order-1 w-full min-w-0 justify-end' : 'min-w-0 ml-auto'}
                 >
-                  <Flex
-                    align="center"
-                    gap="2"
-                    className={`shrink-0 text-xs cursor-pointer hover:text-chatbox-tint-secondary transition-colors px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] ${
-                      tokenPercentage && tokenPercentage > 80 ? 'text-red-500' : 'text-chatbox-tint-tertiary'
-                    }`}
+                  {platform.type === 'mobile' && <CharacterSelector sessionId={sessionId} />}
+                  <TokenCountMenu
+                    currentInputTokens={currentInputTokens}
+                    contextTokens={contextTokens}
+                    totalTokens={totalTokens}
+                    isCalculating={isCalculating}
+                    pendingTasks={pendingTasks}
+                    totalContextMessages={messageCount}
+                    contextWindow={effectiveContextWindow ?? undefined}
+                    currentMessageCount={currentContextMessageIds?.length ?? 0}
+                    maxContextMessageCount={currentSessionMergedSettings?.maxContextMessageCount}
+                    onCompressClick={sessionId && !isNewSession ? () => setShowCompressionModal(true) : undefined}
+                    autoCompactionEnabled={autoCompactionEnabled}
+                    isCompacting={isCompacting}
+                    contextWindowKnown={contextWindowKnown}
+                    onAutoCompactionChange={sessionId && !isNewSession ? handleAutoCompactionChange : undefined}
                   >
-                    <ScalableIcon icon={IconArrowUp} size={14} />
-                    {isCalculating && <Loader size={10} />}
-                    <Text span size="xs" className="whitespace-nowrap" c="inherit">
-                      {isCalculating ? '~' : ''}
-                      {formatNumber(totalTokens)}
-                      {tokenPercentage !== null && tokenPercentage > 10 && ` (${tokenPercentage}%)`}
-                    </Text>
-                  </Flex>
-                </TokenCountMenu>
-
-                {/* Model Selector */}
-                <Box className="min-w-0 flex-1 justify-end max-w-[200px]">
-                  <Tooltip
-                    label={
-                      <Flex align="center" c="white" gap="xxs" min-w-0>
-                        <ScalableIcon icon={IconAlertCircle} size={12} className="text-inherit" />
-                        <Text span size="xxs" c="white">
-                          {t('Please select a model')}
-                        </Text>
-                      </Flex>
-                    }
-                    color="dark"
-                    opened={showSelectModelErrorTip}
-                    withArrow
-                  >
-                    <ModelSelector
-                      onSelect={onSelectModel}
-                      selectedProviderId={model?.provider}
-                      selectedModelId={model?.modelId}
-                      position="top-end"
-                      transitionProps={{
-                        transition: 'fade-up',
-                        duration: 200,
-                      }}
+                    <Flex
+                      align="center"
+                      gap="2"
+                      className={`shrink-0 text-xs cursor-pointer hover:text-chatbox-tint-secondary transition-colors px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] ${
+                        tokenPercentage && tokenPercentage > 80 ? 'text-red-500' : 'text-chatbox-tint-tertiary'
+                      }`}
                     >
-                      <UnstyledButton
-                        className={cn(
-                          'flex min-w-0 max-w-full items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors',
-                          !model && 'animate-pulse bg-blue-500/20',
-                        )}
+                      <ScalableIcon icon={IconArrowUp} size={14} />
+                      {isCalculating && <Loader size={10} />}
+                      <Text span size="xs" className="whitespace-nowrap" c="inherit">
+                        {isCalculating ? '~' : ''}
+                        {formatNumber(totalTokens)}
+                        {tokenPercentage !== null && tokenPercentage > 10 && ` (${tokenPercentage}%)`}
+                      </Text>
+                    </Flex>
+                  </TokenCountMenu>
+
+                  {/* Model Selector */}
+                  <Box className="min-w-0 flex-1 justify-end max-w-[200px]">
+                    <Tooltip
+                      label={
+                        <Flex align="center" c="white" gap="xxs" min-w-0>
+                          <ScalableIcon icon={IconAlertCircle} size={12} className="text-inherit" />
+                          <Text span size="xxs" c="white">
+                            {t('Please select a model')}
+                          </Text>
+                        </Flex>
+                      }
+                      color="dark"
+                      opened={showSelectModelErrorTip}
+                      withArrow
+                    >
+                      <ModelSelector
+                        onSelect={onSelectModel}
+                        selectedProviderId={model?.provider}
+                        selectedModelId={model?.modelId}
+                        position="top-end"
+                        transitionProps={{
+                          transition: 'fade-up',
+                          duration: 200,
+                        }}
                       >
-                        {!!model && <ProviderImageIcon size={18} provider={model.provider} />}
-                        <Text
-                          size="sm"
+                        <UnstyledButton
                           className={cn(
-                            'min-w-0 flex-1 truncate text-[var(--chatbox-tint-secondary)]',
-                            isSmallScreen ? 'max-w-[100px]' : 'max-w-[160px]',
+                            'flex min-w-0 max-w-full items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors',
+                            !model && 'animate-pulse bg-blue-500/20',
                           )}
                         >
-                          {modelSelectorDisplayText}
-                        </Text>
-                        <IconChevronRight
-                          size={14}
-                          className="text-[var(--chatbox-tint-tertiary)] rotate-90 flex-shrink-0"
-                        />
-                      </UnstyledButton>
-                    </ModelSelector>
-                  </Tooltip>
-                </Box>
+                          {!!model && <ProviderImageIcon size={18} provider={model.provider} />}
+                          <Text
+                            size="sm"
+                            className={cn(
+                              'min-w-0 flex-1 truncate text-[var(--chatbox-tint-secondary)]',
+                              isSmallScreen ? 'max-w-[100px]' : 'max-w-[160px]',
+                            )}
+                          >
+                            {modelSelectorDisplayText}
+                          </Text>
+                          <IconChevronRight
+                            size={14}
+                            className="text-[var(--chatbox-tint-tertiary)] rotate-90 flex-shrink-0"
+                          />
+                        </UnstyledButton>
+                      </ModelSelector>
+                    </Tooltip>
+                  </Box>
+                </Flex>
               </Flex>
-            </Flex>
+            )}
           </Stack>
 
           <Disclaimer />
@@ -2037,7 +2133,7 @@ const AttachmentMenu: React.FC<{
           <IconCirclePlus size={toolbarIconSize} strokeWidth={1.8} className="text-[var(--chatbox-tint-secondary)]" />
         </UnstyledButton>
       </Menu.Target>
-      <Menu.Dropdown>
+      <Menu.Dropdown className="yachiyo-composer-popover yachiyo-composer-attachment-menu">
         <Menu.Item leftSection={<IconPhoto size={16} />} onClick={onImageUploadClick}>
           {t('Attach Image')}
         </Menu.Item>
@@ -2068,6 +2164,7 @@ export type MessageInputFieldRef = {
 
 type MessageInputFieldProps = {
   isNewSession: boolean
+  retainedStateKey?: string
   isSmallScreen: boolean
   viewportHeight: number
   isReadOnly: boolean
@@ -2086,6 +2183,7 @@ const MessageInputField = memo(
     (
       {
         isNewSession,
+        retainedStateKey,
         isSmallScreen,
         viewportHeight,
         isReadOnly,
@@ -2098,7 +2196,14 @@ const MessageInputField = memo(
       },
       ref,
     ) => {
-      const { messageInput, setMessageInput, clearDraft } = useMessageInput('', { isNewSession })
+      const persistedInput = useMessageInput('', { isNewSession, saveDraft: !retainedStateKey })
+      const [retainedInput, setRetainedInput] = useAndroidRetainedState(retainedStateKey, '')
+      const messageInput = retainedStateKey ? retainedInput : persistedInput.messageInput
+      const setMessageInput = retainedStateKey ? setRetainedInput : persistedInput.setMessageInput
+      const clearDraft = useCallback(() => {
+        if (retainedStateKey) setRetainedInput('')
+        else persistedInput.clearDraft()
+      }, [persistedInput, retainedStateKey, setRetainedInput])
       const inputRef = useRef<HTMLTextAreaElement | null>(null)
       const messageInputRef = useRef(messageInput)
       messageInputRef.current = messageInput
@@ -2142,7 +2247,7 @@ const MessageInputField = memo(
           placeholder={placeholder || ''}
           bg="transparent"
           autosize={true}
-          minRows={isSmallScreen && viewportHeight < 500 ? 1 : 2}
+          minRows={isSmallScreen ? 1 : 2}
           maxRows={Math.max(4, Math.floor(viewportHeight / 100))}
           value={messageInput}
           autoFocus={autoFocus}

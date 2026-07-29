@@ -62,7 +62,7 @@ export interface UnknownPriceConfirmationInput extends AgentUsageModel {
 
 export type UnknownPriceConfirmationHook = (input: UnknownPriceConfirmationInput) => boolean | Promise<boolean>
 
-/** Legacy budget shape retained for settings migrations; ledger reservations never reject on it. */
+/** Hard preflight ceilings evaluated before each model request. */
 export interface AgentUsageBudget {
   maxTokens?: number
   maxCostUsd?: number
@@ -566,6 +566,7 @@ export class AgentUsageLedger {
   private readonly retentionMs: number
   private readonly priceResolver?: AgentUsagePriceResolver
   private readonly tokenCounter?: AgentUsageLedgerOptions['tokenCounter']
+  private readonly budget?: AgentUsageBudget
   private mutationQueue: Promise<void> = Promise.resolve()
 
   constructor(options: AgentUsageLedgerOptions = {}) {
@@ -576,6 +577,7 @@ export class AgentUsageLedger {
     this.retentionMs = positiveInteger(options.retentionMs, AGENT_USAGE_LEDGER_RETENTION_MS)
     this.priceResolver = options.priceResolver
     this.tokenCounter = options.tokenCounter
+    this.budget = options.budget
   }
 
   private async getStorage(): Promise<AgentUsageStorage> {
@@ -637,6 +639,22 @@ export class AgentUsageLedger {
 
     return this.enqueue(async () => {
       const records = pruneRecords(await this.readRecords(), this.now(), this.maxRecords, this.retentionMs)
+      const taskRecords = this.recordsForTask(records, input.taskId)
+      if (this.budget?.maxModelRequests !== undefined && taskRecords.length >= this.budget.maxModelRequests) {
+        throw new AgentUsageBudgetExceededError('modelRequests')
+      }
+      const usedTokens = taskRecords.reduce((sum, record) => sum + record.reservedTokens, 0)
+      if (this.budget?.maxTokens !== undefined && usedTokens + estimate.reservedTokens > this.budget.maxTokens) {
+        throw new AgentUsageBudgetExceededError('tokens')
+      }
+      const usedCost = taskRecords.reduce((sum, record) => sum + (record.costUsd ?? record.estimatedCostUsd ?? 0), 0)
+      if (
+        this.budget?.maxCostUsd !== undefined &&
+        estimatedCostUsd !== undefined &&
+        usedCost + estimatedCostUsd > this.budget.maxCostUsd
+      ) {
+        throw new AgentUsageBudgetExceededError('costUsd')
+      }
       const record: AgentUsageRecord = {
         schemaVersion: AGENT_USAGE_LEDGER_SCHEMA_VERSION,
         reservationId: createId('usage'),

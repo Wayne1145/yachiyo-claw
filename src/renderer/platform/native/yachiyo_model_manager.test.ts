@@ -5,6 +5,9 @@ import {
   NativeMobileRagEmbeddingProvider,
   serializeLocalModelMessages,
   serializeLocalTools,
+  getNativeModelAccelerationSettings,
+  optimizeNativeModel,
+  setNativeModelAccelerationSettings,
 } from './yachiyo_model_manager'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -24,6 +27,9 @@ const native = vi.hoisted(() => ({
   unload: vi.fn(),
   deleteModel: vi.fn(),
   deviceProfile: vi.fn(),
+  accelerationSettings: vi.fn(),
+  setAccelerationSettings: vi.fn(),
+  optimizeModel: vi.fn(),
 }))
 
 vi.mock('@capacitor/core', () => ({ registerPlugin: vi.fn(() => native) }))
@@ -48,6 +54,38 @@ describe('YachiyoModelManager bridge', () => {
       value: { type: 'text', text: 'hello' },
     })
     expect(native.infer).toHaveBeenCalledWith(expect.objectContaining({ messages: [] }))
+  })
+
+  it('reads, updates, and re-optimizes per-model acceleration settings', async () => {
+    native.accelerationSettings.mockResolvedValue({ mode: 'auto', requestedBackend: 'auto' })
+    native.setAccelerationSettings.mockResolvedValue({ mode: 'extreme', requestedBackend: 'gpu' })
+    native.optimizeModel.mockResolvedValue({
+      schemaVersion: 1,
+      cacheKey: 'profile-key',
+      mode: 'extreme',
+      selectedBackend: 'gpu',
+      selectedModelPath: '/models/model.gguf',
+      optimizedAt: 1,
+      selected: { backend: 'gpu', decodeTokensPerSecond: 24, gpuLayers: 28 },
+      benchmarks: [],
+    })
+
+    await expect(getNativeModelAccelerationSettings('model-1')).resolves.toEqual({
+      mode: 'auto',
+      requestedBackend: 'auto',
+    })
+    await expect(
+      setNativeModelAccelerationSettings('model-1', { mode: 'extreme', requestedBackend: 'gpu' }),
+    ).resolves.toEqual({ mode: 'extreme', requestedBackend: 'gpu' })
+    await expect(optimizeNativeModel('model-1')).resolves.toMatchObject({
+      selectedBackend: 'gpu',
+      selected: { decodeTokensPerSecond: 24, gpuLayers: 28 },
+    })
+    expect(native.setAccelerationSettings).toHaveBeenCalledWith({
+      modelId: 'model-1',
+      mode: 'extreme',
+      requestedBackend: 'gpu',
+    })
   })
 
   it('keeps the native health reason so callers can distinguish missing registrations and files', async () => {

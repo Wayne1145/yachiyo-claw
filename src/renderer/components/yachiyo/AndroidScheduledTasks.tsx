@@ -1,17 +1,4 @@
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Select,
-  Switch,
-  Text,
-  Textarea,
-  TextInput,
-  Title,
-  Tooltip,
-} from '@mantine/core'
+import { ActionIcon, Alert, Button, Select, Switch, Text, Textarea, TextInput, Title, Tooltip } from '@mantine/core'
 import {
   IconAlertTriangle,
   IconCalendarPlus,
@@ -22,6 +9,7 @@ import {
 } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import {
   createScheduledAgentTask,
   deleteScheduledAgentTask,
@@ -31,6 +19,7 @@ import {
   updateScheduledAgentTask,
   useScheduledAgentTasks,
 } from '@/mobile/scheduled-agent-tasks'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 
 function toLocalDateTimeInput(timestamp: number): string {
   const date = new Date(timestamp)
@@ -76,7 +65,7 @@ export function AndroidScheduledTasks() {
       waiting: tasks.filter((task) => task.enabled && task.status !== 'running').length,
       scheduled: tasks.length,
     }),
-    [tasks],
+    [tasks]
   )
 
   const resetForm = () => {
@@ -102,7 +91,7 @@ export function AndroidScheduledTasks() {
           ? String(t('请输入任务指令'))
           : reason instanceof Error && reason.message === 'schedule_time_in_past'
             ? String(t('执行时间必须晚于当前时间'))
-            : String(reason),
+            : String(reason)
       )
     } finally {
       setSaving(false)
@@ -118,7 +107,7 @@ export function AndroidScheduledTasks() {
       setError(
         reason instanceof Error && reason.message === 'agent_busy'
           ? String(t('已有 Agent 任务正在执行'))
-          : String(reason),
+          : String(reason)
       )
     } finally {
       setRunningId(null)
@@ -172,58 +161,108 @@ export function AndroidScheduledTasks() {
         </section>
       ) : (
         <section className="yachiyo-scheduled-task-list" aria-label={String(t('定时任务列表'))}>
-          {tasks.map((task) => (
-            <article key={task.id} className="yachiyo-scheduled-task-row">
-              <div className="yachiyo-scheduled-task-time" aria-hidden="true">
-                <IconClock size={19} />
-              </div>
-              <div className="yachiyo-scheduled-task-copy">
-                <strong>{task.title}</strong>
-                <span>
-                  {formatRunTime(task.runAt, i18n.resolvedLanguage || i18n.language)} · {t(repeatLabel[task.repeat])}
-                </span>
-                {task.lastError && <small>{task.lastError}</small>}
-              </div>
-              <div className="yachiyo-scheduled-task-actions">
-                <Switch
-                  size="sm"
-                  checked={task.enabled}
-                  aria-label={`${task.title} ${t('启用状态')}`}
-                  onChange={(event) =>
-                    updateScheduledAgentTask(task.id, {
-                      enabled: event.currentTarget.checked,
-                      status: event.currentTarget.checked ? 'scheduled' : task.status,
-                    })
-                  }
+          {tasks.map((task) => {
+            const taskActions: AdaptiveActionDescriptor[] = [
+              {
+                id: 'enabled',
+                label: `${task.title} ${String(t('启用状态'))}`,
+                priority: 100,
+                collapseStrategy: 'keep',
+                renderControl: () => (
+                  <Switch
+                    size="sm"
+                    checked={task.enabled}
+                    aria-label={`${task.title} ${t('启用状态')}`}
+                    onChange={(event) =>
+                      updateScheduledAgentTask(task.id, {
+                        enabled: event.currentTarget.checked,
+                        status: event.currentTarget.checked ? 'scheduled' : task.status,
+                      })
+                    }
+                  />
+                ),
+              },
+              {
+                id: 'run',
+                label: String(t('立即运行')),
+                icon: IconPlayerPlay,
+                priority: 90,
+                collapseStrategy: 'icon',
+                renderControl: ({ presentation }) =>
+                  presentation === 'labelled' ? (
+                    <Button
+                      variant="subtle"
+                      color="chatbox-brand"
+                      leftSection={<IconPlayerPlay size={18} />}
+                      loading={runningId === task.id}
+                      onClick={() => void handleRun(task.id)}
+                    >
+                      {t('立即运行')}
+                    </Button>
+                  ) : (
+                    <Tooltip label={t('立即运行')}>
+                      <ActionIcon
+                        size={44}
+                        variant="subtle"
+                        color="chatbox-brand"
+                        loading={runningId === task.id}
+                        aria-label={`${t('立即运行')} ${task.title}`}
+                        onClick={() => void handleRun(task.id)}
+                      >
+                        <IconPlayerPlay size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  ),
+              },
+              {
+                id: 'delete',
+                label: String(t('删除')),
+                icon: IconTrash,
+                priority: 10,
+                collapseStrategy: 'overflow',
+                renderControl: () => (
+                  <Tooltip label={t('删除')}>
+                    <ActionIcon
+                      size={44}
+                      variant="subtle"
+                      color="gray"
+                      aria-label={`${t('删除')} ${task.title}`}
+                      onClick={() => deleteScheduledAgentTask(task.id)}
+                    >
+                      <IconTrash size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                ),
+                menuAction: {
+                  onSelect: () => deleteScheduledAgentTask(task.id),
+                },
+              },
+            ]
+
+            return (
+              <article key={task.id} className="yachiyo-scheduled-task-row">
+                <div className="yachiyo-scheduled-task-time" aria-hidden="true">
+                  <IconClock size={19} />
+                </div>
+                <div className="yachiyo-scheduled-task-copy">
+                  <strong>{task.title}</strong>
+                  <span>
+                    {formatRunTime(task.runAt, i18n.resolvedLanguage || i18n.language)} · {t(repeatLabel[task.repeat])}
+                  </span>
+                  {task.lastError && <small>{task.lastError}</small>}
+                </div>
+                <AdaptiveActionCluster
+                  className="yachiyo-scheduled-task-actions"
+                  ariaLabel={`${task.title} ${String(t('任务操作'))}`}
+                  actions={taskActions}
                 />
-                <Tooltip label={t('立即运行')}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="chatbox-brand"
-                    loading={runningId === task.id}
-                    aria-label={`${t('立即运行')} ${task.title}`}
-                    onClick={() => void handleRun(task.id)}
-                  >
-                    <IconPlayerPlay size={18} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label={t('删除')}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    aria-label={`${t('删除')} ${task.title}`}
-                    onClick={() => deleteScheduledAgentTask(task.id)}
-                  >
-                    <IconTrash size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </div>
-            </article>
-          ))}
+              </article>
+            )
+          })}
         </section>
       )}
 
-      <Modal
+      <AdaptiveModal
         opened={opened}
         onClose={() => {
           setOpened(false)
@@ -267,16 +306,16 @@ export function AndroidScheduledTasks() {
             onChange={(value) => setRepeat((value as ScheduledTaskRepeat) || 'once')}
           />
           {error && <Alert color="red">{error}</Alert>}
-          <Group justify="flex-end">
+          <AdaptiveModal.Actions>
             <Button variant="subtle" color="gray" onClick={() => setOpened(false)}>
               {t('取消')}
             </Button>
             <Button className="yachiyo-primary-button" loading={saving} onClick={handleCreate}>
               {t('保存任务')}
             </Button>
-          </Group>
+          </AdaptiveModal.Actions>
         </div>
-      </Modal>
+      </AdaptiveModal>
     </>
   )
 }

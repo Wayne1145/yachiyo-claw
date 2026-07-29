@@ -12,18 +12,31 @@ object GgufRunner {
 
   @JvmStatic
   @Synchronized
-  fun load(modelPath: String, requestId: String, eager: Boolean) {
+  fun load(modelPath: String, requestId: String, eager: Boolean, gpuLayers: Int, cpuThreads: Int) {
     require(File(modelPath).isFile) { "local_model_file_missing" }
     require(LocalModelFormat.isRunnableGgufPath(modelPath)) { "local_model_not_gguf" }
-    nativeLoad(modelPath, requestId, eager)
+    nativeLoad(modelPath, requestId, eager, gpuLayers.coerceAtLeast(0), cpuThreads.coerceAtLeast(1))
   }
 
   @JvmStatic
   fun loadProgress(): Float = nativeLoadProgress().coerceIn(0f, 1f)
 
+  @JvmStatic fun layerCount(modelPath: String): Int = nativeLayerCount(modelPath).coerceAtLeast(0)
+
+  @JvmStatic fun gpuAvailable(): Boolean = nativeGpuAvailable()
+
+  @JvmStatic fun runtimeMetrics(): JSONObject = JSONObject(nativeRuntimeMetrics())
+
   @JvmStatic
   @Synchronized
-  fun infer(modelPath: String, messages: JSONArray, maxTokens: Int, requestId: String): String {
+  fun infer(
+    modelPath: String,
+    messages: JSONArray,
+    maxTokens: Int,
+    requestId: String,
+    gpuLayers: Int,
+    cpuThreads: Int,
+  ): String {
     require(File(modelPath).isFile) { "local_model_file_missing" }
     require(LocalModelFormat.isRunnableGgufPath(modelPath)) { "local_model_not_gguf" }
 
@@ -43,6 +56,8 @@ object GgufRunner {
       contents.toTypedArray(),
       maxTokens.coerceIn(1, 8192),
       requestId,
+      gpuLayers.coerceAtLeast(0),
+      cpuThreads.coerceAtLeast(1),
     )
   }
 
@@ -78,9 +93,15 @@ object GgufRunner {
   }
 
   @JvmStatic
-  private external fun nativeLoad(modelPath: String, requestId: String, eager: Boolean)
+  private external fun nativeLoad(modelPath: String, requestId: String, eager: Boolean, gpuLayers: Int, cpuThreads: Int)
 
   @JvmStatic private external fun nativeLoadProgress(): Float
+
+  @JvmStatic private external fun nativeLayerCount(modelPath: String): Int
+
+  @JvmStatic private external fun nativeGpuAvailable(): Boolean
+
+  @JvmStatic private external fun nativeRuntimeMetrics(): String
 
   @JvmStatic
   private external fun nativeInfer(
@@ -89,6 +110,8 @@ object GgufRunner {
     contents: Array<String>,
     maxTokens: Int,
     requestId: String,
+    gpuLayers: Int,
+    cpuThreads: Int,
   ): String
 
   @JvmStatic private external fun nativeCancel(requestId: String)

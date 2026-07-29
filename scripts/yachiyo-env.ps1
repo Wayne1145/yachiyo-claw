@@ -18,6 +18,8 @@ $proxyUrl = $null
 $toolchainLockPath = Join-Path $workspaceRoot 'toolchain.lock.json'
 $toolchainLock = Get-Content -Raw $toolchainLockPath | ConvertFrom-Json
 $workspaceNode = Join-Path $workspaceRoot $toolchainLock.node.path
+$hostCompiler = Join-Path $workspaceRoot $toolchainLock.hostCompiler.path
+$vulkanHeaders = Join-Path $workspaceRoot $toolchainLock.vulkanHeaders.path
 $androidNdk = Join-Path $androidSdk ("ndk\$($toolchainLock.android.ndk)")
 $androidCmake = Join-Path $androidSdk ("cmake\$($toolchainLock.android.cmake)")
 
@@ -61,6 +63,12 @@ $workspaceJdk = Join-Path $workspaceRoot $toolchainLock.jdk.path
 $workspaceJava = Join-Path $workspaceJdk 'bin\java.exe'
 if (-not (Test-Path -LiteralPath $workspaceJava -PathType Leaf)) {
   throw "Workspace JDK is missing. Expected $workspaceJava"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $hostCompiler 'bin\clang++.exe') -PathType Leaf)) {
+  throw "Workspace host compiler is missing. Expected $hostCompiler"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $vulkanHeaders 'include\vulkan\vulkan.hpp') -PathType Leaf)) {
+  throw "Workspace Vulkan-Headers are missing. Expected $vulkanHeaders"
 }
 
 # Keep every downloaded toolchain and package cache inside the repository workspace.
@@ -204,7 +212,7 @@ $androidPaths = @(
   (Join-Path $androidCmake 'bin')
 )
 $workspaceJdkBin = Join-Path $workspaceJdk 'bin'
-$env:Path = (@($workspaceNode, $workspaceJdkBin, $env:PNPM_HOME) + $androidPaths + @($env:Path)) -join [IO.Path]::PathSeparator
+$env:Path = (@($workspaceNode, $workspaceJdkBin, (Join-Path $hostCompiler 'bin'), $env:PNPM_HOME) + $androidPaths + @($env:Path)) -join [IO.Path]::PathSeparator
 
 function Invoke-WorkspaceCommand {
   param([string]$Executable, [string[]]$Arguments)
@@ -272,6 +280,7 @@ switch ($Action) {
       AndroidSdk = $env:ANDROID_SDK_ROOT
       AndroidNdk = Get-AndroidPackageStatus -Root $androidNdk -ExpectedVersion ([string]$toolchainLock.android.ndk)
       AndroidCmake = Get-AndroidPackageStatus -Root $androidCmake -ExpectedVersion ([string]$toolchainLock.android.cmake)
+      VulkanHeaders = [string]$toolchainLock.vulkanHeaders.version
     } | Format-List
   }
 }

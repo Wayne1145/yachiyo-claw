@@ -1,0 +1,112 @@
+.yachiyo-adaptive-action-cluster {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.yachiyo-adaptive-action-cluster > :first-child {
+  margin-inline-start: auto;
+}
+
+.yachiyo-adaptive-action-cluster[data-density='compact'],
+.yachiyo-adaptive-action-cluster[data-density='overflow'] {
+  gap: 6px;
+}
+
+.yachiyo-adaptive-action-cluster[data-unresolved-overflow='true'] {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.yachiyo-adaptive-action-control,
+.yachiyo-adaptive-action-overflow {
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+
+.yachiyo-adaptive-action-control > :where(button, [role='button']),
+.yachiyo-adaptive-action-control > :where(.mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.yachiyo-adaptive-action-cluster[data-density='comfortable']
+  .yachiyo-adaptive-action-control[data-group-start='true'] {
+  margin-inline-start: 4px;
+}
+
+.yachiyo-adaptive-action-cluster:is([data-density='compact'], [data-density='overflow'])
+  .yachiyo-adaptive-action-control[data-group-start='true'] {
+  margin-inline-start: 6px;
+}
+
+.yachiyo-adaptive-action-overflow .mantine-ActionIcon-root {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  transition:
+    transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 140ms ease;
+}
+
+.yachiyo-adaptive-action-overflow .mantine-ActionIcon-root:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.yachiyo-adaptive-action-menu .mantine-Menu-item {
+  min-height: 44px;
+}
+
+.yachiyo-adaptive-modal-actions {
+  margin-top: 16px;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.yachiyo-adaptive-modal-action {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: flex;
+}
+
+.yachiyo-adaptive-modal-action > :where(button, [role='button']) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.yachiyo-adaptive-modal-actions[data-density='compact'] {
+  gap: 6px;
+}
+
+.yachiyo-adaptive-modal-actions[data-density='overflow'] {
+  flex-direction: column-reverse;
+  align-items: stretch;
+}
+
+.yachiyo-adaptive-modal-actions[data-density='overflow'] > .yachiyo-adaptive-modal-action,
+.yachiyo-adaptive-modal-actions[data-density='overflow'] > .yachiyo-adaptive-modal-action > * {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yachiyo-adaptive-action-overflow .mantine-ActionIcon-root {
+    transition-duration: 180ms;
+  }
+}
+
+@media (forced-colors: active) {
+  .yachiyo-adaptive-action-control > :where(button, [role='button']),
+  .yachiyo-adaptive-action-overflow .mantine-ActionIcon-root {
+    border: 1px solid ButtonText;
+  }
+}

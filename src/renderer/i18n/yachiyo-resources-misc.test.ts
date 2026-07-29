@@ -70,6 +70,7 @@ describe('miscellaneous Yachiyo component translations', () => {
   })
 
   it('covers Agent workspace status and empty-state copy', () => {
+    expect(yachiyoResources.en['Agent 控制']).toBe('Agent controls')
     expect(yachiyoResources.en['内部工具 Agent']).toBe('Internal-tools Agent')
     expect(yachiyoResources.en['无障碍设备 Agent']).toBe('Accessibility device Agent')
     expect(yachiyoResources.en['描述你希望完成的任务，Agent 可使用内部工具、Skills、MCP 和 Linux 沙箱。']).toContain(

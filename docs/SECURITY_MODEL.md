@@ -26,6 +26,8 @@ Yachiyo Claw treats every model, prompt, screen, web page, imported Skill, MCP s
 7. Audit records contain digests and minimal outcome codes, not raw parameters or tool results.
 8. Model-generated shell text is never passed directly to any backend.
 9. `callId` is a persisted idempotency key. A retry increments `attempt`; the Broker must verify the recorded side-effect state before it can execute again.
+10. Coding mode never inherits normal Agent "full control" grants. ChangeSet application, profile commands, Git mutations, APK installation, and app launch require fresh parameter-bound approval.
+11. A source-only or remote-only target cannot transition to locally built or locally verified. Remote success requires a real configured runner result and artifact digest.
 
 The versioned TypeScript wire contracts live in `src/shared/agent` and will be mirrored by the native Broker.
 
@@ -45,6 +47,15 @@ Tool descriptors set a minimum risk. Runtime context may only raise it. For exam
 Screen text, OCR, notifications, files, web pages, tool output, Skill documentation, and MCP responses are data, not instructions. The Agent Loop must keep the user's goal and policy in a separate trusted context. Content that asks the Agent to ignore policy, reveal credentials, change approval behavior, or invoke unrelated tools is treated as an injection attempt and surfaced to the user.
 
 Verification must observe the expected state change rather than trusting success text returned by a page or tool.
+
+## Coding Workspaces And Artifacts
+
+- Model-authored writes are staged as ChangeSets. Application rechecks each file's SHA-256 baseline; a mismatch is a conflict and never overwrites the newer file.
+- Approved commands run with a fixed `/workspace`, timeout, bounded output, cancellation, and a single active build per project. Dependency installation, arbitrary shell, deployment, Git commit/restore, and APK installation always ask.
+- PRoot is a compatibility layer, not kernel isolation. Approved programs can access the network and mutate the shared guest rootfs.
+- SAF imports are copied into an app-private workspace. External deletion is never inferred during write-back, and unsynchronized changes remain visible in project state.
+- Workspace APKs use a dedicated installer path, not the application updater. The host package is blocked, files are limited to 512 MB, the digest is checked again after copying, and Android's system installer remains the final authority.
+- Release signing keys and passwords are outside model, logs, and shell context. V1 supports Debug APKs only.
 
 ## Screen And Input Privacy
 

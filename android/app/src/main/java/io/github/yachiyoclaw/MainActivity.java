@@ -16,6 +16,7 @@ import io.github.yachiyoclaw.workspace.YachiyoWorkspacePlugin;
 import io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin;
 import io.github.yachiyoclaw.plugin.YachiyoPluginNetworkPlugin;
 import io.github.yachiyoclaw.appearance.YachiyoAppearancePlugin;
+import io.github.yachiyoclaw.artifact.YachiyoArtifactPlugin;
 
 public class MainActivity extends BridgeActivity {
 
@@ -34,6 +35,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(YachiyoDownloadSettingsPlugin.class);
         registerPlugin(YachiyoPluginNetworkPlugin.class);
         registerPlugin(YachiyoAppearancePlugin.class);
+        registerPlugin(YachiyoArtifactPlugin.class);
         super.onCreate(savedInstanceState);
         handleNavigationIntent(getIntent());
     }

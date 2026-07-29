@@ -101,6 +101,10 @@ type MessageRenderItem =
       messages: [SessionMessage] | [SessionMessage, SessionMessage]
     }
 
+const androidMessageListComponents = {
+  Header: () => <div className="yachiyo-message-list-header-clearance" aria-hidden="true" />,
+}
+
 const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) => {
   const { t } = useTranslation()
   const isSmallScreen = useIsSmallScreen()
@@ -176,6 +180,8 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
 
   const virtuoso = useRef<VirtuosoHandle>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
+  const androidHeaderClearanceRef = useRef(0)
+  const bottomScrollFrameRef = useRef<number>()
   const [messageViewportHeight, setMessageViewportHeight] = useState(0)
   const [isNewMessage, setIsNewMessage] = useState(false)
 
@@ -187,12 +193,27 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
   const handleMessageNavigationVisibleChanged = useCallback((v: boolean) => setMessageNavigationVisible(v), [])
 
   const handleScrollToTop = useCallback(() => {
+    if (inAndroidAppShell) {
+      virtuoso.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     virtuoso.current?.scrollToIndex({ index: 0, align: 'start', behavior: 'smooth' })
-  }, [])
+  }, [inAndroidAppShell])
 
   const handleScrollToBottom = useCallback(() => {
-    virtuoso.current?.scrollTo({ top: Infinity, behavior: 'smooth' })
-  }, [])
+    const scroll = () => virtuoso.current?.scrollTo({ top: Infinity, behavior: 'smooth' })
+    if (!inAndroidAppShell) {
+      scroll()
+      return
+    }
+
+    setIsNewMessage(false)
+    if (bottomScrollFrameRef.current !== undefined) cancelAnimationFrame(bottomScrollFrameRef.current)
+    bottomScrollFrameRef.current = requestAnimationFrame(() => {
+      bottomScrollFrameRef.current = undefined
+      scroll()
+    })
+  }, [inAndroidAppShell])
 
   const handleScrollToPrev = useCallback(() => {
     if (messageListRef?.current && virtuoso?.current) {
@@ -216,7 +237,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
               virtuoso.current.scrollToIndex({
                 index: i,
                 align: 'start',
-                offset: isSmallScreen ? -28 : 0,
+                offset: inAndroidAppShell ? -androidHeaderClearanceRef.current : isSmallScreen ? -28 : 0,
                 behavior: 'smooth',
               })
               return
@@ -226,20 +247,21 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
                 virtuoso.current.scrollToIndex({
                   index: j,
                   align: 'start',
-                  offset: isSmallScreen ? -28 : 0,
+                  offset: inAndroidAppShell ? -androidHeaderClearanceRef.current : isSmallScreen ? -28 : 0,
                   behavior: 'smooth',
                 })
                 return
               }
             }
             // 没有上一条用户消息了，滚动到顶部
-            virtuoso.current.scrollToIndex({ index: 0, align: 'start', behavior: 'smooth' })
+            if (inAndroidAppShell) virtuoso.current.scrollTo({ top: 0, behavior: 'smooth' })
+            else virtuoso.current.scrollToIndex({ index: 0, align: 'start', behavior: 'smooth' })
             return
           }
         }
       }
     }
-  }, [renderItems, isSmallScreen])
+  }, [renderItems, inAndroidAppShell, isSmallScreen])
 
   const handleScrollToNext = useCallback(() => {
     if (messageListRef?.current && virtuoso?.current) {
@@ -255,7 +277,12 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
           if (rect.bottom > containerRect.top + 2) {
             for (let j = i + 1; j < renderItems.length; j++) {
               if (renderItems[j].messages.some((msg) => msg.role === 'user')) {
-                virtuoso.current.scrollToIndex({ index: j, align: 'start', behavior: 'smooth' })
+                virtuoso.current.scrollToIndex({
+                  index: j,
+                  align: 'start',
+                  offset: inAndroidAppShell ? -androidHeaderClearanceRef.current : 0,
+                  behavior: 'smooth',
+                })
                 return
               }
             }
@@ -266,7 +293,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
         }
       }
     }
-  }, [renderItems])
+  }, [renderItems, inAndroidAppShell])
 
   const [atBottom, setAtBottom] = useState(false)
   const [atTop, setAtTop] = useState(false)
@@ -278,6 +305,9 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current)
+      }
+      if (bottomScrollFrameRef.current !== undefined) {
+        cancelAnimationFrame(bottomScrollFrameRef.current)
       }
     }
   }, [])
@@ -362,6 +392,48 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
     }
   }, [])
 
+  useEffect(() => {
+    const element = messageListRef.current
+    if (!element || !inAndroidAppShell) return
+
+    const shell = element.closest('.yachiyo-mobile-shell')
+    const header = shell?.querySelector<HTMLElement>('.yachiyo-mobile-header-drawer')
+    const updateHeaderClearance = () => {
+      const viewportRect = element.getBoundingClientRect()
+      const headerRect = header?.getBoundingClientRect()
+      const measured = headerRect ? Math.max(0, headerRect.bottom - viewportRect.top + 10) : 0
+      androidHeaderClearanceRef.current = measured
+      element.style.setProperty('--yachiyo-message-header-clearance', `${measured}px`)
+    }
+
+    updateHeaderClearance()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateHeaderClearance)
+      window.visualViewport?.addEventListener('resize', updateHeaderClearance)
+      window.addEventListener('orientationchange', updateHeaderClearance)
+
+      return () => {
+        window.removeEventListener('resize', updateHeaderClearance)
+        window.visualViewport?.removeEventListener('resize', updateHeaderClearance)
+        window.removeEventListener('orientationchange', updateHeaderClearance)
+        element.style.removeProperty('--yachiyo-message-header-clearance')
+      }
+    }
+
+    const observer = new ResizeObserver(updateHeaderClearance)
+    observer.observe(element)
+    if (header) observer.observe(header)
+    window.visualViewport?.addEventListener('resize', updateHeaderClearance)
+    window.addEventListener('orientationchange', updateHeaderClearance)
+
+    return () => {
+      observer.disconnect()
+      window.visualViewport?.removeEventListener('resize', updateHeaderClearance)
+      window.removeEventListener('orientationchange', updateHeaderClearance)
+      element.style.removeProperty('--yachiyo-message-header-clearance')
+    }
+  }, [inAndroidAppShell])
+
   const platformType = useAtomValue(platformTypeAtom)
 
   const renderMessageBlock = useCallback(
@@ -414,13 +486,20 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
   return (
     <div className={cn('w-full flex-1 min-h-0 mx-auto', props.className)}>
       <BlockCodeCollapsedStateProvider defaultCollapsed={!!settingsStore.getState().autoCollapseCodeBlock}>
-        <div className="overflow-hidden h-full pr-0 pl-1 sm:pl-0 relative" ref={messageListRef}>
+        <div
+          className={cn(
+            'overflow-hidden h-full pr-0 pl-1 sm:pl-0 relative',
+            inAndroidAppShell && 'yachiyo-android-message-list'
+          )}
+          ref={messageListRef}
+        >
           <Virtuoso
             style={{ scrollbarGutter: 'stable' }}
             className={platformType === 'win32' ? 'scrollbar-custom' : ''}
             data={renderItems}
             ref={virtuoso}
-            followOutput="smooth"
+            followOutput={inAndroidAppShell ? 'auto' : 'smooth'}
+            components={inAndroidAppShell ? androidMessageListComponents : undefined}
             {...(sessionScrollPositionCache.has(currentSession.id)
               ? {
                   restoreStateFrom: sessionScrollPositionCache.get(currentSession.id),
@@ -428,7 +507,9 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
                   initialScrollTop: sessionScrollPositionCache.get(currentSession.id)?.scrollTop,
                 }
               : {
-                  initialTopMostItemIndex: renderItems.length - 1,
+                  initialTopMostItemIndex: inAndroidAppShell
+                    ? { index: renderItems.length - 1, align: 'end' as const }
+                    : renderItems.length - 1,
                 })}
             increaseViewportBy={{ top: 2000, bottom: 2000 }}
             itemContent={(index, item) => {
@@ -443,7 +524,11 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
                       className="flex flex-col pt-5"
                       style={
                         messageViewportHeight > 0 && isNewMessage
-                          ? { minHeight: `${messageViewportHeight}px` }
+                          ? {
+                              minHeight: inAndroidAppShell
+                                ? `max(0px, calc(${messageViewportHeight}px - var(--yachiyo-message-header-clearance, 0px)))`
+                                : `${messageViewportHeight}px`,
+                            }
                           : undefined
                       } // key
                     >

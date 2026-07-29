@@ -1,3 +1,4 @@
+import { motion, type MotionValue } from 'framer-motion'
 import type { CSSProperties } from 'react'
 import { useBlob } from '@/hooks/useBlob'
 import { useSession } from '@/stores/chatStore'
@@ -8,9 +9,16 @@ import { resolveApprovedCharacterTint, resolveFlowGlassEnvironment } from './flo
 
 type FlowGlassStyle = CSSProperties & {
   '--flow-character-tint'?: string
+  '--flow-custom-background-image'?: string
 }
 
-export function AndroidFlowGlassEnvironment({ pathname }: { pathname: string }) {
+export function AndroidFlowGlassEnvironment({
+  pathname,
+  transitionOpacity,
+}: {
+  pathname: string
+  transitionOpacity?: MotionValue<number>
+}) {
   const sessionId = pathname.match(/^\/session\/([^/]+)$/)?.[1] ?? null
   const taskId = pathname.match(/^\/task\/([^/]+)$/)?.[1] ?? null
   const { data: task } = useTaskSessionRecord(taskId)
@@ -37,21 +45,26 @@ export function AndroidFlowGlassEnvironment({ pathname }: { pathname: string }) 
   const tintKey = session?.assistantAvatarKey || session?.picUrl || session?.id
   const style: FlowGlassStyle = {
     '--flow-character-tint': resolveApprovedCharacterTint(tintKey),
-    ...(customImageUrl ? { backgroundImage: `url(${JSON.stringify(customImageUrl)})` } : {}),
+    ...(customImageUrl
+      ? {
+          backgroundImage: `url(${JSON.stringify(customImageUrl)})`,
+          '--flow-custom-background-image': `url(${JSON.stringify(customImageUrl)})`,
+        }
+      : {}),
   }
 
   return (
-    <div
-      className="yachiyo-flow-environment"
+    <motion.div
+      className={`yachiyo-flow-environment${transitionOpacity ? ' yachiyo-flow-environment-target' : ''}`}
       data-context={context}
       data-custom-background={customImageUrl ? 'true' : 'false'}
-      style={style}
+      style={{ ...style, opacity: transitionOpacity }}
       aria-hidden="true"
     >
       <div className="yachiyo-flow-environment-image" />
       <div className="yachiyo-flow-environment-character-tint" />
       <div className="yachiyo-flow-environment-scrim" />
-    </div>
+    </motion.div>
   )
 }
 

@@ -3,6 +3,7 @@ import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
 import { Device } from '@capacitor/device'
 import { CORE_AGENT_PRINCIPAL } from '@shared/agent'
+import { validateWorkspaceRelativePath } from '@shared/agent/workspace'
 import * as defaults from '@shared/defaults'
 import type { Config, Settings, ShortcutSetting } from '@shared/types'
 import { getLatestYachiyoAndroidRelease, type YachiyoAndroidRelease } from '@shared/releases/yachiyo'
@@ -12,6 +13,7 @@ import { parseLocale } from '@/i18n/parser'
 import { executeAgentAction, getAgentWorkingDirectory, setAgentWorkingDirectory } from '@/mobile/agent-broker'
 import { getActiveAgentRun, getActiveAgentSession, requestAgentApproval } from '@/mobile/agent-approval'
 import { runWorkspaceBrokeredAction } from '@/mobile/workspace-action-broker'
+import { yachiyoArtifactNative } from '@/platform/native/yachiyo_artifact'
 import { NativeMobileRagEmbeddingProvider } from '@/platform/native/yachiyo_model_manager'
 import { yachiyoSandboxNative } from '@/platform/native/yachiyo_sandbox'
 import { yachiyoUpdateNative } from '@/platform/native/yachiyo_update'
@@ -422,12 +424,13 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     return yachiyoSandboxNative.init(config)
   }
 
-  public async sandboxExec(params: { command: string; timeout?: number }) {
+  public async sandboxExec(params: { command: string; timeout?: number; alwaysAsk?: boolean }) {
     const approved = await requestAgentApproval({
       principal: CORE_AGENT_PRINCIPAL,
       title: '执行 Linux 沙箱命令',
       detail: params.command,
       risk: 'dangerous',
+      alwaysAsk: params.alwaysAsk,
     })
     if (!approved) return { stdout: '', stderr: '用户拒绝了此操作', exitCode: 126 }
     return executeAgentAction({
@@ -439,17 +442,18 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
       taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
       sideEffect: true,
       dedupeByParameters: true,
-      execute: () => yachiyoSandboxNative.exec(params),
+      execute: () => yachiyoSandboxNative.exec({ command: params.command, timeout: params.timeout }),
       resultToJson: (result) => ({ exitCode: result.exitCode }),
     })
   }
 
-  public async sandboxStartBackground(params: { command: string; timeout?: number }) {
+  public async sandboxStartBackground(params: { command: string; timeout?: number; alwaysAsk?: boolean }) {
     const approved = await requestAgentApproval({
       principal: CORE_AGENT_PRINCIPAL,
       title: '启动 Linux 沙箱后台任务',
       detail: params.command,
       risk: 'dangerous',
+      alwaysAsk: params.alwaysAsk,
     })
     if (!approved) throw new Error('sandbox_background_approval_denied')
     return executeAgentAction({
@@ -461,7 +465,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
       taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
       sideEffect: true,
       dedupeByParameters: true,
-      execute: () => yachiyoSandboxNative.startBackground(params),
+      execute: () => yachiyoSandboxNative.startBackground({ command: params.command, timeout: params.timeout }),
       isSuccess: (result) => result.accepted,
       resultToJson: (result) => ({ accepted: result.accepted, jobId: result.jobId }),
     })
@@ -532,6 +536,66 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     return { available: result.available, reason: result.reason }
   }
 
+  public async codingGit(operation:
+    | { kind: 'status' }
+    | { kind: 'diff'; staged: boolean }
+    | { kind: 'create-branch'; name: string }
+    | { kind: 'commit'; message: string }
+    | { kind: 'restore-files'; paths: string[] }
+  ) {
+    const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`
+    let command: string
+    let title = ''
+    let detail = ''
+    if (operation.kind === 'status') command = 'git status --short --branch'
+    else if (operation.kind === 'diff') command = `git diff${operation.staged ? ' --cached' : ''} --`
+    else if (operation.kind === 'create-branch') {
+      if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(operation.name)) throw new Error('coding_git_branch_invalid')
+      command = `git switch -c ${quote(operation.name)}`
+      title = '创建 Git 分支'
+      detail = operation.name
+    } else if (operation.kind === 'commit') {
+      const message = operation.message.trim()
+      if (!message || message.length > 500) throw new Error('coding_git_commit_message_invalid')
+      const summary = await yachiyoSandboxNative.exec({ command: 'git status --short', timeout: 120_000 })
+      if (summary.exitCode !== 0) return summary
+      command = `git add --all && git commit -m ${quote(message)}`
+      title = '提交 Git 改动'
+      detail = `${summary.stdout.trim() || '没有文件改动'}\n\n提交信息: ${message}`
+    } else {
+      const paths = operation.paths.map(validateWorkspaceRelativePath)
+      if (paths.length === 0 || paths.length > 50) throw new Error('coding_git_restore_paths_invalid')
+      command = `git restore -- ${paths.map(quote).join(' ')}`
+      title = '恢复 Git 文件'
+      detail = paths.join('\n')
+    }
+    const mutating = operation.kind !== 'status' && operation.kind !== 'diff'
+    if (mutating) {
+      const approved = await requestAgentApproval({
+        principal: CORE_AGENT_PRINCIPAL,
+        title,
+        detail,
+        risk: 'dangerous',
+        mutating: true,
+        alwaysAsk: true,
+        rememberConversationApproval: false,
+      })
+      if (!approved) return { stdout: '', stderr: 'coding_git_approval_denied', exitCode: 126 }
+    }
+    return executeAgentAction({
+      featureId: 'sandbox',
+      principal: CORE_AGENT_PRINCIPAL,
+      toolId: 'sandbox.command.exec',
+      backend: 'sandbox',
+      parameters: { command, timeout: 120_000 },
+      taskId: getActiveAgentRun() || getActiveAgentSession() || 'android-agent',
+      sideEffect: mutating,
+      dedupeByParameters: mutating,
+      execute: () => yachiyoSandboxNative.exec({ command, timeout: 120_000 }),
+      resultToJson: (result) => ({ exitCode: result.exitCode }),
+    })
+  }
+
   public async sandboxStatus() {
     return yachiyoSandboxNative.status()
   }
@@ -542,6 +606,10 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   public async sandboxWrite(params: { filePath: string; content: string }) {
     return yachiyoSandboxNative.write(params)
+  }
+
+  public async sandboxDelete(params: { filePath: string }) {
+    return yachiyoSandboxNative.delete(params)
   }
 
   public async sandboxEdit(params: { filePath: string; search: string; replace: string }) {
@@ -618,6 +686,33 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   public openWorkspacePreview(id: string) {
     return yachiyoWorkspaceNative.openPreview({ id })
   }
+
+  public inspectWorkspaceApk(params: { workspaceKey: string; path: string }) {
+    return yachiyoArtifactNative.inspectApk(params)
+  }
+
+  public async installWorkspaceApk(params: { workspaceKey: string; path: string; expectedSha256: string }) {
+    return runWorkspaceBrokeredAction({
+      title: '安装工作区 APK',
+      detail: `${params.path}\nSHA-256: ${params.expectedSha256}`,
+      risk: 'dangerous',
+      mutating: true,
+      alwaysAsk: true,
+    }, () => yachiyoArtifactNative.installApk(params), { accepted: false, packageName: '', sha256: '' })
+  }
+
+  public workspacePackageStatus(packageName: string) { return yachiyoArtifactNative.packageStatus({ packageName }) }
+  public launchWorkspacePackage(packageName: string) {
+    return runWorkspaceBrokeredAction({
+      title: '启动工作区应用',
+      detail: packageName,
+      risk: 'dangerous',
+      mutating: true,
+      alwaysAsk: true,
+    }, () => yachiyoArtifactNative.launchPackage({ packageName }), { launched: false })
+  }
+  public workspaceInstallPermission() { return yachiyoArtifactNative.installPermission() }
+  public openWorkspaceInstallPermission() { return yachiyoArtifactNative.openInstallPermission() }
 
   public async controlledBrowserNavigate(url: string) {
     return runWorkspaceBrokeredAction({

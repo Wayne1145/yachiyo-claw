@@ -1,6 +1,6 @@
-import { Collapse, Flex, Stack, Tabs, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Collapse, Flex, Stack, Tabs, Text, TextInput } from '@mantine/core'
 import type { ProviderModelInfo } from '@shared/types'
-import { IconSearch } from '@tabler/icons-react'
+import { IconSearch, IconX } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { useAtom } from 'jotai'
 import { forwardRef, useMemo, useState } from 'react'
@@ -9,9 +9,11 @@ import SwipeableViews from 'react-swipeable-views'
 import { Drawer } from 'vaul'
 import { useProviders } from '@/hooks/useProviders'
 import { collapsedProvidersAtom } from '@/stores/atoms/uiAtoms'
+import { useAndroidPagerGestureLock } from '@/components/yachiyo/android-pager-gesture-lock'
 import { ScalableIcon } from '../common/ScalableIcon'
 import { ProviderHeader } from './ProviderHeader'
 import { groupFavoriteModels, ModelItemInDrawer, SELECTED_BG_CLASS } from './shared'
+import './mobile-model-selector.css'
 
 type FilteredProvider = {
   id: string
@@ -51,7 +53,7 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
       onOptionSubmit,
       modelFilter,
     },
-    _ref
+    _ref,
   ) => {
     const { t } = useTranslation()
     const { favoritedModels: allFavoritedModels, favoriteModel, unfavoriteModel, isFavoritedModel } = useProviders()
@@ -62,6 +64,18 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
       return allFavoritedModels.filter((fm) => fm.model && fm.provider && modelFilter(fm.model, fm.provider.id))
     }, [allFavoritedModels, modelFilter])
     const [open, setOpen] = useState(false)
+    useAndroidPagerGestureLock(open)
+    const orderedProviders = useMemo(
+      () =>
+        [...filteredProviders]
+          .filter((provider) => provider.models?.length)
+          .sort((left, right) => {
+            if (left.id === selectedProviderId) return -1
+            if (right.id === selectedProviderId) return 1
+            return 0
+          }),
+      [filteredProviders, selectedProviderId],
+    )
 
     // Convert activeTab to index for SwipeableViews (0 = 'all', 1 = 'favorite')
     const swipeIndex = useMemo(() => {
@@ -81,7 +95,19 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
 
     const handleOptionSubmit = (val: string) => {
       onOptionSubmit(val)
+      onSearchChange('')
+      onTabChange('all')
       setOpen(false)
+    }
+
+    const handleOpenChange = (nextOpen: boolean) => {
+      setOpen(nextOpen)
+      if (!nextOpen) {
+        onSearchChange('')
+        onTabChange('all')
+        return
+      }
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
     }
 
     // Render favorite tab content
@@ -105,6 +131,7 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
                 modelCount={group.models.length}
                 showChevron={false}
                 variant="mobile"
+                className="yachiyo-mobile-model-provider"
               />
               {group.models.map((fm) => {
                 if (!fm.provider || !fm.model) return null
@@ -136,20 +163,40 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
     }
 
     return (
-      <Drawer.Root open={open} onOpenChange={setOpen} noBodyStyles>
+      <Drawer.Root open={open} onOpenChange={handleOpenChange} noBodyStyles>
         <Drawer.Trigger asChild>{children}</Drawer.Trigger>
         <Drawer.Portal>
-          <Drawer.Overlay className="fixed inset-0 bg-chatbox-background-mask-overlay" />
-          <Drawer.Content className="flex flex-col rounded-t-[10px] h-fit fixed bottom-0 left-0 right-0 outline-none">
-            <Stack gap={0} className="bg-chatbox-background-primary rounded-t-lg h-[85vh]">
-              <div aria-hidden className="mx-auto w-16 h-1 flex-shrink-0 rounded-full bg-chatbox-tint-tertiary my-3" />
-              <Drawer.Title className="hidden">{t('Select Model')}</Drawer.Title>
-              <Tabs value={activeTab} onChange={onTabChange}>
+          <Drawer.Overlay className="yachiyo-mobile-model-overlay fixed inset-0" />
+          <Drawer.Content
+            className="yachiyo-mobile-model-sheet fixed bottom-0 left-0 right-0 flex flex-col outline-none"
+            data-searching={search.trim() ? 'true' : 'false'}
+            data-yachiyo-tab-swipe="block"
+          >
+            <Stack gap={0} className="yachiyo-mobile-model-surface">
+              <div data-vaul-handle aria-hidden />
+              <Flex className="yachiyo-mobile-model-heading" align="center" justify="space-between" gap="sm">
+                <Drawer.Title className="yachiyo-mobile-model-title">{t('Select Model')}</Drawer.Title>
+                <Drawer.Close asChild>
+                  <ActionIcon variant="subtle" color="gray" size={44} aria-label={t('Close')}>
+                    <IconX size={20} />
+                  </ActionIcon>
+                </Drawer.Close>
+              </Flex>
+              <Tabs className="yachiyo-mobile-model-tabs" value={activeTab} onChange={onTabChange}>
                 <Tabs.List grow>
                   <Tabs.Tab value="all">{t('All')}</Tabs.Tab>
                   <Tabs.Tab value="favorite">{t('Favorite')}</Tabs.Tab>
                 </Tabs.List>
               </Tabs>
+
+              <TextInput
+                value={search}
+                onFocus={() => onTabChange('all')}
+                onChange={(event) => onSearchChange(event.currentTarget.value)}
+                placeholder={t('Search models') as string}
+                leftSection={<ScalableIcon icon={IconSearch} />}
+                className="yachiyo-mobile-model-search"
+              />
 
               <Stack gap="md" className="flex-1 relative overflow-hidden">
                 <SwipeableViews
@@ -166,27 +213,20 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
                   }}
                 >
                   {/* All Tab Content */}
-                  <Stack gap="md" className="px-2 h-full overflow-y-auto scrollbar-none">
-                    <TextInput
-                      value={search}
-                      onChange={(event) => onSearchChange(event.currentTarget.value)}
-                      placeholder={t('Search models') as string}
-                      leftSection={<ScalableIcon icon={IconSearch} />}
-                      className="mt-2"
-                    />
-
+                  <Stack gap="md" className="yachiyo-mobile-model-list h-full overflow-y-auto scrollbar-none">
                     {showAuto && (
                       <Flex
                         component="button"
+                        data-selected={!selectedProviderId && !selectedModelId ? 'true' : undefined}
                         align="center"
                         gap="xs"
                         px="sm"
                         py="xs"
                         className={clsx(
-                          'rounded-md outline-none',
+                          'yachiyo-mobile-model-item rounded-md outline-none',
                           !selectedProviderId && !selectedModelId
                             ? SELECTED_BG_CLASS
-                            : 'bg-transparent active:bg-chatbox-background-brand-secondary-hover'
+                            : 'bg-transparent active:bg-chatbox-background-brand-secondary-hover',
                         )}
                         onClick={() => {
                           handleOptionSubmit('')
@@ -203,9 +243,10 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
                         </Text>
                       </Flex>
                     )}
-                    {filteredProviders.map((provider) => {
-                      const isCollapsed = collapsedProviders[provider.id] || false
-                      if (!provider.models?.length) return null
+                    {orderedProviders.map((provider) => {
+                      const isCollapsed = search.trim()
+                        ? false
+                        : (collapsedProviders[provider.id] ?? provider.id !== selectedProviderId)
                       return (
                         <Stack key={provider.id} gap="xs">
                           <ProviderHeader
@@ -214,6 +255,7 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
                             modelCount={provider.models?.length || 0}
                             onClick={() => toggleProviderCollapse(provider.id)}
                             variant="mobile"
+                            className="yachiyo-mobile-model-provider"
                           />
 
                           <Collapse in={!isCollapsed}>
@@ -250,7 +292,7 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
                   </Stack>
 
                   {/* Favorite Tab Content */}
-                  <Stack gap="md" className="px-2 h-full overflow-y-auto scrollbar-none">
+                  <Stack gap="md" className="yachiyo-mobile-model-list h-full overflow-y-auto scrollbar-none">
                     {renderFavoriteTab()}
                     <div className="h-[--mobile-safe-area-inset-bottom] min-h-4" />
                   </Stack>
@@ -261,5 +303,5 @@ export const MobileModelSelector = forwardRef<HTMLDivElement, MobileModelSelecto
         </Drawer.Portal>
       </Drawer.Root>
     )
-  }
+  },
 )

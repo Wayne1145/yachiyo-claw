@@ -30,6 +30,7 @@ import { createEmpty } from '@/stores/sessionActions'
 import { AgentConfigurationPanel } from './AgentConfigurationPanel'
 import { AndroidScheduledTasks } from './AndroidScheduledTasks'
 import { AndroidWorkspaceDeliveryPanel } from './AndroidWorkspaceDeliveryPanel'
+import { useAdaptiveControlDensity } from './useAdaptiveControlDensity'
 import { YachiyoMark } from './YachiyoMark'
 
 function StatusRow({
@@ -43,8 +44,18 @@ function StatusRow({
   tone?: 'neutral' | 'ready'
   action?: ReactNode
 }) {
+  const { containerRef, density, pointerHandlers } = useAdaptiveControlDensity<HTMLDivElement>({
+    contentKey: `${label}\u001f${value}\u001f${Boolean(action)}`,
+  })
+
   return (
-    <div className="yachiyo-status-row">
+    <div
+      ref={containerRef}
+      className="yachiyo-status-row"
+      data-density={density}
+      data-has-action={action ? 'true' : undefined}
+      {...pointerHandlers}
+    >
       <span className="yachiyo-status-label">{label}</span>
       <div className="yachiyo-status-value">
         <strong data-tone={tone} title={value}>
@@ -90,7 +101,7 @@ export function AndroidAgentWorkspace() {
             ? String(t('Shizuku 已授权'))
             : permissions.shizukuRunning
               ? String(t('Shizuku 已连接，等待授权'))
-              : String(t('Shizuku 服务未运行')),
+              : String(t('Shizuku 服务未运行'))
         )
         return
       }

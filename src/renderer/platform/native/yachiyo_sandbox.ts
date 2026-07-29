@@ -18,6 +18,8 @@ export interface NativeSandboxStatus {
   workingDirectory?: string | null
   platform: 'android-proot-alpine'
   distribution: string
+  freeBytes: number
+  abi: string
   error?: string
 }
 
@@ -68,6 +70,7 @@ interface NativeSandboxPlugin {
   kill(): Promise<{ killed: boolean }>
   read(options: { filePath: string }): Promise<{ success: boolean; content?: string; error?: string }>
   write(options: { filePath: string; content: string }): Promise<{ success: boolean; error?: string }>
+  delete(options: { filePath: string }): Promise<{ success: boolean; error?: string }>
   readPluginFile(options: {
     pluginId: string
     filePath: string

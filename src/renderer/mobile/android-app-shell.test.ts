@@ -7,6 +7,7 @@ import {
   hasYachiyoDefaultModel,
   isAllowedAndroidShellPath,
   resolveAndroidShellBackAction,
+  resolveAndroidShellParentPath,
   resolveAndroidShellTab,
   resolveAndroidShellWorkspaceView,
   shouldUseAndroidAppShell,
@@ -84,6 +85,17 @@ describe('Android app shell state', () => {
     expect(resolveAndroidShellBackAction('/')).toBe('minimize')
     expect(resolveAndroidShellBackAction('/session/chat-1')).toBe('minimize')
     expect(resolveAndroidShellBackAction('/task/agent-1')).toBe('minimize')
+  })
+
+  it('resolves the current tab hierarchy before leaving the tab', () => {
+    expect(resolveAndroidShellParentPath('/settings/provider/openai')).toBe('/settings/provider')
+    expect(resolveAndroidShellParentPath('/settings/provider/openai/advanced')).toBe('/settings/provider')
+    expect(resolveAndroidShellParentPath('/settings/provider')).toBe('/settings')
+    expect(resolveAndroidShellParentPath('/settings/themes')).toBe('/settings')
+    expect(resolveAndroidShellParentPath('/plugin/weather/details')).toBe('/plugin/weather')
+    expect(resolveAndroidShellParentPath('/about')).toBe('/settings')
+    expect(resolveAndroidShellParentPath('/settings')).toBeUndefined()
+    expect(resolveAndroidShellParentPath('/session/chat-1')).toBeUndefined()
   })
 
   it('renders an explicitly selected task workspace above settings routes', () => {

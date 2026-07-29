@@ -1,4 +1,4 @@
-import { Alert, Button, SegmentedControl, Stack, Switch, Text, Title } from '@mantine/core'
+import { ActionIcon, Alert, Button, SegmentedControl, Stack, Switch, Text, Title, Tooltip } from '@mantine/core'
 import { IconAdjustments, IconAlertTriangle, IconBolt, IconShieldLock } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -14,6 +14,7 @@ import { type AgentApprovalMode, getAgentSessionConfig, saveAgentSessionConfig }
 import { getAgentRuntimeSettings, saveAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
 import { AgentConfigurationPanel } from './AgentConfigurationPanel'
 import { type DevicePermissionStatus, yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 
 const APPROVAL_OPTIONS = [
   { value: 'manual', label: '手动审批' },
@@ -46,10 +47,12 @@ export function AgentSessionControls({
   sessionId,
   enabled,
   onToggle,
+  showStatus = true,
 }: {
   sessionId: string
   enabled: boolean
   onToggle: (enabled: boolean) => Promise<void>
+  showStatus?: boolean
 }) {
   const { t } = useTranslation()
   const [config, setConfig] = useState(() => getAgentSessionConfig(sessionId))
@@ -196,31 +199,75 @@ export function AgentSessionControls({
   }
 
   const phonePermissionsReady = Boolean(permissionStatus?.overlay && backendReady)
+  const toggleLabel = String(enabled ? t('停用 Agent') : t('启用 Agent'))
+  const settingsLabel = String(t('Agent 设置'))
+  const headerActions: AdaptiveActionDescriptor[] = [
+    {
+      id: 'toggle',
+      label: toggleLabel,
+      icon: IconBolt,
+      priority: 100,
+      collapseStrategy: 'icon',
+      layoutKey: enabled ? 'enabled' : 'disabled',
+      renderControl: ({ presentation }) =>
+        presentation === 'labelled' ? (
+          <Button
+            className="yachiyo-agent-toggle"
+            variant={enabled ? 'filled' : 'outline'}
+            color={enabled ? undefined : 'gray'}
+            aria-pressed={enabled}
+            leftSection={<IconBolt size={17} />}
+            onClick={() => void toggle()}
+          >
+            {toggleLabel}
+          </Button>
+        ) : (
+          <Tooltip label={toggleLabel}>
+            <ActionIcon
+              className="yachiyo-agent-toggle"
+              size={44}
+              variant={enabled ? 'filled' : 'outline'}
+              color={enabled ? undefined : 'gray'}
+              aria-label={toggleLabel}
+              aria-pressed={enabled}
+              onClick={() => void toggle()}
+            >
+              <IconBolt size={19} />
+            </ActionIcon>
+          </Tooltip>
+        ),
+    },
+    {
+      id: 'settings',
+      label: settingsLabel,
+      icon: IconAdjustments,
+      priority: 70,
+      collapseStrategy: 'keep',
+      renderControl: () => (
+        <Tooltip label={settingsLabel}>
+          <ActionIcon
+            className="yachiyo-agent-settings-button"
+            size={44}
+            variant="default"
+            aria-label={settingsLabel}
+            onClick={() => openSettings(false)}
+          >
+            <IconAdjustments size={19} />
+          </ActionIcon>
+        </Tooltip>
+      ),
+    },
+  ]
 
   return (
     <>
       <div className="yachiyo-agent-header-controls" data-enabled={enabled ? 'true' : 'false'}>
-        <Button
-          className="yachiyo-agent-toggle"
-          variant={enabled ? 'filled' : 'outline'}
-          color={enabled ? undefined : 'gray'}
-          aria-pressed={enabled}
-          leftSection={<IconBolt size={17} />}
-          onClick={() => void toggle()}
-        >
-          {enabled ? t('Agent 已启用') : t('Agent 能力未启用')}
-        </Button>
-        <Button
-          className="yachiyo-agent-settings-button"
-          variant="default"
-          leftSection={<IconAdjustments size={17} />}
-          onClick={() => openSettings(false)}
-        >
-          {t('Agent 设置')}
-        </Button>
-        <Text size="xs" c="dimmed" className="yachiyo-agent-mode-label">
-          {status}
-        </Text>
+        <AdaptiveActionCluster
+          className="yachiyo-agent-header-actions"
+          ariaLabel={String(t('Agent 控制'))}
+          actions={headerActions}
+        />
+        {showStatus && <Text size="xs" c="dimmed" className="yachiyo-agent-mode-label">{status}</Text>}
       </div>
 
       <AdaptiveModal

@@ -416,6 +416,34 @@ describe('plugin manager security integration', () => {
     }
   })
 
+  it('loads a page preview without booting its worker runtime', async () => {
+    const record = makeRecord('deferred-page-runtime', { capabilities: ['storage'] })
+    mocks.currentRecord = record
+
+    const loaded = await loadPluginForPage(record.manifest.id, { startRuntime: false })
+
+    expect(loaded).toMatchObject({ runtime: null, tools: [] })
+    expect(mocks.runtimeCreate).not.toHaveBeenCalled()
+  })
+
+  it('records lifecycle cancellation without counting it as a plugin failure', async () => {
+    const runtime = {
+      invokeTool: vi.fn(async () => {
+        throw new Error('cancelled')
+      }),
+      isDisposed: () => true,
+    }
+
+    await expect(invokeLoadedPluginTool('cancelled-page', runtime as never, 'render', {})).rejects.toThrow(
+      'cancelled'
+    )
+
+    expect(mocks.health.has('cancelled-page')).toBe(false)
+    expect(readPluginAudit('cancelled-page')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ event: 'invocation_cancelled', status: 'cancelled' })])
+    )
+  })
+
   it('terminates every live runtime when the global plugin feature is switched off', async () => {
     const previous = settingsStore.getState().featureOverrides
     const record = makeRecord('runtime-to-stop', { capabilities: ['storage'] })

@@ -43,6 +43,8 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 模型文件下载到应用私有目录，支持空间限制、断点续传、暂停/恢复/取消、SHA-256 校验和下载状态持久化。
 - 本地模型页的下载入口统一跳转到设置中的下载管理；离开来源页面或通知消失后仍可查看任务状态、下载速度、预计剩余时间、已下载/总大小与失败原因，并可继续、取消或删除任务。
 - Android 原生接入 LiteRT-LM 与 llama.cpp，可分别加载 `.litertlm` 和单文件/完整分片的 `.gguf` 对话模型；接入 MediaPipe Text Embedder，可使用已下载的 `.tflite` 模型生成本地文本向量。
+- 本地对话模型支持 `auto`/`extreme` 性能模式与 CPU/GPU/NPU 后端覆盖。首次优化会在隔离进程中实测 TTFT、prefill/decode tokens/s 和内存，缓存最快的成功配置；GGUF 使用 Vulkan 分层卸载并保留 CPU 回退，运行页展示实际后端、卸载层数和回退原因。
+- 公开 GPLv3 构建只保证通用 CPU/Vulkan 路径。NPU 仅在模型产物、SoC 清单、ABI、dispatch 与经许可厂商运行库全部匹配的专用构建中进入候选，并同时下载通用回退产物。
 - 已下载模型提供独立列表、设为默认、加载进内存、卸载和删除操作；手动预加载会关闭 GGUF mmap、真实读取权重，并显示模型大小、推理进程 PSS 与耗时；删除会同步清理原生文件、Provider 模型、默认项、收藏和各模型选择器中的失效引用。
 - 已在 Android 12、6 GB 模拟器上实机验证 Gemma 3 270M GGUF 连续对话、FunctionGemma LiteRT-LM 结构化工具调用及模型进程驻留；小于 1B 的模型会使用紧凑人格和按请求筛选的工具描述，避免上下文挤占回复。
 
@@ -52,10 +54,15 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 本地 RAG 支持文档分块、索引、检索和持久化；安装兼容的 MediaPipe embedding 模型后使用向量检索，未配置或推理失败时保留词法检索回退。
 - 可选的 Vibe Coding 环境在应用私有目录安装 Alpine Linux mini rootfs，并通过 PRoot 提供 Bash、Git、Python、Node.js/npm、SSH 和常用构建工具。
 - 开发环境页支持安装、进度显示、终端自检和重置；Agent 的沙箱工具通过结构化调用访问 `/workspace`，带路径约束、超时和输出上限。
+- Android 底部导航的“开发”入口复用现有 Task/Provider：Web、PWA 与 Capacitor Debug APK 可在兼容手机上本地构建和验证，Kotlin APK 为 Beta；React Native、Flutter 与 NDK 仅支持源码编辑。
+- Windows、macOS、iOS、Linux x86_64 与 Docker 目标需要远程 Runner。未配置 Runner 时只会显示“源码已准备”，不会生成或报告虚假的本地构建产物。
+- 模型生成的文件修改先保存为带基线哈希的 ChangeSet，用户可按文件查看 Diff、应用或拒绝；APK 只从目标 Profile 声明的路径收集，并在系统安装器确认前显示包名、签名、权限与 SHA-256。
 - Android MCP 客户端支持受保护资源发现、OAuth 授权码 + PKCE、应用深链回调、access token/refresh token 安全存储、刷新后重试和已鉴权的 MCP 请求。
 
 > [!WARNING]
 > PRoot 是用户态文件系统与进程环境兼容层，不是容器、虚拟机或内核级安全边界。Linux 沙箱中的命令仍必须经过 Yachiyo Claw 的 Tool Broker、审批、路径限制和审计；不要把 PRoot 当作可以安全运行任意不可信二进制的强隔离环境。
+
+手机端目标矩阵、恢复语义和 APK 交付限制见 [移动端 Vibe Coding](docs/MOBILE_VIBE_CODING.md)。
 
 ### Android Agent
 
@@ -186,7 +193,8 @@ Yachiyo Claw 没有把所有参考项目的代码直接合并进来。下表区�
 | 项目                                                                    | 本项目中的用途                                    |
 | ----------------------------------------------------------------------- | ------------------------------------------------- |
 | [google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Android `.litertlm` 模型加载与端侧对话推理        |
-| [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp)             | Android `.gguf` 模型 CPU 推理与聊天模板            |
+| [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp)             | Android `.gguf` 模型 CPU/Vulkan 推理与聊天模板     |
+| [KhronosGroup/Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) | 可复现构建 llama.cpp Android Vulkan 后端所需的 C++ 头文件 |
 | [google-ai-edge/mediapipe](https://github.com/google-ai-edge/mediapipe) | MediaPipe Text Embedder 与本地 `.tflite` 文本向量 |
 | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)             | Android 端内置中英双语流式离线语音识别            |
 | [mozilla/pdf.js](https://github.com/mozilla/pdf.js)                     | Android/WebView 内本地 PDF 文字解析               |

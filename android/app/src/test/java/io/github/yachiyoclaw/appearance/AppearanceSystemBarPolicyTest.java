@@ -19,7 +19,7 @@ public class AppearanceSystemBarPolicyTest {
     }
 
     @Test
-    public void identifiesGestureNavigationFromTheAbsenceOfBottomTappableElements() {
+    public void identifiesGestureNavigationFromTheAbsenceOfTappableNavigationInsets() {
         assertEquals(
             AppearanceSystemBarPolicy.NavigationMode.GESTURE,
             AppearanceSystemBarPolicy.navigationMode(24, 0)
@@ -61,5 +61,12 @@ public class AppearanceSystemBarPolicyTest {
                 AppearanceSystemBarPolicy.NavigationMode.UNKNOWN
             )
         );
+    }
+
+    @Test
+    public void convertsPhysicalGestureInsetsToCssPixels() {
+        assertEquals(24d, AppearanceSystemBarPolicy.cssPixels(72, 3f), 0.0001d);
+        assertEquals(0d, AppearanceSystemBarPolicy.cssPixels(0, 3f), 0.0001d);
+        assertEquals(72d, AppearanceSystemBarPolicy.cssPixels(72, 0f), 0.0001d);
     }
 }

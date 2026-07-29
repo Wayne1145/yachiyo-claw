@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { type FC, type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMCPServerStatus, useToggleMCPServer } from '@/hooks/mcp'
+import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { navigateToSettings } from '@/modals/Settings'
 import { BUILTIN_MCP_SERVERS } from '@/packages/mcp/builtin'
 import { useMcpSettings } from '@/stores/settingsStore'
@@ -42,12 +43,13 @@ const ServerItem: FC<{
 const MCPMenu: FC<{ children: (enabledTools: number) => ReactNode }> = ({ children }) => {
   const { t } = useTranslation()
   const mcp = useMcpSettings()
+  const isSmallScreen = useIsSmallScreen()
   const onEnabledChange = useToggleMCPServer()
   const enabledToolsCount = mcp.servers.filter((s) => s.enabled).length + mcp.enabledBuiltinServers.length
   const [opened, setOpened] = useState(false)
   return (
     <Menu
-      trigger="hover"
+      trigger={isSmallScreen ? 'click' : 'hover'}
       openDelay={100}
       closeDelay={100}
       opened={opened}
@@ -63,7 +65,7 @@ const MCPMenu: FC<{ children: (enabledTools: number) => ReactNode }> = ({ childr
       }}
     >
       <Menu.Target>{children(enabledToolsCount)}</Menu.Target>
-      <Menu.Dropdown>
+      <Menu.Dropdown className="yachiyo-composer-popover yachiyo-composer-mcp-menu">
         <Flex justify="space-between" align="center">
           <Menu.Label fw={600}>MCP</Menu.Label>
           <Menu.Label>

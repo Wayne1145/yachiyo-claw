@@ -29,6 +29,7 @@ import { type NativeDownloadTask, yachiyoDownloadsNative } from '@/platform/nati
 import { yachiyoSandboxNative } from '@/platform/native/yachiyo_sandbox'
 import { yachiyoUpdateNative } from '@/platform/native/yachiyo_update'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { downloadProgress, humanizeDownloadError, requireAcceptedDownloadAction } from './download-ui'
 
 function bytes(value: number) {
@@ -216,6 +217,44 @@ export function DownloadsCenter() {
     }
   }
 
+  const headerActions: AdaptiveActionDescriptor[] = [
+    {
+      id: 'settings',
+      label: String(t('下载器设置')),
+      icon: IconSettings,
+      priority: 80,
+      collapseStrategy: 'icon',
+      renderControl: () => (
+        <ActionIcon
+          size={44}
+          variant="default"
+          aria-label={t('下载器设置')}
+          onClick={() => setSettingsOpen((value) => !value)}
+        >
+          <IconSettings />
+        </ActionIcon>
+      ),
+    },
+    {
+      id: 'refresh',
+      label: String(t('刷新下载列表')),
+      icon: IconRefresh,
+      priority: 100,
+      collapseStrategy: 'keep',
+      renderControl: () => (
+        <ActionIcon
+          size={44}
+          variant="default"
+          aria-label={t('刷新下载列表')}
+          loading={loading}
+          onClick={() => void refresh(true)}
+        >
+          <IconRefresh />
+        </ActionIcon>
+      ),
+    },
+  ]
+
   return (
     <main className="local-model-center local-model-download-queue">
       <header className="local-model-queue-heading">
@@ -236,24 +275,36 @@ export function DownloadsCenter() {
             </Text>
           </div>
         </Group>
-        <Group gap="xs">
-          <ActionIcon variant="default" aria-label={t('下载器设置')} onClick={() => setSettingsOpen((value) => !value)}>
-            <IconSettings />
-          </ActionIcon>
-          <ActionIcon
-            variant="default"
-            aria-label={t('刷新下载列表')}
-            loading={loading}
-            onClick={() => void refresh(true)}
-          >
-            <IconRefresh />
-          </ActionIcon>
-        </Group>
+        {inAndroidAppShell ? (
+          <AdaptiveActionCluster
+            className="yachiyo-download-heading-actions"
+            ariaLabel={String(t('下载操作'))}
+            actions={headerActions}
+          />
+        ) : (
+          <Group gap="xs">
+            <ActionIcon
+              variant="default"
+              aria-label={t('下载器设置')}
+              onClick={() => setSettingsOpen((value) => !value)}
+            >
+              <IconSettings />
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              aria-label={t('刷新下载列表')}
+              loading={loading}
+              onClick={() => void refresh(true)}
+            >
+              <IconRefresh />
+            </ActionIcon>
+          </Group>
+        )}
       </header>
 
       {error && (
         <section className="local-model-queue-row" role="alert">
-          <Group justify="space-between" wrap="nowrap">
+          <Group justify="space-between" wrap={inAndroidAppShell ? 'wrap' : 'nowrap'}>
             <Text size="sm" c="red" style={{ overflowWrap: 'anywhere' }}>
               {error}
             </Text>
@@ -334,6 +385,67 @@ export function DownloadsCenter() {
                 : task.kind === 'model'
                   ? controlModel(task, type)
                   : controlGeneric(task, type)
+          const primaryAction =
+            task.status === 'downloading' || task.status === 'queued'
+              ? {
+                  id: 'pause',
+                  label: String(t('暂停')),
+                  icon: IconPlayerPause,
+                  run: () => void control('pause'),
+                }
+              : task.status === 'paused' || task.status === 'failed'
+                ? {
+                    id: 'resume',
+                    label: String(t('继续')),
+                    icon: IconPlayerPlay,
+                    run: () => void control('resume'),
+                  }
+                : undefined
+          const secondaryLabel = String(isTerminal(task.status) ? t('移除记录') : t('取消下载'))
+          const SecondaryIcon = isTerminal(task.status) ? IconTrash : IconX
+          const taskActions: AdaptiveActionDescriptor[] = [
+            ...(primaryAction
+              ? [
+                  {
+                    id: primaryAction.id,
+                    label: primaryAction.label,
+                    icon: primaryAction.icon,
+                    priority: 100,
+                    collapseStrategy: 'keep' as const,
+                    renderControl: () => (
+                      <Button
+                        variant="default"
+                        leftSection={<primaryAction.icon size={16} />}
+                        onClick={primaryAction.run}
+                      >
+                        {primaryAction.label}
+                      </Button>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: isTerminal(task.status) ? 'remove' : 'cancel',
+              label: secondaryLabel,
+              icon: SecondaryIcon,
+              priority: 10,
+              collapseStrategy: 'overflow',
+              renderControl: () => (
+                <ActionIcon
+                  size={44}
+                  color={isTerminal(task.status) ? 'gray' : 'red'}
+                  variant="subtle"
+                  aria-label={secondaryLabel}
+                  onClick={() => (isTerminal(task.status) ? void removeTask(task) : void control('cancel'))}
+                >
+                  <SecondaryIcon size={17} />
+                </ActionIcon>
+              ),
+              menuAction: {
+                onSelect: () => (isTerminal(task.status) ? void removeTask(task) : void control('cancel')),
+              },
+            },
+          ]
           return (
             <section key={task.id} className="local-model-queue-row">
               <Group justify="space-between">
@@ -363,43 +475,49 @@ export function DownloadsCenter() {
                   {translatedDownloadError(task.error, t)}
                 </Text>
               )}
-              <Group justify="flex-end">
-                {canControl && (task.status === 'downloading' || task.status === 'queued') && (
-                  <Button
-                    size="compact-sm"
-                    variant="default"
-                    leftSection={<IconPlayerPause size={15} />}
-                    onClick={() => void control('pause')}
-                  >
-                    {t('暂停')}
-                  </Button>
-                )}
-                {canControl && (task.status === 'paused' || task.status === 'failed') && (
-                  <Button
-                    size="compact-sm"
-                    variant="default"
-                    leftSection={<IconPlayerPlay size={15} />}
-                    onClick={() => void control('resume')}
-                  >
-                    {t('继续')}
-                  </Button>
-                )}
-                {canControl && !isTerminal(task.status) && (
-                  <ActionIcon
-                    color="red"
-                    variant="subtle"
-                    aria-label={t('取消下载')}
-                    onClick={() => void control('cancel')}
-                  >
-                    <IconX size={17} />
-                  </ActionIcon>
-                )}
-                {isTerminal(task.status) && (
-                  <ActionIcon variant="subtle" aria-label={t('移除记录')} onClick={() => void removeTask(task)}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
-                )}
-              </Group>
+              {canControl && inAndroidAppShell ? (
+                <AdaptiveActionCluster
+                  className="yachiyo-download-task-actions"
+                  ariaLabel={`${String(t(task.title))} ${String(t('下载操作'))}`}
+                  actions={taskActions}
+                />
+              ) : (
+                <Group justify="flex-end">
+                  {task.status === 'downloading' || task.status === 'queued' ? (
+                    <Button
+                      size="compact-sm"
+                      variant="default"
+                      leftSection={<IconPlayerPause size={15} />}
+                      onClick={() => void control('pause')}
+                    >
+                      {t('暂停')}
+                    </Button>
+                  ) : task.status === 'paused' || task.status === 'failed' ? (
+                    <Button
+                      size="compact-sm"
+                      variant="default"
+                      leftSection={<IconPlayerPlay size={15} />}
+                      onClick={() => void control('resume')}
+                    >
+                      {t('继续')}
+                    </Button>
+                  ) : null}
+                  {!isTerminal(task.status) ? (
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      aria-label={t('取消下载')}
+                      onClick={() => void control('cancel')}
+                    >
+                      <IconX size={17} />
+                    </ActionIcon>
+                  ) : (
+                    <ActionIcon variant="subtle" aria-label={t('移除记录')} onClick={() => void removeTask(task)}>
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  )}
+                </Group>
+              )}
             </section>
           )
         })}

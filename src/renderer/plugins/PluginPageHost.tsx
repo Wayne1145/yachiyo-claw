@@ -11,14 +11,24 @@ import {
   recordPluginUiFailure,
 } from './plugin-manager'
 import { ViewRenderer } from './ViewRenderer'
+import type { AndroidTabPageActivity } from '@/components/yachiyo/android-tab-page-activity'
 
 type PluginPageState =
   | { phase: 'loading' }
+  | ({ phase: 'cached' } & CachedPluginPage)
   | { phase: 'missing' }
   | { phase: 'denied' }
   | { phase: 'feature-disabled' }
   | { phase: 'error'; message: string }
   | { phase: 'ready'; plugin: LoadedPlugin; view: PluginView | null }
+
+type CachedPluginPage = {
+  displayName: string
+  entrySha256: string
+  view: PluginView | null
+}
+
+const pluginPageCache = new Map<string, CachedPluginPage>()
 
 export class PluginViewErrorBoundary extends Component<
   { pluginId: string; children: ReactNode },
@@ -50,40 +60,75 @@ export class PluginViewErrorBoundary extends Component<
 }
 
 /** Host-rendered plugin page shared by the exact route and its namespaced child routes. */
-export function PluginPageHost({ pluginId }: { pluginId: string }) {
+export function PluginPageHost({
+  pluginId,
+  activity = 'active',
+}: {
+  pluginId: string
+  activity?: AndroidTabPageActivity
+}) {
   const pluginsEnabled = useSettingsStore((settings) => settings.featureOverrides?.plugins !== false)
-  const [state, setState] = useState<PluginPageState>({ phase: 'loading' })
+  const [state, setState] = useState<PluginPageState>(() => {
+    const cached = pluginPageCache.get(pluginId)
+    return cached ? { phase: 'cached', ...cached } : { phase: 'loading' }
+  })
   const stateRef = useRef<PluginPageState>(state)
   const actionQueue = useRef<Promise<void>>(Promise.resolve())
   const generation = useRef(0)
+  const activityRef = useRef(activity)
+  const lifecycleControllerRef = useRef<AbortController>()
+
+  activityRef.current = activity
 
   useEffect(() => {
     stateRef.current = state
   }, [state])
 
   useEffect(() => {
-    let cancelled = false
+    lifecycleControllerRef.current?.abort()
+    const controller = new AbortController()
+    lifecycleControllerRef.current = controller
     const currentGeneration = ++generation.current
+    const cached = pluginPageCache.get(pluginId)
+
     if (!pluginsEnabled) {
       disposePluginRuntime(pluginId)
       setState({ phase: 'feature-disabled' })
       return () => {
-        cancelled = true
+        controller.abort()
+        if (generation.current === currentGeneration) generation.current += 1
       }
     }
-    setState({ phase: 'loading' })
+
+    setState(cached ? { phase: 'cached', ...cached } : { phase: 'loading' })
     void (async () => {
       try {
-        const plugin = await loadPluginForPage(pluginId)
-        if (cancelled || generation.current !== currentGeneration) return
+        const plugin = await loadPluginForPage(pluginId, { startRuntime: activity === 'active' })
+        if (controller.signal.aborted || generation.current !== currentGeneration) return
         if (!plugin) {
+          pluginPageCache.delete(pluginId)
           setState({ phase: 'missing' })
           return
         }
         if (!plugin.uiGranted) {
+          pluginPageCache.delete(pluginId)
           setState({ phase: 'denied' })
           return
         }
+
+        const entrySha256 = plugin.record.manifest.entrySha256 ?? plugin.record.packageSha256
+        if (activity !== 'active') {
+          const matchingCached = pluginPageCache.get(pluginId)
+          const cachedPage: CachedPluginPage = {
+            displayName: plugin.record.manifest.displayName,
+            entrySha256,
+            view: matchingCached?.entrySha256 === entrySha256 ? matchingCached.view : plugin.view,
+          }
+          pluginPageCache.set(pluginId, cachedPage)
+          setState({ phase: 'cached', ...cachedPage })
+          return
+        }
+
         let view: PluginView | null = plugin.view
         if (plugin.runtime && plugin.tools.some((tool) => tool.name === 'render')) {
           view = parsePluginView(
@@ -91,27 +136,38 @@ export function PluginPageHost({ pluginId }: { pluginId: string }) {
               principal: {
                 kind: 'plugin',
                 pluginId,
-                entrySha256: plugin.record.manifest.entrySha256 ?? plugin.record.packageSha256,
+                entrySha256,
               },
+              abortSignal: controller.signal,
             })
           )
         }
-        if (!cancelled && generation.current === currentGeneration) {
-          setState({ phase: 'ready', plugin, view })
+        if (!controller.signal.aborted && generation.current === currentGeneration) {
+          const readyState = { phase: 'ready' as const, plugin, view }
+          pluginPageCache.set(pluginId, {
+            displayName: plugin.record.manifest.displayName,
+            entrySha256,
+            view,
+          })
+          setState(readyState)
         }
       } catch (error) {
-        if (!cancelled && generation.current === currentGeneration) {
+        if (!controller.signal.aborted && generation.current === currentGeneration) {
           setState({ phase: 'error', message: error instanceof Error ? error.message : '插件加载失败' })
         }
       }
     })()
     return () => {
-      cancelled = true
+      controller.abort()
+      if (lifecycleControllerRef.current === controller) lifecycleControllerRef.current = undefined
+      if (generation.current === currentGeneration) generation.current += 1
     }
-  }, [pluginId, pluginsEnabled])
+  }, [activity, pluginId, pluginsEnabled])
 
   const onAction = useCallback(
     (action: ViewAction, extra?: Record<string, unknown>) => {
+      const controller = lifecycleControllerRef.current
+      if (activityRef.current !== 'active' || !controller || controller.signal.aborted) return
       const actionGeneration = generation.current
       const payload = {
         ...(typeof action.payload === 'object' && action.payload !== null ? action.payload : {}),
@@ -123,7 +179,13 @@ export function PluginPageHost({ pluginId }: { pluginId: string }) {
         .catch(() => undefined)
         .then(async () => {
           const current = stateRef.current
-          if (generation.current !== actionGeneration || current.phase !== 'ready' || !current.plugin.runtime) {
+          if (
+            activityRef.current !== 'active' ||
+            controller.signal.aborted ||
+            generation.current !== actionGeneration ||
+            current.phase !== 'ready' ||
+            !current.plugin.runtime
+          ) {
             return
           }
           try {
@@ -139,17 +201,33 @@ export function PluginPageHost({ pluginId }: { pluginId: string }) {
                   pluginId,
                   entrySha256: current.plugin.record.manifest.entrySha256 ?? current.plugin.record.packageSha256,
                 },
+                abortSignal: controller.signal,
               }
             )
-            if (generation.current !== actionGeneration) return
+            if (
+              activityRef.current !== 'active' ||
+              controller.signal.aborted ||
+              generation.current !== actionGeneration
+            ) {
+              return
+            }
             try {
               const view = parsePluginView(result)
+              pluginPageCache.set(pluginId, {
+                displayName: current.plugin.record.manifest.displayName,
+                entrySha256: current.plugin.record.manifest.entrySha256 ?? current.plugin.record.packageSha256,
+                view,
+              })
               setState((previous) => (previous.phase === 'ready' ? { ...previous, view } : previous))
             } catch {
               // Action handlers may intentionally return data without replacing the view.
             }
           } catch (error) {
-            if (generation.current === actionGeneration) {
+            if (
+              activityRef.current === 'active' &&
+              !controller.signal.aborted &&
+              generation.current === actionGeneration
+            ) {
               setState({ phase: 'error', message: error instanceof Error ? error.message : '插件执行失败' })
             }
           }
@@ -159,11 +237,15 @@ export function PluginPageHost({ pluginId }: { pluginId: string }) {
   )
 
   return (
-    <main className="local-model-center local-model-download-queue">
+    <main className="local-model-center local-model-download-queue" data-activity={activity}>
       <header className="local-model-queue-heading">
         <Title order={2}>
           <IconPuzzle size={22} style={{ verticalAlign: 'text-bottom', marginRight: 6 }} />
-          {state.phase === 'ready' ? state.plugin.record.manifest.displayName : '插件'}
+          {state.phase === 'ready'
+            ? state.plugin.record.manifest.displayName
+            : state.phase === 'cached'
+              ? state.displayName
+              : '插件'}
         </Title>
       </header>
       <Stack gap="md">
@@ -187,6 +269,12 @@ export function PluginPageHost({ pluginId }: { pluginId: string }) {
           <Alert color="red" title="插件出错">
             <Text size="sm">{state.message}</Text>
           </Alert>
+        )}
+        {state.phase === 'cached' && !state.view && <Loader mx="auto" my="lg" />}
+        {state.phase === 'cached' && state.view && (
+          <PluginViewErrorBoundary key={pluginId} pluginId={pluginId}>
+            <ViewRenderer view={state.view} onAction={onAction} />
+          </PluginViewErrorBoundary>
         )}
         {state.phase === 'ready' &&
           (state.view ? (

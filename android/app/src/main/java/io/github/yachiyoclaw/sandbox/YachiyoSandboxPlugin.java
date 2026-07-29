@@ -96,6 +96,8 @@ public final class YachiyoSandboxPlugin extends Plugin {
         result.put("workingDirectory", workspace == null ? null : workspace.getAbsolutePath());
         result.put("platform", "android-proot-alpine");
         result.put("distribution", SandboxDistribution.VERSION);
+        result.put("freeBytes", new StatFs(getContext().getFilesDir().getAbsolutePath()).getAvailableBytes());
+        result.put("abi", android.os.Build.SUPPORTED_ABIS.length == 0 ? "unknown" : android.os.Build.SUPPORTED_ABIS[0]);
         if (lastError != null) result.put("error", lastError);
         call.resolve(result);
     }
@@ -344,6 +346,20 @@ public final class YachiyoSandboxPlugin extends Plugin {
             call.resolve(new JSObject().put("success", true));
         } catch (Exception error) {
             call.resolve(fileError(error, "sandbox_write_failed"));
+        }
+    }
+
+    @PluginMethod
+    public void delete(PluginCall call) {
+        try {
+            File target = resolveWorkspace(call.getString("filePath", ""));
+            if (!target.isFile() || Files.isSymbolicLink(target.toPath())) {
+                throw new IOException("sandbox_file_not_found");
+            }
+            Files.delete(target.toPath());
+            call.resolve(new JSObject().put("success", true));
+        } catch (Exception error) {
+            call.resolve(fileError(error, "sandbox_delete_failed"));
         }
     }
 
@@ -838,7 +854,9 @@ public final class YachiyoSandboxPlugin extends Plugin {
             .put("androidToolchainVariant", androidToolchainVariant())
             .put("workingDirectory", workspace == null ? null : workspace.getAbsolutePath())
             .put("platform", "android-proot-alpine")
-            .put("distribution", SandboxDistribution.VERSION);
+            .put("distribution", SandboxDistribution.VERSION)
+            .put("freeBytes", new StatFs(getContext().getFilesDir().getAbsolutePath()).getAvailableBytes())
+            .put("abi", android.os.Build.SUPPORTED_ABIS.length == 0 ? "unknown" : android.os.Build.SUPPORTED_ABIS[0]);
     }
 
     private static JSObject commandResult(CommandResult result) {

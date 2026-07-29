@@ -10,6 +10,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -56,7 +57,7 @@ import {
   IconWorldUpload,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
-import { visit } from 'unist-util-visit'
+import { SKIP, visit } from 'unist-util-visit'
 import { useCopied } from '@/hooks/useCopied'
 import { deployHtmlToEdgeOne } from '../packages/edgeone'
 import { highlight, highlightSync, type ShikiTheme } from '../packages/shiki'
@@ -78,6 +79,63 @@ function remarkAddCodeIndex() {
       node.data.hProperties = node.data.hProperties || {}
       node.data.hProperties['data-code-index'] = counter++
     })
+  }
+}
+
+function splitStreamingGraphemes(value: string): string[] {
+  if (typeof Intl.Segmenter === 'function') {
+    return Array.from(
+      new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+      ({ segment }) => segment
+    )
+  }
+  return Array.from(value)
+}
+
+function createStreamingRevealPlugin(stableOffset: number, enabled: boolean) {
+  return () => {
+    // biome-ignore lint/suspicious/noExplicitAny: rehype node positions and mutable parents are intentionally generic here
+    return (tree: any) => {
+      if (!enabled) return
+
+      // biome-ignore lint/suspicious/noExplicitAny: rehype's text-node parent shape is supplied at runtime
+      visit(tree, 'text', (node: any, index: number | undefined, parent: any) => {
+        if (index === undefined || !parent || typeof node.value !== 'string') return
+        if (parent.tagName === 'code' || parent.tagName === 'pre' || parent.tagName === 'style') return
+
+        const startOffset = node.position?.start?.offset
+        const endOffset = node.position?.end?.offset
+        if (typeof startOffset !== 'number' || typeof endOffset !== 'number' || endOffset <= stableOffset) return
+
+        const revealStart = Math.max(0, Math.min(node.value.length, stableOffset - startOffset))
+        const stableText = node.value.slice(0, revealStart)
+        const revealText = node.value.slice(revealStart)
+        if (!revealText) return
+
+        const replacement: any[] = []
+        if (stableText) replacement.push({ type: 'text', value: stableText })
+        let revealOrder = 0
+        for (const grapheme of splitStreamingGraphemes(revealText)) {
+          if (/^\s+$/u.test(grapheme)) {
+            replacement.push({ type: 'text', value: grapheme })
+            continue
+          }
+          replacement.push({
+            type: 'element',
+            tagName: 'span',
+            properties: {
+              className: ['yachiyo-stream-token'],
+              style: `--yachiyo-stream-order:${Math.min(revealOrder, 12)}`,
+            },
+            children: [{ type: 'text', value: grapheme }],
+          })
+          revealOrder += 1
+        }
+
+        parent.children.splice(index, 1, ...replacement)
+        return [SKIP, index + replacement.length]
+      })
+    }
   }
 }
 
@@ -108,6 +166,25 @@ function Markdown(props: {
 
   const codeFences = useMemo(() => (children.match(/```/g) || []).length, [children])
   const generatingCodeIndex = useMemo(() => (codeFences % 2 === 0 ? -1 : Math.floor(codeFences / 2)), [codeFences])
+  const processedChildren = useMemo(
+    () => (enableLaTeXRendering ? latex.processLaTeX(children) : children),
+    [children, enableLaTeXRendering]
+  )
+  const previousSourceRef = useRef(processedChildren)
+  const revealsAppendedText = Boolean(
+    generating &&
+      processedChildren.length > previousSourceRef.current.length &&
+      processedChildren.startsWith(previousSourceRef.current)
+  )
+  const stableSourceOffset = revealsAppendedText ? previousSourceRef.current.length : processedChildren.length
+  const streamingRevealPlugin = useMemo(
+    () => createStreamingRevealPlugin(stableSourceOffset, revealsAppendedText),
+    [revealsAppendedText, stableSourceOffset]
+  )
+
+  useEffect(() => {
+    previousSourceRef.current = processedChildren
+  }, [processedChildren])
 
   return (
     <ReactMarkdown
@@ -116,7 +193,7 @@ function Markdown(props: {
           ? [remarkGfm, remarkMath, remarkBreaks, remarkAddCodeIndex]
           : [remarkGfm, remarkBreaks, remarkAddCodeIndex]
       }
-      rehypePlugins={[rehypeKatex]}
+      rehypePlugins={[rehypeKatex, streamingRevealPlugin]}
       className={`break-words [overflow-wrap:anywhere] ${className || ''}`}
       // react-markdown's default defaultUrlTransform will incorrectly encode query parameters in URLs (e.g. & becomes &amp;)
       // Use sanitizeUrl here to avoid that and to prevent XSS attacks
@@ -162,7 +239,7 @@ function Markdown(props: {
         ]
       )}
     >
-      {enableLaTeXRendering ? latex.processLaTeX(children) : children}
+      {processedChildren}
     </ReactMarkdown>
   )
 }

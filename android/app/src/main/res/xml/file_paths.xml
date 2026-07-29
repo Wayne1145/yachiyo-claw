@@ -3,4 +3,5 @@
     <external-files-path name="camera_images" path="Pictures/" />
     <cache-path name="verified_updates" path="verified-updates/" />
     <cache-path name="workspace_exports" path="workspace-exports/" />
+    <cache-path name="workspace_artifacts" path="workspace-artifacts/" />
 </paths>

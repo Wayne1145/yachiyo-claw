@@ -29,6 +29,7 @@ import {
   IconDownload,
   IconPlayerPause,
   IconPlayerPlay,
+  IconRefresh,
   IconSearch,
   IconTrash,
   IconX,
@@ -47,16 +48,25 @@ import {
 import { createMobileModelCatalogController, searchMobileModelCatalog } from '@/mobile/model-catalog-controller'
 import {
   deleteNativeModel,
+  getNativeModelAccelerationSettings,
   getNativeModelDeviceProfile,
   getNativeModelRuntimeState,
   loadNativeModel,
   listNativeModelJobs,
+  type NativeAccelerationBackend,
+  type NativeAccelerationProfile,
+  type NativeAccelerationRuntime,
+  type NativeAccelerationSettings,
   type NativeModelLoadProgressEvent,
+  optimizeNativeModel,
+  setNativeModelAccelerationSettings,
   subscribeNativeModelLoadProgress,
   yachiyoModelManagerNative,
 } from '@/platform/native/yachiyo_model_manager'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
 import { router } from '@/router'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
+import { useInAndroidAppShell } from './AndroidAppShellContext'
 import './local-model-center.css'
 
 type SourceFilter = 'all' | ModelCatalogSource
@@ -72,6 +82,7 @@ type ModelRuntimeState = {
   modelBytes?: number
   residentBytes?: number
   loadDurationMs?: number
+  acceleration?: NativeAccelerationRuntime
   error?: string
 }
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -126,13 +137,36 @@ function runtimeStageLabel(t: Translate, stage?: string): string {
   if (stage === 'loading') return t('正在将模型加载到内存')
   if (stage === 'generating') return t('模型正在生成')
   if (stage === 'embedding') return t('正在初始化嵌入模型')
+  if (stage === 'benchmarking') return t('正在实测 CPU、GPU 与 NPU 后端')
   if (stage === 'ready') return t('模型已加载到内存')
   return t('正在准备本地推理运行时')
+}
+
+function backendLabel(t: Translate, backend?: string): string {
+  if (!backend) return t('未验证')
+  if (backend.toLowerCase().includes('npu')) return 'NPU'
+  if (backend.toLowerCase().includes('gpu') || backend.toLowerCase().includes('vulkan')) return 'GPU'
+  if (backend.toLowerCase().includes('cpu')) return 'CPU'
+  if (backend === 'auto') return t('自动')
+  return backend
+}
+
+function formatRate(value?: number): string {
+  return value && Number.isFinite(value) ? `${value.toFixed(1)} tok/s` : '--'
+}
+
+function thermalLabel(t: Translate, status?: number): string {
+  if (status === undefined) return t('未知')
+  if (status >= 5) return t('临界')
+  if (status >= 4) return t('严重')
+  if (status >= 3) return t('较高')
+  return t('正常')
 }
 
 export function LocalModelCenter() {
   const { t: i18nT } = useTranslation()
   const t = i18nT as Translate
+  const inAndroidAppShell = useInAndroidAppShell()
   const [view, setView] = useState<ModelCenterView>('community')
   const [query, setQuery] = useState('gguf')
   const [source, setSource] = useState<SourceFilter>('all')
@@ -153,6 +187,13 @@ export function LocalModelCenter() {
   const [pendingJobIds, setPendingJobIds] = useState<Set<string>>(() => new Set())
   const [healthByModelId, setHealthByModelId] = useState<Record<string, ModelHealth>>({})
   const [runtimeByModelId, setRuntimeByModelId] = useState<Record<string, ModelRuntimeState>>({})
+  const [accelerationSettingsByModelId, setAccelerationSettingsByModelId] = useState<
+    Record<string, NativeAccelerationSettings>
+  >({})
+  const [accelerationProfileByModelId, setAccelerationProfileByModelId] = useState<
+    Record<string, NativeAccelerationProfile>
+  >({})
+  const [optimizingModelId, setOptimizingModelId] = useState<string>()
   const [selectedArtifactId, setSelectedArtifactId] = useState<string>()
   const searchAbortRef = useRef<AbortController>()
   const downloadSamplesRef = useRef<Record<string, DownloadSample>>({})
@@ -398,29 +439,34 @@ export function LocalModelCenter() {
     void Promise.all(
       installedJobs.map(async (job) => {
         try {
-          const [health, runtime] = await Promise.all([
+          const [health, runtime, accelerationSettings] = await Promise.all([
             yachiyoModelManagerNative.healthCheck({ modelId: job.modelId }),
             getNativeModelRuntimeState(job.modelId),
+            getNativeModelAccelerationSettings(job.modelId),
           ])
-          return [job.modelId, health, runtime] as const
+          return { modelId: job.modelId, health, runtime, accelerationSettings }
         } catch (cause) {
-          return [
-            job.modelId,
-            {
+          return {
+            modelId: job.modelId,
+            health: {
               status: 'unknown',
               reason: cause instanceof Error ? cause.message : t('运行时检查失败'),
             } satisfies ModelHealth,
-            { loaded: false },
-          ] as const
+            runtime: { loaded: false },
+            accelerationSettings: { mode: 'auto', requestedBackend: 'auto' } satisfies NativeAccelerationSettings,
+          }
         }
       })
     ).then((entries) => {
       if (!active) return
-      setHealthByModelId(Object.fromEntries(entries.map(([modelId, health]) => [modelId, health])))
+      setHealthByModelId(Object.fromEntries(entries.map(({ modelId, health }) => [modelId, health])))
+      setAccelerationSettingsByModelId(
+        Object.fromEntries(entries.map(({ modelId, accelerationSettings }) => [modelId, accelerationSettings]))
+      )
       setRuntimeByModelId((current) => ({
         ...current,
         ...Object.fromEntries(
-          entries.map(([modelId, , runtime]) => [
+          entries.map(({ modelId, runtime }) => [
             modelId,
             {
               loaded: runtime.loaded,
@@ -432,6 +478,7 @@ export function LocalModelCenter() {
               modelBytes: 'modelBytes' in runtime ? runtime.modelBytes : undefined,
               residentBytes: 'residentBytes' in runtime ? runtime.residentBytes : undefined,
               loadDurationMs: 'loadDurationMs' in runtime ? runtime.loadDurationMs : undefined,
+              acceleration: 'acceleration' in runtime ? runtime.acceleration : undefined,
             },
           ])
         ),
@@ -494,6 +541,7 @@ export function LocalModelCenter() {
           modelBytes: result.modelBytes,
           residentBytes: result.residentBytes,
           loadDurationMs: result.loadDurationMs,
+          acceleration: result.acceleration,
         },
       }))
     } catch (cause) {
@@ -531,6 +579,54 @@ export function LocalModelCenter() {
     await persistSettingsPatch({ defaultChatModel: { provider: ModelProviderEnum.Local, model: modelId } })
   }
 
+  const updateAccelerationSettings = async (modelId: string, patch: Partial<NativeAccelerationSettings>) => {
+    const current = accelerationSettingsByModelId[modelId] || { mode: 'auto', requestedBackend: 'auto' }
+    setQueueError('')
+    try {
+      const settings = await setNativeModelAccelerationSettings(modelId, { ...current, ...patch })
+      setAccelerationSettingsByModelId((values) => ({ ...values, [modelId]: settings }))
+      setAccelerationProfileByModelId((values) => {
+        const next = { ...values }
+        delete next[modelId]
+        return next
+      })
+    } catch (cause) {
+      setQueueError(cause instanceof Error ? cause.message : t('无法保存加速设置'))
+    }
+  }
+
+  const optimizeInstalledModel = async (modelId: string) => {
+    setQueueError('')
+    setOptimizingModelId(modelId)
+    setRuntimeByModelId((values) => ({
+      ...values,
+      [modelId]: { ...(values[modelId] || { loaded: false }), loading: true, stage: 'benchmarking', percent: 10 },
+    }))
+    try {
+      const profile = await optimizeNativeModel(modelId)
+      setAccelerationProfileByModelId((values) => ({ ...values, [modelId]: profile }))
+      setRuntimeByModelId((values) => ({
+        ...values,
+        [modelId]: { ...(values[modelId] || { loaded: false }), loading: false, stage: 'idle', percent: 0 },
+      }))
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : t('模型优化失败')
+      setQueueError(message)
+      setRuntimeByModelId((values) => ({
+        ...values,
+        [modelId]: {
+          ...(values[modelId] || { loaded: false }),
+          loading: false,
+          stage: 'idle',
+          percent: 0,
+          error: message,
+        },
+      }))
+    } finally {
+      setOptimizingModelId(undefined)
+    }
+  }
+
   if (view === 'installed' && !downloadQueueOpened) {
     return (
       <main className="local-model-center local-model-installed">
@@ -542,7 +638,7 @@ export function LocalModelCenter() {
           </div>
           <ActionIcon
             className="local-model-queue-trigger"
-            size={42}
+            size={inAndroidAppShell ? 44 : 42}
             radius="xl"
             variant="default"
             aria-label={t('打开下载队列')}
@@ -597,7 +693,119 @@ export function LocalModelCenter() {
                 defaultChatModel?.provider === ModelProviderEnum.Local && defaultChatModel.model === job.modelId
               const pending = pendingJobIds.has(job.id)
               const runtimeState = runtimeByModelId[job.modelId]
+              const accelerationSettings = accelerationSettingsByModelId[job.modelId] || {
+                mode: 'auto' as const,
+                requestedBackend: 'auto' as const,
+              }
+              const accelerationProfile = accelerationProfileByModelId[job.modelId]
+              const acceleration = runtimeState?.acceleration
               const fullyPreloaded = Boolean(runtimeState?.loaded && runtimeState.eager)
+              const supportsDefaultSelection = !job.artifacts.some((item) => item.format === 'tflite')
+              const loadLabel = String(
+                fullyPreloaded
+                  ? t('已完整预加载')
+                  : runtimeState?.loading
+                    ? t('加载中')
+                    : runtimeState?.loaded
+                      ? t('转为完整预加载')
+                      : t('加载到内存')
+              )
+              const installedActions: AdaptiveActionDescriptor[] = [
+                ...(supportsDefaultSelection
+                  ? [
+                      {
+                        id: 'default',
+                        label: String(isDefault ? t('当前默认') : t('设为默认')),
+                        icon: IconCheck,
+                        priority: 60,
+                        collapseStrategy: 'overflow' as const,
+                        disabled: isDefault || health?.status === 'unsupported',
+                        renderControl: () => (
+                          <Button
+                            radius="xl"
+                            color="chatbox-brand"
+                            variant={isDefault ? 'light' : 'filled'}
+                            disabled={isDefault || health?.status === 'unsupported'}
+                            onClick={() => void setInstalledAsDefault(job.modelId)}
+                          >
+                            {isDefault ? t('当前默认') : t('设为默认')}
+                          </Button>
+                        ),
+                        menuAction: {
+                          disabled: isDefault || health?.status === 'unsupported',
+                          onSelect: () => void setInstalledAsDefault(job.modelId),
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  id: 'load',
+                  label: loadLabel,
+                  icon: fullyPreloaded ? IconCheck : IconPlayerPlay,
+                  priority: 100,
+                  collapseStrategy: 'keep',
+                  disabled: pending || fullyPreloaded || health?.status === 'unsupported',
+                  renderControl: () => (
+                    <Button
+                      radius="xl"
+                      color={fullyPreloaded ? 'green' : 'chatbox-brand'}
+                      variant={fullyPreloaded ? 'light' : 'filled'}
+                      leftSection={!fullyPreloaded ? <IconPlayerPlay size={15} /> : <IconCheck size={15} />}
+                      loading={runtimeState?.loading}
+                      disabled={pending || fullyPreloaded || health?.status === 'unsupported'}
+                      onClick={() => void runJobAction(job.id, () => loadIntoMemory(job.modelId))}
+                    >
+                      {loadLabel}
+                    </Button>
+                  ),
+                },
+                {
+                  id: 'unload',
+                  label: String(t('卸载内存')),
+                  icon: IconX,
+                  priority: fullyPreloaded ? 90 : 40,
+                  collapseStrategy: 'overflow',
+                  disabled: pending || !runtimeState?.loaded,
+                  renderControl: () => (
+                    <Button
+                      radius="xl"
+                      variant="default"
+                      disabled={pending || !runtimeState?.loaded}
+                      onClick={() => void runJobAction(job.id, unloadRuntime)}
+                    >
+                      {t('卸载内存')}
+                    </Button>
+                  ),
+                  menuAction: {
+                    disabled: pending || !runtimeState?.loaded,
+                    onSelect: () => void runJobAction(job.id, unloadRuntime),
+                  },
+                },
+                {
+                  id: 'delete',
+                  label: String(t('删除')),
+                  icon: IconTrash,
+                  priority: 10,
+                  collapseStrategy: 'overflow',
+                  disabled: pending,
+                  renderControl: () => (
+                    <ActionIcon
+                      size={44}
+                      variant="subtle"
+                      color="red"
+                      aria-label={t('删除 {{repository}}', { repository: job.repository })}
+                      disabled={pending}
+                      onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
+                    >
+                      <IconTrash size={17} />
+                    </ActionIcon>
+                  ),
+                  menuAction: {
+                    disabled: pending,
+                    onSelect: () => void runJobAction(job.id, () => removeDownloadedModel(job.modelId)),
+                  },
+                },
+              ]
               return (
                 <section key={job.modelId} className="local-model-installed-row">
                   <div className="local-model-installed-heading">
@@ -648,6 +856,132 @@ export function LocalModelCenter() {
                       {health.reason}
                     </Text>
                   )}
+                  {!job.artifacts.every((item) => item.format === 'tflite') && (
+                    <div className="local-model-acceleration">
+                      <div className="local-model-acceleration-controls">
+                        <SegmentedControl
+                          size="xs"
+                          value={accelerationSettings.mode}
+                          disabled={optimizingModelId === job.modelId}
+                          onChange={(mode) =>
+                            void updateAccelerationSettings(job.modelId, {
+                              mode: mode as NativeAccelerationSettings['mode'],
+                            })
+                          }
+                          data={[
+                            { label: t('自动'), value: 'auto' },
+                            { label: t('极速'), value: 'extreme' },
+                          ]}
+                        />
+                        <Select
+                          size="xs"
+                          aria-label={t('后端覆盖')}
+                          value={accelerationSettings.requestedBackend}
+                          disabled={optimizingModelId === job.modelId}
+                          onChange={(requestedBackend) =>
+                            void updateAccelerationSettings(job.modelId, {
+                              requestedBackend: (requestedBackend || 'auto') as NativeAccelerationBackend,
+                            })
+                          }
+                          data={[
+                            { label: t('自动择优'), value: 'auto' },
+                            { label: 'CPU', value: 'cpu' },
+                            { label: 'GPU', value: 'gpu' },
+                            { label: 'NPU', value: 'npu' },
+                          ]}
+                        />
+                        <Button
+                          size="compact-sm"
+                          variant="default"
+                          leftSection={<IconRefresh size={15} />}
+                          loading={optimizingModelId === job.modelId}
+                          disabled={Boolean(optimizingModelId) || runtimeState?.loading}
+                          onClick={() => void optimizeInstalledModel(job.modelId)}
+                        >
+                          {t('重新优化')}
+                        </Button>
+                      </div>
+                      <div className="local-model-acceleration-metrics">
+                        <span>
+                          <small>{acceleration?.activeBackend ? t('实际后端') : t('校准后端')}</small>
+                          <strong>
+                            {backendLabel(t, acceleration?.activeBackend || accelerationProfile?.selectedBackend)}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>TTFT</small>
+                          <strong>
+                            {acceleration?.firstTokenMs || accelerationProfile?.selected.firstTokenMs
+                              ? `${(acceleration?.firstTokenMs || accelerationProfile?.selected.firstTokenMs || 0).toFixed(0)} ms`
+                              : '--'}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>Prefill</small>
+                          <strong>
+                            {formatRate(
+                              acceleration?.prefillTokensPerSecond ||
+                                accelerationProfile?.selected.prefillTokensPerSecond
+                            )}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>Decode</small>
+                          <strong>
+                            {formatRate(
+                              acceleration?.decodeTokensPerSecond || accelerationProfile?.selected.decodeTokensPerSecond
+                            )}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>{t('卸载层数')}</small>
+                          <strong>
+                            {acceleration?.offloadedLayers ??
+                              acceleration?.gpuLayers ??
+                              accelerationProfile?.selected.offloadedLayers ??
+                              accelerationProfile?.selected.gpuLayers ??
+                              0}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>{t('CPU 线程')}</small>
+                          <strong>
+                            {acceleration?.cpuThreads || accelerationProfile?.selected.cpuThreads || '--'}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>{t('运行内存')}</small>
+                          <strong>
+                            {formatBytes(t, acceleration?.residentBytes || accelerationProfile?.selected.residentBytes)}
+                          </strong>
+                        </span>
+                        <span>
+                          <small>{t('温控')}</small>
+                          <strong>
+                            {thermalLabel(t, acceleration?.thermalStatus ?? accelerationProfile?.thermalStatus)}
+                          </strong>
+                        </span>
+                      </div>
+                      {(acceleration?.modelVariant || accelerationProfile?.modelVariant) && (
+                        <Text size="xs" c="dimmed">
+                          {t('模型变体')}: {acceleration?.modelVariant || accelerationProfile?.modelVariant}
+                        </Text>
+                      )}
+                      {acceleration?.gpuDevice && (
+                        <Text size="xs" c="dimmed">
+                          GPU: {acceleration.gpuDevice}
+                          {acceleration.gpuMemoryBytes
+                            ? ` · ${t('可用显存')} ${formatBytes(t, acceleration.gpuMemoryBytes)}`
+                            : ''}
+                        </Text>
+                      )}
+                      {acceleration?.fallbackReason && (
+                        <Text size="xs" c="yellow">
+                          {t('回退原因')}: {acceleration.fallbackReason}
+                        </Text>
+                      )}
+                    </div>
+                  )}
                   {(runtimeState?.loading || runtimeState?.error) && (
                     <div className="local-model-runtime-progress">
                       <Group justify="space-between" gap="sm" wrap="nowrap">
@@ -672,63 +1006,67 @@ export function LocalModelCenter() {
                   )}
                   {runtimeState?.loaded && (
                     <Text size="xs" c="dimmed">
-                      {runtimeState.eager ? t('完整预加载') : t('按需映射')} · {t('模型 {{size}}', {
+                      {runtimeState.eager ? t('完整预加载') : t('按需映射')} ·{' '}
+                      {t('模型 {{size}}', {
                         size: formatBytes(t, runtimeState.modelBytes),
-                      })} · {t('推理进程内存 {{size}}', { size: formatBytes(t, runtimeState.residentBytes) })} ·{' '}
+                      })}{' '}
+                      · {t('推理进程内存 {{size}}', { size: formatBytes(t, runtimeState.residentBytes) })} ·{' '}
                       {t('耗时 {{seconds}} 秒', { seconds: ((runtimeState.loadDurationMs || 0) / 1000).toFixed(1) })}
                     </Text>
                   )}
-                  <Group gap="xs" justify="flex-end">
-                    {!job.artifacts.some((item) => item.format === 'tflite') && (
+                  {inAndroidAppShell ? (
+                    <AdaptiveActionCluster
+                      className="local-model-installed-actions"
+                      ariaLabel={`${job.repository} ${String(t('模型操作'))}`}
+                      actions={installedActions}
+                    />
+                  ) : (
+                    <Group gap="xs" justify="flex-end">
+                      {supportsDefaultSelection && (
+                        <Button
+                          size="compact-sm"
+                          radius="xl"
+                          color="chatbox-brand"
+                          variant={isDefault ? 'light' : 'filled'}
+                          disabled={isDefault || health?.status === 'unsupported'}
+                          onClick={() => void setInstalledAsDefault(job.modelId)}
+                        >
+                          {isDefault ? t('当前默认') : t('设为默认')}
+                        </Button>
+                      )}
                       <Button
                         size="compact-sm"
                         radius="xl"
-                        color="chatbox-brand"
-                        variant={isDefault ? 'light' : 'filled'}
-                        disabled={isDefault || health?.status === 'unsupported'}
-                        onClick={() => void setInstalledAsDefault(job.modelId)}
+                        color={fullyPreloaded ? 'green' : 'chatbox-brand'}
+                        variant={fullyPreloaded ? 'light' : 'filled'}
+                        leftSection={!fullyPreloaded ? <IconPlayerPlay size={15} /> : <IconCheck size={15} />}
+                        loading={runtimeState?.loading}
+                        disabled={pending || fullyPreloaded || health?.status === 'unsupported'}
+                        onClick={() => void runJobAction(job.id, () => loadIntoMemory(job.modelId))}
                       >
-                        {isDefault ? t('当前默认') : t('设为默认')}
+                        {loadLabel}
                       </Button>
-                    )}
-                    <Button
-                      size="compact-sm"
-                      radius="xl"
-                      color={fullyPreloaded ? 'green' : 'chatbox-brand'}
-                      variant={fullyPreloaded ? 'light' : 'filled'}
-                      leftSection={!fullyPreloaded ? <IconPlayerPlay size={15} /> : <IconCheck size={15} />}
-                      loading={runtimeState?.loading}
-                      disabled={pending || fullyPreloaded || health?.status === 'unsupported'}
-                      onClick={() => void runJobAction(job.id, () => loadIntoMemory(job.modelId))}
-                    >
-                      {fullyPreloaded
-                        ? t('已完整预加载')
-                        : runtimeState?.loading
-                          ? t('加载中')
-                          : runtimeState?.loaded
-                            ? t('转为完整预加载')
-                            : t('加载到内存')}
-                    </Button>
-                    <Button
-                      size="compact-sm"
-                      radius="xl"
-                      variant="default"
-                      disabled={pending || !runtimeState?.loaded}
-                      onClick={() => void runJobAction(job.id, unloadRuntime)}
-                    >
-                      {t('卸载内存')}
-                    </Button>
-                    <ActionIcon
-                      size={30}
-                      variant="subtle"
-                      color="red"
-                      aria-label={t('删除 {{repository}}', { repository: job.repository })}
-                      disabled={pending}
-                      onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
-                    >
-                      <IconTrash size={17} />
-                    </ActionIcon>
-                  </Group>
+                      <Button
+                        size="compact-sm"
+                        radius="xl"
+                        variant="default"
+                        disabled={pending || !runtimeState?.loaded}
+                        onClick={() => void runJobAction(job.id, unloadRuntime)}
+                      >
+                        {t('卸载内存')}
+                      </Button>
+                      <ActionIcon
+                        size={inAndroidAppShell ? 44 : 30}
+                        variant="subtle"
+                        color="red"
+                        aria-label={t('删除 {{repository}}', { repository: job.repository })}
+                        disabled={pending}
+                        onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
+                      >
+                        <IconTrash size={17} />
+                      </ActionIcon>
+                    </Group>
+                  )}
                 </section>
               )
             })}
@@ -746,7 +1084,7 @@ export function LocalModelCenter() {
             <ActionIcon
               variant="subtle"
               color="gray"
-              size={38}
+              size={inAndroidAppShell ? 44 : 38}
               aria-label={t('返回本地模型')}
               onClick={() => setDownloadQueueOpened(false)}
             >
@@ -787,6 +1125,88 @@ export function LocalModelCenter() {
               const canResume = job.status === 'paused' || job.status === 'failed'
               const canCancel = canPause || canResume
               const pending = pendingJobIds.has(job.id)
+              const primaryQueueAction = canPause
+                ? {
+                    id: 'pause',
+                    label: String(t('暂停')),
+                    icon: IconPlayerPause,
+                    run: () => void runJobAction(job.id, () => yachiyoModelManagerNative.pause({ jobId: job.id })),
+                  }
+                : canResume
+                  ? {
+                      id: 'resume',
+                      label: String(t('继续')),
+                      icon: IconPlayerPlay,
+                      run: () =>
+                        void runJobAction(job.id, () => yachiyoModelManagerNative.resume({ jobId: job.id })),
+                    }
+                  : undefined
+              const secondaryQueueAction = canCancel
+                ? {
+                    id: 'cancel',
+                    label: String(t('取消下载')),
+                    icon: IconX,
+                    run: () => void runJobAction(job.id, () => yachiyoModelManagerNative.cancel({ jobId: job.id })),
+                  }
+                : job.status === 'completed'
+                  ? {
+                      id: 'delete',
+                      label: String(t('删除本地模型')),
+                      icon: IconTrash,
+                      run: () => void runJobAction(job.id, () => removeDownloadedModel(job.modelId)),
+                    }
+                  : undefined
+              const queueActions: AdaptiveActionDescriptor[] = [
+                ...(primaryQueueAction
+                  ? [
+                      {
+                        id: primaryQueueAction.id,
+                        label: primaryQueueAction.label,
+                        icon: primaryQueueAction.icon,
+                        priority: 100,
+                        collapseStrategy: 'keep' as const,
+                        renderControl: () => (
+                          <Button
+                            variant="default"
+                            leftSection={<primaryQueueAction.icon size={16} />}
+                            loading={pending}
+                            onClick={primaryQueueAction.run}
+                          >
+                            {primaryQueueAction.label}
+                          </Button>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...(secondaryQueueAction
+                  ? [
+                      {
+                        id: secondaryQueueAction.id,
+                        label: secondaryQueueAction.label,
+                        icon: secondaryQueueAction.icon,
+                        priority: 10,
+                        collapseStrategy: 'overflow' as const,
+                        disabled: pending,
+                        renderControl: () => (
+                          <ActionIcon
+                            size={44}
+                            variant="subtle"
+                            color="red"
+                            aria-label={secondaryQueueAction.label}
+                            disabled={pending}
+                            onClick={secondaryQueueAction.run}
+                          >
+                            <secondaryQueueAction.icon size={17} />
+                          </ActionIcon>
+                        ),
+                        menuAction: {
+                          onSelect: secondaryQueueAction.run,
+                          disabled: pending,
+                        },
+                      },
+                    ]
+                  : []),
+              ]
               return (
                 <section key={job.id} className="local-model-queue-row" data-status={job.status}>
                   <div className="local-model-queue-row-heading">
@@ -835,60 +1255,68 @@ export function LocalModelCenter() {
                       {job.error.message}
                     </Text>
                   )}
-                  <Group gap="xs" justify="flex-end">
-                    {canPause && (
-                      <Button
-                        size="compact-sm"
-                        variant="default"
-                        leftSection={<IconPlayerPause size={16} />}
-                        loading={pending}
-                        onClick={() =>
-                          void runJobAction(job.id, () => yachiyoModelManagerNative.pause({ jobId: job.id }))
-                        }
-                      >
-                        {t('暂停')}
-                      </Button>
-                    )}
-                    {canResume && (
-                      <Button
-                        size="compact-sm"
-                        variant="default"
-                        leftSection={<IconPlayerPlay size={16} />}
-                        loading={pending}
-                        onClick={() =>
-                          void runJobAction(job.id, () => yachiyoModelManagerNative.resume({ jobId: job.id }))
-                        }
-                      >
-                        {t('继续')}
-                      </Button>
-                    )}
-                    {canCancel && (
-                      <ActionIcon
-                        size={30}
-                        variant="subtle"
-                        color="red"
-                        aria-label={t('取消下载')}
-                        disabled={pending}
-                        onClick={() =>
-                          void runJobAction(job.id, () => yachiyoModelManagerNative.cancel({ jobId: job.id }))
-                        }
-                      >
-                        <IconX size={17} />
-                      </ActionIcon>
-                    )}
-                    {job.status === 'completed' && (
-                      <ActionIcon
-                        size={30}
-                        variant="subtle"
-                        color="red"
-                        aria-label={t('删除本地模型')}
-                        disabled={pending}
-                        onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
-                      >
-                        <IconTrash size={17} />
-                      </ActionIcon>
-                    )}
-                  </Group>
+                  {inAndroidAppShell ? (
+                    <AdaptiveActionCluster
+                      className="local-model-queue-actions"
+                      ariaLabel={`${job.repository} ${String(t('下载操作'))}`}
+                      actions={queueActions}
+                    />
+                  ) : (
+                    <Group gap="xs" justify="flex-end">
+                      {canPause && (
+                        <Button
+                          size="compact-sm"
+                          variant="default"
+                          leftSection={<IconPlayerPause size={16} />}
+                          loading={pending}
+                          onClick={() =>
+                            void runJobAction(job.id, () => yachiyoModelManagerNative.pause({ jobId: job.id }))
+                          }
+                        >
+                          {t('暂停')}
+                        </Button>
+                      )}
+                      {canResume && (
+                        <Button
+                          size="compact-sm"
+                          variant="default"
+                          leftSection={<IconPlayerPlay size={16} />}
+                          loading={pending}
+                          onClick={() =>
+                            void runJobAction(job.id, () => yachiyoModelManagerNative.resume({ jobId: job.id }))
+                          }
+                        >
+                          {t('继续')}
+                        </Button>
+                      )}
+                      {canCancel && (
+                        <ActionIcon
+                          size={30}
+                          variant="subtle"
+                          color="red"
+                          aria-label={t('取消下载')}
+                          disabled={pending}
+                          onClick={() =>
+                            void runJobAction(job.id, () => yachiyoModelManagerNative.cancel({ jobId: job.id }))
+                          }
+                        >
+                          <IconX size={17} />
+                        </ActionIcon>
+                      )}
+                      {job.status === 'completed' && (
+                        <ActionIcon
+                          size={30}
+                          variant="subtle"
+                          color="red"
+                          aria-label={t('删除本地模型')}
+                          disabled={pending}
+                          onClick={() => void runJobAction(job.id, () => removeDownloadedModel(job.modelId))}
+                        >
+                          <IconTrash size={17} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  )}
                 </section>
               )
             })}
@@ -901,13 +1329,57 @@ export function LocalModelCenter() {
   if (activeModel) {
     const compatibility = reportLabel(t, report)
     const progress = activeJob?.bytesTotal ? (activeJob.bytesDownloaded / activeJob.bytesTotal) * 100 : 0
+    const completedModelActions: AdaptiveActionDescriptor[] = activeJob
+      ? [
+          ...(artifact?.format !== 'tflite'
+            ? [
+                {
+                  id: 'set-default',
+                  label: String(t('设为聊天模型')),
+                  icon: IconCheck,
+                  priority: 100,
+                  collapseStrategy: 'keep' as const,
+                  renderControl: () => (
+                    <Button color="chatbox-brand" leftSection={<IconCheck size={18} />} onClick={() => void setAsDefault()}>
+                      {t('设为聊天模型')}
+                    </Button>
+                  ),
+                },
+              ]
+            : []),
+          {
+            id: 'delete',
+            label: String(t('删除')),
+            icon: IconTrash,
+            priority: 10,
+            collapseStrategy: 'overflow' as const,
+            disabled: pendingJobIds.has(activeJob.id),
+            renderControl: () => (
+              <ActionIcon
+                size={44}
+                variant="subtle"
+                color="red"
+                aria-label={t('删除')}
+                loading={pendingJobIds.has(activeJob.id)}
+                onClick={() => void runJobAction(activeJob.id, removeModel)}
+              >
+                <IconTrash size={18} />
+              </ActionIcon>
+            ),
+            menuAction: {
+              onSelect: () => void runJobAction(activeJob.id, removeModel),
+              disabled: pendingJobIds.has(activeJob.id),
+            },
+          },
+        ]
+      : []
     return (
       <main className="local-model-center local-model-detail">
         <Group gap="sm" wrap="nowrap">
           <ActionIcon
             variant="subtle"
             color="gray"
-            size={38}
+            size={inAndroidAppShell ? 44 : 38}
             aria-label={t('返回模型列表')}
             onClick={() => setSelected(undefined)}
           >
@@ -1060,28 +1532,36 @@ export function LocalModelCenter() {
               </section>
             )}
             {activeJob?.status === 'completed' ? (
-              <Group grow>
-                {artifact?.format !== 'tflite' && (
+              inAndroidAppShell ? (
+                <AdaptiveActionCluster
+                  className="local-model-detail-actions"
+                  ariaLabel={`${activeModel.displayName || activeModel.name} ${String(t('模型操作'))}`}
+                  actions={completedModelActions}
+                />
+              ) : (
+                <Group grow>
+                  {artifact?.format !== 'tflite' && (
+                    <Button
+                      radius="xl"
+                      color="chatbox-brand"
+                      leftSection={<IconCheck size={18} />}
+                      onClick={() => void setAsDefault()}
+                    >
+                      {t('设为聊天模型')}
+                    </Button>
+                  )}
                   <Button
                     radius="xl"
-                    color="chatbox-brand"
-                    leftSection={<IconCheck size={18} />}
-                    onClick={() => void setAsDefault()}
+                    variant="default"
+                    color="red"
+                    leftSection={<IconTrash size={18} />}
+                    loading={pendingJobIds.has(activeJob.id)}
+                    onClick={() => void runJobAction(activeJob.id, removeModel)}
                   >
-                    {t('设为聊天模型')}
+                    {t('删除')}
                   </Button>
-                )}
-                <Button
-                  radius="xl"
-                  variant="default"
-                  color="red"
-                  leftSection={<IconTrash size={18} />}
-                  loading={pendingJobIds.has(activeJob.id)}
-                  onClick={() => void runJobAction(activeJob.id, removeModel)}
-                >
-                  {t('删除')}
-                </Button>
-              </Group>
+                </Group>
+              )
             ) : (
               <Button
                 radius="xl"
@@ -1119,7 +1599,7 @@ export function LocalModelCenter() {
         </div>
         <ActionIcon
           className="local-model-queue-trigger"
-          size={42}
+          size={inAndroidAppShell ? 44 : 42}
           radius="xl"
           variant="default"
           aria-label={t('打开下载队列')}

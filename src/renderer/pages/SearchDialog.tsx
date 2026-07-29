@@ -15,6 +15,7 @@ import { searchSessions } from '@/stores/sessionHelpers'
 import { useUIStore } from '@/stores/uiStore'
 import * as scrollActions from '../stores/scrollActions'
 import { switchCurrentSession } from '../stores/sessionActions'
+import './search-dialog.css'
 
 type Props = {}
 
@@ -72,21 +73,22 @@ export default function SearchDialog(props: Props) {
   return (
     // 通过显隐的方式控制组件，避免组件重复卸载挂载导致的状态丢失，主要是希望保持搜索结果的选中状态，这样用户体验会好很多
     <Dialog
+      className="yachiyo-search-dialog"
       style={{ display: open ? 'block' : 'none' }}
       open={true}
       onClose={() => setOpen(false)}
       fullWidth
       maxWidth={mode === 'search-result' ? 'md' : 'sm'}
     >
-      <DialogContent sx={{ padding: '0.5rem' }}>
-        <Command shouldFilter={false} filter={(value, search) => 1}>
+      <DialogContent className="yachiyo-search-dialog-content">
+        <Command className="yachiyo-search-command" shouldFilter={false} filter={(value, search) => 1}>
           <CommandInput
             ref={ref}
             autoFocus={!isSmallScreen}
             value={searchInput}
             onInput={onSearchInput}
             onKeyDown={onKeyDown}
-            className={cn('border-none', 'shadow-none', theme.palette.mode === 'dark' ? 'text-white' : 'text-black')}
+            className={cn('yachiyo-search-command-input', 'border-none', 'shadow-none', theme.palette.mode === 'dark' ? 'text-white' : 'text-black')}
             placeholder={globalOnly ? t('Search conversations') + '...' : t('Type a command or search') + '...'}
           />
           {mode === 'command' && !globalOnly && (
@@ -96,6 +98,7 @@ export default function SearchDialog(props: Props) {
                 <CommandItem
                   value="search-current-session"
                   className={cn(
+                    'yachiyo-search-command-item',
                     theme.palette.mode === 'dark' ? 'aria-selected:bg-slate-500' : 'aria-selected:bg-slate-100'
                   )}
                   onSelect={() => onSearchClick('current-session')}
@@ -109,6 +112,7 @@ export default function SearchDialog(props: Props) {
                 <CommandItem
                   value="search-global"
                   className={cn(
+                    'yachiyo-search-command-item',
                     theme.palette.mode === 'dark' ? 'aria-selected:bg-slate-500' : 'aria-selected:bg-slate-100'
                   )}
                   onSelect={() => onSearchClick('global')}
@@ -171,6 +175,7 @@ export default function SearchDialog(props: Props) {
                           key={`${i}-${j}`}
                           value={`result-${i}-${j}`}
                           className={cn(
+                            'yachiyo-search-command-item yachiyo-search-result-item',
                             theme.palette.mode === 'dark' ? 'bg-slate-600' : 'bg-slate-50',
                             theme.palette.mode === 'dark' ? 'aria-selected:bg-slate-500' : 'aria-selected:bg-slate-200',
                             'my-1',

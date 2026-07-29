@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 const flowStyles = fs.readFileSync(path.join(__dirname, 'flow-glass.css'), 'utf8')
 const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'), 'utf8')
 const workspaceSource = fs.readFileSync(path.join(__dirname, 'AndroidWorkspaceHome.tsx'), 'utf8')
+const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
 const assetRoot = path.join(__dirname, '../../public/liquid-glass')
 
 function readHexToken(styles: string, selector: string, property: string): string {
@@ -18,7 +19,7 @@ function readHexToken(styles: string, selector: string, property: string): strin
 function relativeLuminance(hex: string): number {
   const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
   const [red, green, blue] = channels.map((channel) =>
-    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
   )
   return 0.2126 * red + 0.7152 * green + 0.0722 * blue
 }
@@ -43,7 +44,6 @@ const materialSelectors = [
   '.yachiyo-bottom-nav-lens',
   '.yachiyo-chat-composer-surface',
   '.yachiyo-task-composer-panel',
-  '.yachiyo-liquid-tools-toggle',
   '.bubble-user-msg .inline-block.max-w-full',
   '.yachiyo-agent-user-message',
   '.shiki-code-wrapper',
@@ -78,7 +78,7 @@ const materialSelectors = [
   '.yachiyo-theme-preview-nav',
   '.yachiyo-interactive-round-button',
   '.yachiyo-interactive-llm-selector',
-  '.yachiyo-interactive-keyboard .mantine-Textarea-input',
+  '.yachiyo-interactive-keyboard-input .mantine-Textarea-input',
   '.yachiyo-live-bubble',
   '.yachiyo-live-transcript',
   '.yachiyo-interactive-notice',
@@ -103,10 +103,12 @@ describe('Flow Glass visual contracts', () => {
     expect(flowStyles).toContain('--flow-r-popover: 24px')
     expect(flowStyles).toContain('--flow-r-panel: 22px')
     expect(flowStyles).toContain('--flow-r-content: 16px')
+    expect(shellStyles).not.toMatch(/\.yachiyo-bottom-nav-item:active\s*\{[^}]*transform:\s*scale/s)
+    expect(flowStyles).not.toMatch(/\.yachiyo-bottom-nav-item:active[^\{]*\{[^}]*transform:\s*scale/s)
     expect(flowStyles).toMatch(/\.yachiyo-bottom-nav-grid\s*{[^}]*height:\s*64px;[^}]*padding:\s*5px;/s)
     expect(flowStyles).toMatch(/\.yachiyo-bottom-nav-lens\s*{[^}]*top:\s*5px;[^}]*left:\s*5px;[^}]*height:\s*54px;/s)
     expect(flowStyles).toMatch(
-      /\.yachiyo-mobile-conversation-tools \.mantine-ActionIcon-root\s*{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s,
+      /\.yachiyo-mobile-conversation-tools \.mantine-ActionIcon-root\s*{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s
     )
   })
 
@@ -115,13 +117,13 @@ describe('Flow Glass visual contracts', () => {
     const darkLabel = readHexToken(
       flowStyles,
       'html[data-yachiyo-appearance="flow-glass"][data-theme="dark"]',
-      '--flow-nav-active-label',
+      '--flow-nav-active-label'
     )
 
     expect(contrastRatio(lightLabel, '#f8fbfe')).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(darkLabel, '#262c35')).toBeGreaterThanOrEqual(4.5)
     expect(flowStyles).toMatch(
-      /\.yachiyo-bottom-nav-item\[data-active=["']true["']\]\s*\{[^}]*color:\s*var\(--flow-nav-active-label\);/s,
+      /\.yachiyo-bottom-nav-item\[data-active=["']true["']\]\s*\{[^}]*color:\s*var\(--flow-nav-active-label\);/s
     )
   })
 
@@ -147,16 +149,31 @@ describe('Flow Glass visual contracts', () => {
       expect(fs.statSync(path.join(environmentRoot, filename)).size).toBeLessThanOrEqual(250 * 1024)
     }
     expect(allFiles.reduce((total, filename) => total + fs.statSync(filename).size, 0)).toBeLessThanOrEqual(
-      3 * 1024 * 1024,
+      3 * 1024 * 1024
     )
   })
 
   it('reserves floating header and navigation clearance for settings and plugin content', () => {
     expect(flowStyles).toMatch(
-      /\.yachiyo-settings-detail\s*{[^}]*padding-top:\s*calc\(var\(--flow-header-height\) \+ 10px\);[^}]*padding-bottom:\s*calc\(var\(--flow-nav-height\) \+ 12px\);/s,
+      /\.yachiyo-settings-detail\s*{[^}]*padding-top:\s*calc\(var\(--flow-header-height\) \+ 10px\);[^}]*padding-bottom:\s*calc\(var\(--flow-nav-height\) \+ 12px\);/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-plugin-page-host\s*{[^}]*padding-top:\s*calc\(var\(--flow-header-height\) \+ 18px\);[^}]*padding-bottom:\s*calc\(var\(--flow-nav-height\) \+ 32px\);/s,
+      /\.yachiyo-plugin-page-host\s*{[^}]*padding-top:\s*calc\(var\(--flow-header-height\) \+ 18px\);[^}]*padding-bottom:\s*calc\(var\(--flow-nav-height\) \+ 32px\);/s
+    )
+  })
+
+  it('keeps pager chrome visible and reserves navigation clearance below the chat composer', () => {
+    const narrowStyles = sectionBetween('@media (max-width: 440px)', '@media (forced-colors: active)')
+
+    expect(narrowStyles).toContain('.yachiyo-mobile-title-meta')
+    expect(narrowStyles).not.toMatch(/\.yachiyo-mobile-title span\s*,/)
+    expect(shellStyles).not.toMatch(/\.yachiyo-mobile-title span\s*\{[^}]*display:\s*none;/s)
+    expect(inputBoxSource.match(/className="yachiyo-mobile-input-box-root shrink-0"/g)).toHaveLength(2)
+    expect(flowStyles).toMatch(
+      /\.yachiyo-mobile-shell \.yachiyo-mobile-input-box-root\s*\{[^}]*padding-bottom:\s*calc\(var\(--flow-nav-height\) \+ 16px\) !important;/s
+    )
+    expect(flowStyles).toMatch(
+      /\.yachiyo-mobile-shell\s+\.yachiyo-task-composer\s+\.yachiyo-mobile-input-box-root\s*\{[^}]*padding-bottom:\s*0 !important;/s
     )
   })
 
@@ -176,17 +193,17 @@ describe('Flow Glass visual contracts', () => {
     expect(releaseAction).toContain('<IconExternalLink')
     expect(releaseAction).toContain('needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL')
     expect(shellStyles).toMatch(
-      /\.yachiyo-status-value \.yachiyo-about-release-action\s*{[^}]*min-height:\s*44px;[^}]*border-radius:\s*16px;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s,
+      /\.yachiyo-status-value \.yachiyo-about-release-action\s*{[^}]*min-height:\s*44px;[^}]*border-radius:\s*16px;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-about-release-action\s*{[^}]*color:\s*var\(--flow-blue\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s,
+      /\.yachiyo-about-release-action\s*{[^}]*color:\s*var\(--flow-blue\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
     )
   })
 
   it('removes every theme material effect in reduced quality', () => {
     const reducedStyles = sectionBetween(
       '/* Balanced retains stable blur/highlights; reduced becomes an explicit, near-solid hierarchy. */',
-      '@supports not ((backdrop-filter: blur(1px))',
+      '@supports not ((backdrop-filter: blur(1px))'
     )
 
     for (const token of [
@@ -198,7 +215,7 @@ describe('Flow Glass visual contracts', () => {
       '--flow-content-fill',
     ]) {
       expect(reducedStyles, `${token} must be opaque in reduced quality`).toMatch(
-        new RegExp(`${token}: rgb\\(\\d+, \\d+, \\d+\\);`),
+        new RegExp(`${token}: rgb\\(\\d+, \\d+, \\d+\\);`)
       )
     }
     for (const selector of materialSelectors) {
@@ -213,7 +230,7 @@ describe('Flow Glass visual contracts', () => {
   it('lets transparency, contrast, and forced-color preferences override full-quality refraction', () => {
     const preferenceStyles = sectionBetween(
       '/* Accessibility preferences must override full-quality SVG refraction as well as ordinary blur. */',
-      '@media (prefers-reduced-motion: reduce)',
+      '@media (prefers-reduced-motion: reduce)'
     )
 
     expect(preferenceStyles).toContain('(prefers-reduced-transparency: reduce)')

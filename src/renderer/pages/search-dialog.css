@@ -1,0 +1,226 @@
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog .MuiBackdrop-root {
+  background: rgba(22, 25, 29, 0.28);
+  backdrop-filter: blur(5px) saturate(0.92);
+  -webkit-backdrop-filter: blur(5px) saturate(0.92);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog .MuiDialog-paper {
+  isolation: isolate;
+  overflow: hidden;
+  width: min(560px, calc(100% - 32px));
+  max-height: min(72dvh, 680px);
+  margin: 16px;
+  border: 1px solid var(--flow-edge-mid);
+  border-radius: var(--flow-r-popover);
+  corner-shape: squircle;
+  color: var(--flow-text);
+  background:
+    linear-gradient(154deg, color-mix(in srgb, var(--flow-edge-light) 78%, transparent), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--flow-edge-mid) 44%, transparent), transparent 50%),
+    var(--flow-popover-fill);
+  background-image:
+    linear-gradient(154deg, color-mix(in srgb, var(--flow-edge-light) 78%, transparent), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--flow-edge-mid) 44%, transparent), transparent 50%);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark),
+    0 24px 64px rgba(20, 28, 37, 0.24),
+    0 6px 18px rgba(20, 28, 37, 0.14);
+  backdrop-filter: blur(26px) saturate(1.42);
+  -webkit-backdrop-filter: blur(26px) saturate(1.42);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog-content.MuiDialogContent-root {
+  overflow: hidden;
+  padding: 10px;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command {
+  overflow: hidden;
+  border-radius: calc(var(--flow-r-popover) - 10px);
+  color: var(--flow-text);
+  background: transparent;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-input-wrapper] {
+  min-height: 54px;
+  margin: 0 0 6px;
+  padding-inline: 14px;
+  border: 1px solid var(--flow-edge-mid);
+  border-radius: var(--flow-r-content);
+  corner-shape: squircle;
+  color: var(--flow-text-secondary);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 68%, transparent), transparent 42%),
+    var(--flow-control-fill);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark),
+    var(--flow-shadow-control);
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out, background-color 140ms ease-out;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-input-wrapper]:focus-within {
+  border-color: color-mix(in srgb, var(--flow-blue) 58%, var(--flow-edge-mid));
+  background: color-mix(in srgb, var(--flow-blue) 7%, var(--flow-control-fill));
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark),
+    0 0 0 2px color-mix(in srgb, var(--flow-blue) 16%, transparent),
+    var(--flow-shadow-control);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-input-wrapper] > svg {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+  color: var(--flow-blue);
+  opacity: 0.86;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-input {
+  height: 52px;
+  padding: 0;
+  color: var(--flow-text) !important;
+  caret-color: var(--flow-blue);
+  outline: none !important;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-input::placeholder {
+  color: var(--flow-text-secondary);
+  opacity: 0.76;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-list] {
+  max-height: min(56dvh, 520px);
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--flow-text-secondary) 34%, transparent) transparent;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-group] {
+  padding: 4px 0 0;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-group-heading] {
+  padding: 7px 10px 6px;
+  color: var(--flow-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0;
+  opacity: 1;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-item {
+  min-height: 48px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  corner-shape: squircle;
+  color: var(--flow-text);
+  background: transparent !important;
+  gap: 10px;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-item > svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-right: 0;
+  color: var(--flow-blue);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-item[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--flow-blue) 24%, var(--flow-edge-mid));
+  background: color-mix(in srgb, var(--flow-blue) 11%, var(--flow-control-fill)) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-item:active {
+  border-color: color-mix(in srgb, var(--flow-blue) 34%, var(--flow-edge-mid));
+  background: color-mix(in srgb, var(--flow-blue) 16%, var(--flow-control-fill)) !important;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-result-item {
+  min-height: 0;
+  padding: 10px;
+  border-color: var(--flow-divider);
+  background: var(--flow-content-fill) !important;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-result-item[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--flow-blue) 36%, var(--flow-divider));
+  background: color-mix(in srgb, var(--flow-blue) 8%, var(--flow-content-fill)) !important;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-empty] {
+  padding: 28px 16px;
+  color: var(--flow-text-secondary);
+}
+
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .yachiyo-search-dialog :is(
+  .MuiBackdrop-root,
+  .MuiDialog-paper,
+  [cmdk-input-wrapper]
+) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .yachiyo-search-dialog .MuiDialog-paper {
+  background: var(--flow-popover-fill);
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog :is(
+    .MuiBackdrop-root,
+    .MuiDialog-paper,
+    [cmdk-input-wrapper]
+  ) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog .MuiDialog-paper {
+    background: var(--flow-popover-fill);
+  }
+}
+
+@media (prefers-contrast: more) {
+  html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog :is(
+    .MuiDialog-paper,
+    [cmdk-input-wrapper],
+    .yachiyo-search-command-item
+  ) {
+    border-width: 2px;
+    border-color: var(--flow-text-secondary);
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog :is(
+    [cmdk-input-wrapper],
+    .yachiyo-search-command-item
+  ) {
+    transition-duration: 0ms;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog :is(
+    .MuiDialog-paper,
+    [cmdk-input-wrapper],
+    .yachiyo-search-command-item,
+    .yachiyo-search-result-item
+  ) {
+    border: 1px solid CanvasText;
+    color: CanvasText !important;
+    background: Canvas !important;
+    box-shadow: none;
+    forced-color-adjust: auto;
+  }
+}

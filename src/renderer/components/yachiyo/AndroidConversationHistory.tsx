@@ -9,7 +9,8 @@ import {
   IconStarFilled,
   IconTrash,
 } from '@tabler/icons-react'
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { animate, motion, useMotionValue, useReducedMotion } from 'framer-motion'
+import { type CSSProperties, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import {
@@ -34,6 +35,16 @@ import {
   updateTaskSession,
   useTaskSessionHistory,
 } from '@/stores/taskSessionStore'
+import {
+  appendAndroidHistorySwipeSample,
+  estimateAndroidHistorySwipeVelocity,
+  getAndroidHistoryActionWidth,
+  resolveAndroidHistorySwipeAxis,
+  rubberBandAndroidHistoryOffset,
+  shouldToggleAndroidHistorySwipe,
+  type AndroidHistorySwipeAxis,
+  type AndroidHistorySwipeSample,
+} from './android-conversation-swipe-physics'
 
 type ConversationMode = 'chat' | 'agent'
 
@@ -314,6 +325,19 @@ type HistoryRecord = {
   linkedTaskId?: string
 }
 
+type HistorySwipeDrag = {
+  pointerId: number
+  x: number
+  y: number
+  startOffset: number
+  sourceOpen: boolean
+  dimension: number
+  axis: AndroidHistorySwipeAxis
+  samples: AndroidHistorySwipeSample[]
+}
+
+type HistorySwipePhase = 'idle' | 'tracking' | 'settling'
+
 function SwipeHistoryItem({
   record,
   opened,
@@ -340,75 +364,210 @@ function SwipeHistoryItem({
   locale: string
 }) {
   const { t } = useTranslation()
-  const [offset, setOffset] = useState(0)
-  const drag = useRef<{ x: number; y: number; startOffset: number; horizontal?: boolean } | null>(null)
+  const reducedMotion = useReducedMotion()
+  const offset = useMotionValue(0)
+  const [phase, setPhase] = useState<HistorySwipePhase>('idle')
+  const [actionsVisible, setActionsVisible] = useState(false)
+  const drag = useRef<HistorySwipeDrag | null>(null)
+  const openRef = useRef(false)
+  const suppressNextClickRef = useRef(false)
+  const animationRef = useRef<ReturnType<typeof animate> | null>(null)
+  const animationIdRef = useRef(0)
+
+  const actions = [
+    {
+      id: 'favorite',
+      label: record.starred ? t('取消收藏') : t('收藏'),
+      icon: record.starred ? <IconStarFilled size={19} /> : <IconStar size={19} />,
+      run: onFavorite,
+    },
+    { id: 'rename', label: t('重命名'), icon: <IconPencil size={19} />, run: onRename },
+    { id: 'fork', label: t('分叉'), icon: <IconGitFork size={19} />, run: onFork },
+    { id: 'delete', label: t('删除'), icon: <IconTrash size={19} />, run: onDelete },
+  ] as const
+  const actionWidth = getAndroidHistoryActionWidth(actions.length)
+
+  const stopAnimation = useCallback(() => {
+    animationIdRef.current += 1
+    animationRef.current?.stop()
+    animationRef.current = null
+  }, [])
+
+  const settleTo = (targetOpen: boolean, velocity = 0) => {
+    stopAnimation()
+    openRef.current = targetOpen
+    const target = targetOpen ? -actionWidth : 0
+    if (Math.abs(offset.get() - target) < 0.5) {
+      offset.set(target)
+      setActionsVisible(targetOpen)
+      setPhase('idle')
+      return
+    }
+
+    setActionsVisible(true)
+    setPhase('settling')
+    const animationId = animationIdRef.current
+    const controls = animate(
+      offset,
+      target,
+      reducedMotion
+        ? { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }
+        : {
+            type: 'spring',
+            mass: 1,
+            stiffness: 420,
+            damping: Math.abs(velocity) >= 80 ? 34 : 40,
+            velocity,
+            restDelta: 0.25,
+            restSpeed: 8,
+          }
+    )
+    animationRef.current = controls
+    void controls.then(() => {
+      if (animationId !== animationIdRef.current) return
+      offset.set(target)
+      animationRef.current = null
+      setActionsVisible(targetOpen)
+      setPhase('idle')
+    })
+  }
 
   useEffect(() => {
+    stopAnimation()
     drag.current = null
-    setOffset(0)
-  }, [opened, active])
+    openRef.current = false
+    suppressNextClickRef.current = false
+    offset.set(0)
+    setActionsVisible(false)
+    setPhase('idle')
+  }, [opened, active, offset, stopAnimation])
+
+  useEffect(
+    () => () => {
+      stopAnimation()
+      drag.current = null
+    },
+    [stopAnimation]
+  )
 
   const pointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    drag.current = { x: event.clientX, y: event.clientY, startOffset: offset }
-    event.currentTarget.setPointerCapture(event.pointerId)
+    if (!event.isPrimary || event.button !== 0) return
+    stopAnimation()
+    const currentOffset = offset.get()
+    drag.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      startOffset: currentOffset,
+      sourceOpen: openRef.current,
+      dimension: Math.max(event.currentTarget.clientWidth, actionWidth),
+      axis: 'pending',
+      samples: [{ position: event.clientX, time: event.timeStamp }],
+    }
   }
 
   const pointerMove = (event: PointerEvent<HTMLButtonElement>) => {
-    if (!drag.current) return
-    const dx = event.clientX - drag.current.x
-    const dy = event.clientY - drag.current.y
-    if (drag.current.horizontal === undefined && Math.abs(dx) + Math.abs(dy) > 8) {
-      drag.current.horizontal = Math.abs(dx) > Math.abs(dy)
+    const currentDrag = drag.current
+    if (!currentDrag || currentDrag.pointerId !== event.pointerId) return
+    currentDrag.samples = appendAndroidHistorySwipeSample(currentDrag.samples, {
+      position: event.clientX,
+      time: event.timeStamp,
+    })
+    const dx = event.clientX - currentDrag.x
+    const dy = event.clientY - currentDrag.y
+    if (currentDrag.axis === 'pending') {
+      currentDrag.axis = resolveAndroidHistorySwipeAxis(dx, dy)
+      if (currentDrag.axis === 'horizontal') {
+        event.currentTarget.setPointerCapture(event.pointerId)
+        setActionsVisible(true)
+        setPhase('tracking')
+      }
     }
-    if (!drag.current.horizontal) return
+    if (currentDrag.axis !== 'horizontal') return
     event.preventDefault()
-    setOffset(Math.max(-264, Math.min(0, drag.current.startOffset + dx)))
+    offset.set(rubberBandAndroidHistoryOffset(currentDrag.startOffset + dx, -actionWidth, 0, currentDrag.dimension))
   }
 
-  const pointerUp = () => {
-    if (!drag.current) return
-    const wasHorizontal = drag.current.horizontal
+  const finishPointerGesture = (event: PointerEvent<HTMLButtonElement>, cancelled: boolean) => {
+    const currentDrag = drag.current
+    if (!currentDrag || currentDrag.pointerId !== event.pointerId) return
     drag.current = null
-    if (wasHorizontal) setOffset((current) => (current < -56 ? -264 : 0))
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (currentDrag.axis !== 'horizontal') return
+
+    event.preventDefault()
+    suppressNextClickRef.current = !cancelled
+    if (cancelled) {
+      settleTo(currentDrag.sourceOpen)
+      return
+    }
+
+    const samples = appendAndroidHistorySwipeSample(currentDrag.samples, {
+      position: event.clientX,
+      time: event.timeStamp,
+    })
+    const velocity = estimateAndroidHistorySwipeVelocity(samples)
+    const toggle = shouldToggleAndroidHistorySwipe({
+      sourceOpen: currentDrag.sourceOpen,
+      startOffset: currentDrag.startOffset,
+      offset: offset.get(),
+      velocity,
+      actionWidth,
+    })
+    settleTo(toggle ? !currentDrag.sourceOpen : currentDrag.sourceOpen, velocity)
   }
 
   const runAction = (action: () => void) => {
-    setOffset(0)
+    settleTo(false)
     action()
   }
 
   return (
-    <div className="yachiyo-history-swipe">
-      <div className="yachiyo-history-actions" aria-hidden={offset === 0}>
-        <button type="button" data-action="favorite" disabled={offset === 0} onClick={() => runAction(onFavorite)}>
-          {record.starred ? <IconStarFilled size={19} /> : <IconStar size={19} />}
-          <span>{record.starred ? t('取消收藏') : t('收藏')}</span>
-        </button>
-        <button type="button" data-action="rename" disabled={offset === 0} onClick={() => runAction(onRename)}>
-          <IconPencil size={19} />
-          <span>{t('重命名')}</span>
-        </button>
-        <button type="button" data-action="fork" disabled={offset === 0} onClick={() => runAction(onFork)}>
-          <IconGitFork size={19} />
-          <span>{t('分叉')}</span>
-        </button>
-        <button type="button" data-action="delete" disabled={offset === 0} onClick={() => runAction(onDelete)}>
-          <IconTrash size={19} />
-          <span>{t('删除')}</span>
-        </button>
+    <div
+      className="yachiyo-history-swipe"
+      data-swipe-phase={phase}
+      data-yachiyo-tab-swipe="block"
+      style={
+        {
+          '--yachiyo-history-action-count': actions.length,
+          '--yachiyo-history-action-width': `${actionWidth}px`,
+        } as CSSProperties
+      }
+    >
+      <div className="yachiyo-history-actions" aria-hidden={!actionsVisible}>
+        {actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            data-action={action.id}
+            disabled={!actionsVisible}
+            onClick={() => runAction(action.run)}
+          >
+            {action.icon}
+            <span>{action.label}</span>
+          </button>
+        ))}
       </div>
-      <button
+      <motion.button
         type="button"
         className="yachiyo-history-item"
         data-active={active ? 'true' : 'false'}
         disabled={disabled}
-        style={{ transform: `translateX(${offset}px)` }}
+        style={{ x: offset }}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
-        onPointerUp={pointerUp}
-        onPointerCancel={pointerUp}
-        onClick={() => {
-          if (offset !== 0) setOffset(0)
+        onPointerUp={(event) => finishPointerGesture(event, false)}
+        onPointerCancel={(event) => finishPointerGesture(event, true)}
+        onLostPointerCapture={(event) => finishPointerGesture(event, true)}
+        onClick={(event) => {
+          if (suppressNextClickRef.current) {
+            suppressNextClickRef.current = false
+            event.preventDefault()
+            return
+          }
+          if (openRef.current || Math.abs(offset.get()) >= 0.5) settleTo(false)
           else onOpen()
         }}
       >
@@ -420,7 +579,7 @@ function SwipeHistoryItem({
         <Badge variant="light" color={record.shared ? 'chatbox-brand' : 'gray'}>
           {record.shared ? t('Agent 可用') : t('聊天')}
         </Badge>
-      </button>
+      </motion.button>
     </div>
   )
 }

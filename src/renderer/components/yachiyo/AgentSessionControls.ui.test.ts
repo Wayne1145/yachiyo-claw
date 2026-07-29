@@ -19,12 +19,15 @@ describe('AgentSessionControls UI contract', () => {
     expect(shellStyles).toContain('background: transparent;')
   })
 
-  it('keeps both controls shrinkable on narrow portrait screens', () => {
+  it('keeps adaptive controls shrinkable with non-overlapping touch targets', () => {
+    expect(componentSource).toContain('className="yachiyo-agent-header-actions"')
+    expect(componentSource).toContain("collapseStrategy: 'icon'")
+    expect(componentSource).toContain("collapseStrategy: 'icon-then-overflow'")
     expect(shellStyles).toMatch(
-      /\.yachiyo-agent-header-controls\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(0,\s*1fr\)/s,
+      /\.yachiyo-agent-header-controls\s*{[^}]*display:\s*flex;[^}]*align-items:\s*stretch;/s,
     )
     expect(shellStyles).toMatch(
-      /\.yachiyo-agent-header-controls button\s*{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s,
+      /\.yachiyo-agent-header-controls button\s*{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*min-height:\s*44px;/s,
     )
     expect(shellStyles).toMatch(
       /\.yachiyo-agent-header-controls \.mantine-Button-label\s*{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/s,

@@ -1,4 +1,16 @@
-import { Button, Flex, SegmentedControl, Select, Stack, Text, Textarea, TextInput, Title } from '@mantine/core'
+import {
+  ActionIcon,
+  Button,
+  Flex,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  Title,
+  Tooltip,
+} from '@mantine/core'
 import { IconBook2, IconBrain, IconPlugConnected, IconUserCog, IconWand } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +18,7 @@ import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import { type AgentBackend, getAgentBackend, setAgentBackend as persistAgentBackend } from '@/mobile/agent-broker'
 import { type AgentProfile, getAgentProfileState, saveAgentProfileState } from '@/mobile/agent-profile'
 import { router } from '@/router'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 
 export function AgentConfigurationPanel({
   onBackendChange,
@@ -54,6 +67,36 @@ export function AgentConfigurationPanel({
     saveAgentProfileState(next)
   }
 
+  const navigationTargets = [
+    { id: 'skills', label: String(t('Skills')), Icon: IconWand, priority: 90, to: '/settings/skills' },
+    { id: 'mcp', label: String(t('MCP Server')), Icon: IconPlugConnected, priority: 80, to: '/settings/mcp' },
+    { id: 'memory', label: String(t('记忆')), Icon: IconBrain, priority: 70, to: '/settings/user-memory' },
+    { id: 'profile', label: String(t('用户画像')), Icon: IconBook2, priority: 60, to: '/settings/user-memory' },
+  ] as const
+  const navigationActions: AdaptiveActionDescriptor[] = navigationTargets.map(({ id, label, Icon, priority, to }) => {
+    const navigate = () => void router.navigate({ to })
+    return {
+      id,
+      label,
+      icon: Icon,
+      priority,
+      collapseStrategy: 'icon-then-overflow',
+      renderControl: ({ presentation }) =>
+        presentation === 'labelled' ? (
+          <Button variant="subtle" leftSection={<Icon size={17} />} onClick={navigate}>
+            {label}
+          </Button>
+        ) : (
+          <Tooltip label={label}>
+            <ActionIcon size={44} variant="subtle" aria-label={label} onClick={navigate}>
+              <Icon size={18} />
+            </ActionIcon>
+          </Tooltip>
+        ),
+      menuAction: { onSelect: navigate },
+    }
+  })
+
   return (
     <>
       {showAccessBackend && (
@@ -78,8 +121,8 @@ export function AgentConfigurationPanel({
       )}
 
       <section className="yachiyo-agent-config-panel">
-        <Flex justify="space-between" align="center" gap="sm">
-          <div>
+        <Flex className="yachiyo-agent-config-heading" justify="space-between" align="center" gap="sm" wrap="wrap">
+          <div className="yachiyo-agent-config-heading-copy">
             <Title order={2}>{t('Agent 配置')}</Title>
             <Text c="dimmed" size="sm">
               {t('当前人格：{{name}}', { name: activeProfile.name })}
@@ -89,40 +132,11 @@ export function AgentConfigurationPanel({
             {t('编辑')}
           </Button>
         </Flex>
-        <div className="yachiyo-agent-feature-grid">
-          <Button
-            variant="subtle"
-            leftSection={<IconWand size={17} />}
-            onClick={() => router.navigate({ to: '/settings/skills' })}
-          >
-            {t('Skills')}
-          </Button>
-          <Button
-            variant="subtle"
-            leftSection={<IconPlugConnected size={17} />}
-            onClick={() => router.navigate({ to: '/settings/mcp' })}
-          >
-            {t('MCP Server')}
-          </Button>
-          <Button
-            variant="subtle"
-            leftSection={<IconBrain size={17} />}
-            onClick={() => {
-              void router.navigate({ to: '/settings/user-memory' })
-            }}
-          >
-            {t('记忆')}
-          </Button>
-          <Button
-            variant="subtle"
-            leftSection={<IconBook2 size={17} />}
-            onClick={() => {
-              void router.navigate({ to: '/settings/user-memory' })
-            }}
-          >
-            {t('用户画像')}
-          </Button>
-        </div>
+        <AdaptiveActionCluster
+          className="yachiyo-agent-feature-actions"
+          ariaLabel={String(t('Agent 配置'))}
+          actions={navigationActions}
+        />
       </section>
 
       <AdaptiveModal
@@ -133,8 +147,9 @@ export function AgentConfigurationPanel({
         size="lg"
       >
         <Stack gap="md">
-          <Flex gap="xs" align="flex-end">
+          <Flex gap="xs" align="flex-end" wrap="wrap">
             <Select
+              className="yachiyo-agent-profile-picker"
               label={t('人格')}
               flex={1}
               allowDeselect={false}

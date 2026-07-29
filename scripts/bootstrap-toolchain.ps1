@@ -147,6 +147,16 @@ Assert-LockString ([string]$toolchain.jdk.path) 'jdk.path'
 Assert-LockString ([string]$toolchain.jdk.archive) 'jdk.archive'
 Assert-DownloadUrl ([string]$toolchain.jdk.url) 'jdk.url'
 Assert-Digest ([string]$toolchain.jdk.sha256) 'SHA256' 'jdk.sha256'
+Assert-VersionString ([string]$toolchain.hostCompiler.version) 'hostCompiler.version'
+Assert-LockString ([string]$toolchain.hostCompiler.path) 'hostCompiler.path'
+Assert-LockString ([string]$toolchain.hostCompiler.archive) 'hostCompiler.archive'
+Assert-DownloadUrl ([string]$toolchain.hostCompiler.url) 'hostCompiler.url'
+Assert-Digest ([string]$toolchain.hostCompiler.sha256) 'SHA256' 'hostCompiler.sha256'
+Assert-VersionString ([string]$toolchain.vulkanHeaders.version) 'vulkanHeaders.version'
+Assert-LockString ([string]$toolchain.vulkanHeaders.path) 'vulkanHeaders.path'
+Assert-LockString ([string]$toolchain.vulkanHeaders.archive) 'vulkanHeaders.archive'
+Assert-DownloadUrl ([string]$toolchain.vulkanHeaders.url) 'vulkanHeaders.url'
+Assert-Digest ([string]$toolchain.vulkanHeaders.sha256) 'SHA256' 'vulkanHeaders.sha256'
 Assert-LockString ([string]$toolchain.android.sdkPath) 'android.sdkPath'
 Assert-VersionString ([string]$toolchain.android.commandLineTools.version) 'android.commandLineTools.version'
 Assert-LockString ([string]$toolchain.android.commandLineTools.archive) 'android.commandLineTools.archive'
@@ -169,6 +179,8 @@ Assert-VersionString ([string]$toolchain.android.cmake) 'android.cmake'
 
 $nodeRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.node.path)) -AllowedRoot $toolsRoot
 $jdkRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.jdk.path)) -AllowedRoot $toolsRoot
+$hostCompilerRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.hostCompiler.path)) -AllowedRoot $toolsRoot
+$vulkanHeadersRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.vulkanHeaders.path)) -AllowedRoot $toolsRoot
 $androidSdkRoot = Assert-PathWithin -Path (Join-Path $workspaceRoot ([string]$toolchain.android.sdkPath)) -AllowedRoot $toolsRoot
 $commandLineToolsRoot = Assert-PathWithin -Path (Join-Path $androidSdkRoot 'cmdline-tools\latest') -AllowedRoot $toolsRoot
 
@@ -187,7 +199,7 @@ function Test-PathOverlap {
     $secondPath.StartsWith($firstPrefix, [StringComparison]::OrdinalIgnoreCase)
 }
 
-$installRoots = @($nodeRoot, $jdkRoot, $androidSdkRoot)
+$installRoots = @($nodeRoot, $jdkRoot, $hostCompilerRoot, $vulkanHeadersRoot, $androidSdkRoot)
 for ($i = 0; $i -lt $installRoots.Count; $i++) {
   foreach ($reservedRoot in @($downloadsRoot, $bootstrapRoot)) {
     if (Test-PathOverlap -First $installRoots[$i] -Second $reservedRoot) {
@@ -204,6 +216,8 @@ for ($i = 0; $i -lt $installRoots.Count; $i++) {
 foreach ($archiveName in @(
   [string]$toolchain.node.archive,
   [string]$toolchain.jdk.archive,
+  [string]$toolchain.hostCompiler.archive,
+  [string]$toolchain.vulkanHeaders.archive,
   [string]$toolchain.android.commandLineTools.archive
 )) {
   if ([IO.Path]::GetFileName($archiveName) -ne $archiveName) {
@@ -328,6 +342,31 @@ function Test-JdkInstallation {
 
   $result = Get-NativeResult -Executable $java -Arguments @('-version')
   return $result.ExitCode -eq 0
+}
+
+function Test-HostCompilerInstallation {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $compiler = Join-Path $Root 'bin\clang++.exe'
+  if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+    return $false
+  }
+  if ($VerifyOnly) {
+    return $true
+  }
+  $result = Get-NativeResult -Executable $compiler -Arguments @('--version')
+  return $result.ExitCode -eq 0 -and $result.Output -match [regex]::Escape([string]$toolchain.hostCompiler.version)
+}
+
+function Test-VulkanHeadersInstallation {
+  param([Parameter(Mandatory = $true)][string]$Root)
+
+  $header = Join-Path $Root 'include\vulkan\vulkan.hpp'
+  if (-not (Test-Path -LiteralPath $header -PathType Leaf)) {
+    return $false
+  }
+  $headerRevision = ([string]$toolchain.vulkanHeaders.version -split '\.')[-1]
+  return Select-String -LiteralPath $header -Pattern "VK_HEADER_VERSION == $headerRevision" -Quiet
 }
 
 function Test-CommandLineToolsInstallation {
@@ -528,6 +567,44 @@ function Ensure-Jdk {
   }
   Set-DirectoryFromStage -Source $stagedRoot -Destination $jdkRoot -SessionRoot $SessionRoot
   Write-Host "[installed] JDK $($toolchain.jdk.version)"
+}
+
+function Ensure-HostCompiler {
+  param([Parameter(Mandatory = $true)][string]$SessionRoot)
+
+  if (Test-HostCompilerInstallation -Root $hostCompilerRoot) {
+    Write-Host "[ok] LLVM-MinGW $($toolchain.hostCompiler.version)"
+    return
+  }
+
+  $archive = Get-VerifiedArchive -ArchiveName ([string]$toolchain.hostCompiler.archive) -Url ([string]$toolchain.hostCompiler.url) -Sha256 ([string]$toolchain.hostCompiler.sha256)
+  $extractRoot = Join-Path $SessionRoot 'host-compiler'
+  Expand-ArchiveSafely -ArchivePath $archive -Destination $extractRoot
+  $stagedRoot = Find-SingleToolRoot -ExtractionRoot $extractRoot -RelativeMarker 'bin\clang++.exe'
+  if (-not (Test-HostCompilerInstallation -Root $stagedRoot)) {
+    throw 'The staged LLVM-MinGW version does not match toolchain.lock.json.'
+  }
+  Set-DirectoryFromStage -Source $stagedRoot -Destination $hostCompilerRoot -SessionRoot $SessionRoot
+  Write-Host "[installed] LLVM-MinGW $($toolchain.hostCompiler.version)"
+}
+
+function Ensure-VulkanHeaders {
+  param([Parameter(Mandatory = $true)][string]$SessionRoot)
+
+  if (Test-VulkanHeadersInstallation -Root $vulkanHeadersRoot) {
+    Write-Host "[ok] Vulkan-Headers $($toolchain.vulkanHeaders.version)"
+    return
+  }
+
+  $archive = Get-VerifiedArchive -ArchiveName ([string]$toolchain.vulkanHeaders.archive) -Url ([string]$toolchain.vulkanHeaders.url) -Sha256 ([string]$toolchain.vulkanHeaders.sha256)
+  $extractRoot = Join-Path $SessionRoot 'vulkan-headers'
+  Expand-ArchiveSafely -ArchivePath $archive -Destination $extractRoot
+  $stagedRoot = Find-SingleToolRoot -ExtractionRoot $extractRoot -RelativeMarker 'include\vulkan\vulkan.hpp'
+  if (-not (Test-VulkanHeadersInstallation -Root $stagedRoot)) {
+    throw 'The staged Vulkan-Headers package does not match toolchain.lock.json.'
+  }
+  Set-DirectoryFromStage -Source $stagedRoot -Destination $vulkanHeadersRoot -SessionRoot $SessionRoot
+  Write-Host "[installed] Vulkan-Headers $($toolchain.vulkanHeaders.version)"
 }
 
 function Ensure-CommandLineTools {
@@ -758,6 +835,8 @@ function Assert-CachedArchives {
   $archives = @(
     [pscustomobject]@{ Name = [string]$toolchain.node.archive; Sha256 = [string]$toolchain.node.sha256; Sha1 = $null },
     [pscustomobject]@{ Name = [string]$toolchain.jdk.archive; Sha256 = [string]$toolchain.jdk.sha256; Sha1 = $null },
+    [pscustomobject]@{ Name = [string]$toolchain.hostCompiler.archive; Sha256 = [string]$toolchain.hostCompiler.sha256; Sha1 = $null },
+    [pscustomobject]@{ Name = [string]$toolchain.vulkanHeaders.archive; Sha256 = [string]$toolchain.vulkanHeaders.sha256; Sha1 = $null },
     [pscustomobject]@{ Name = [string]$toolchain.android.commandLineTools.archive; Sha256 = [string]$toolchain.android.commandLineTools.sha256; Sha1 = [string]$toolchain.android.commandLineTools.sha1 }
   )
   foreach ($archive in $archives) {
@@ -775,6 +854,12 @@ function Assert-Toolchain {
   if (-not (Test-JdkInstallation -Root $jdkRoot)) {
     throw "JDK $($toolchain.jdk.version) is missing or invalid at $jdkRoot. Run scripts\bootstrap-toolchain.ps1."
   }
+  if (-not (Test-HostCompilerInstallation -Root $hostCompilerRoot)) {
+    throw "LLVM-MinGW $($toolchain.hostCompiler.version) is missing or invalid at $hostCompilerRoot. Run scripts\bootstrap-toolchain.ps1."
+  }
+  if (-not (Test-VulkanHeadersInstallation -Root $vulkanHeadersRoot)) {
+    throw "Vulkan-Headers $($toolchain.vulkanHeaders.version) is missing or invalid at $vulkanHeadersRoot. Run scripts\bootstrap-toolchain.ps1."
+  }
   if (-not (Test-CommandLineToolsInstallation -Root $commandLineToolsRoot)) {
     throw "Android command-line tools $($toolchain.android.commandLineTools.version) are missing or invalid at $commandLineToolsRoot. Run scripts\bootstrap-toolchain.ps1."
   }
@@ -791,6 +876,8 @@ function Assert-Toolchain {
   Write-Host '[verified] Workspace toolchain matches toolchain.lock.json.'
   Write-Host "  Node.js: $($toolchain.node.version)"
   Write-Host "  JDK: $($toolchain.jdk.version)"
+  Write-Host "  LLVM-MinGW: $($toolchain.hostCompiler.version)"
+  Write-Host "  Vulkan-Headers: $($toolchain.vulkanHeaders.version)"
   Write-Host "  Android command-line tools: $($toolchain.android.commandLineTools.version)"
   Write-Host "  Android SDK: platform-tools $($toolchain.android.platformTools), platform android-$($toolchain.android.compileSdk), build-tools $(@($toolchain.android.buildTools) -join ', '), NDK $($toolchain.android.ndk), CMake $($toolchain.android.cmake)"
 }
@@ -808,6 +895,8 @@ try {
   New-Item -ItemType Directory -Path $sessionRoot | Out-Null
   Ensure-Node -SessionRoot $sessionRoot
   Ensure-Jdk -SessionRoot $sessionRoot
+  Ensure-HostCompiler -SessionRoot $sessionRoot
+  Ensure-VulkanHeaders -SessionRoot $sessionRoot
   Ensure-CommandLineTools -SessionRoot $sessionRoot
 
   $missingPackages = @(Get-MissingAndroidPackages -SdkRoot $androidSdkRoot)

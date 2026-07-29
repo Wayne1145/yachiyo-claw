@@ -10,12 +10,22 @@ import type { TFunction } from 'i18next'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
 import { getLive2DResolution, type Live2DRenderQuality, resolveLive2DAssetUrl } from '@/mobile/live2d-performance'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
+import type { AndroidTabPageActivity } from './android-tab-page-activity'
 
 type Cubism4Module = typeof import('pixi-live2d-display/cubism4')
 type ModelInstance = Awaited<ReturnType<Cubism4Module['Live2DModel']['from']>>
 
 export interface Live2DStageHandle {
   perform: (action: Live2DAction) => Promise<void>
+}
+
+export interface Live2DStageProps {
+  model: Live2DModelDescriptor
+  speaking?: boolean
+  muted?: boolean
+  quality?: Live2DRenderQuality
+  activity?: AndroidTabPageActivity
+  onReady?: () => void
 }
 
 let runtimePromise: Promise<Cubism4Module> | undefined
@@ -139,18 +149,19 @@ function fitModel(model: ModelInstance, width: number, height: number) {
 
 export const Live2DStage = forwardRef<
   Live2DStageHandle,
-  {
-    model: Live2DModelDescriptor
-    speaking?: boolean
-    muted?: boolean
-    quality?: Live2DRenderQuality
-    onReady?: () => void
-  }
->(function Live2DStage({ model: descriptor, speaking = false, muted = false, quality = 'high', onReady }, ref) {
+  Live2DStageProps
+>(function Live2DStage(
+  { model: descriptor, speaking = false, muted = false, quality = 'high', activity = 'active', onReady },
+  ref
+) {
   const { t } = useTranslation()
+  // Pixi owns this node's children. Keep React-rendered status UI outside it so
+  // renderer teardown cannot remove a node that React still expects to own.
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application>()
   const modelRef = useRef<ModelInstance>()
+  const activityRef = useRef(activity)
+  const hasRetainedInstanceRef = useRef(false)
   const speakingRef = useRef(speaking && !muted)
   const contextRecoveryCountRef = useRef(0)
   const recoveryModeRef = useRef(false)
@@ -159,7 +170,9 @@ export const Live2DStage = forwardRef<
   const [error, setError] = useState<string>()
   const [ready, setReady] = useState(false)
 
-  speakingRef.current = speaking && !muted
+  activityRef.current = activity
+  if (activity === 'inactive') hasRetainedInstanceRef.current = false
+  speakingRef.current = speaking && !muted && activity === 'active'
   if (recoveryIdentityRef.current.source !== descriptor.source || recoveryIdentityRef.current.quality !== quality) {
     recoveryIdentityRef.current = { source: descriptor.source, quality }
     recoveryModeRef.current = false
@@ -168,6 +181,7 @@ export const Live2DStage = forwardRef<
 
   useImperativeHandle(ref, () => ({
     perform: async (action) => {
+      if (activityRef.current !== 'active' || document.visibilityState === 'hidden') return
       const instance = modelRef.current
       if (!instance) return
       if (action.kind === 'expression' && action.expressionName) {
@@ -179,10 +193,31 @@ export const Live2DStage = forwardRef<
     },
   }))
 
+  useEffect(() => {
+    const syncTicker = () => {
+      const ticker = appRef.current?.ticker
+      if (!ticker) return
+      if (activity === 'active' && document.visibilityState !== 'hidden') ticker.start()
+      else ticker.stop()
+    }
+
+    syncTicker()
+    document.addEventListener('visibilitychange', syncTicker)
+    return () => document.removeEventListener('visibilitychange', syncTicker)
+  }, [activity])
+
+  const renderEnabled = activity === 'active' || (activity === 'preview' && hasRetainedInstanceRef.current)
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: retryKey triggers one recovery after a lost WebGL context.
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
+    if (!renderEnabled) {
+      setReady(false)
+      setError(undefined)
+      host.replaceChildren()
+      return
+    }
     let disposed = false
     let observer: ResizeObserver | undefined
     let rendererCleanup: (() => void) | undefined
@@ -248,6 +283,7 @@ export const Live2DStage = forwardRef<
           app.view.style.display = 'block'
           host.replaceChildren(app.view)
           appRef.current = app
+          if (activityRef.current !== 'active' || document.visibilityState === 'hidden') app.ticker.stop()
 
           let recoveryTimer: number | undefined
           const onContextLost = (event: Event) => {
@@ -268,6 +304,7 @@ export const Live2DStage = forwardRef<
             app?.view.removeEventListener('webglcontextlost', onContextLost)
             if (recoveryTimer !== undefined) window.clearTimeout(recoveryTimer)
           }
+          rendererCleanup = attemptCleanup
 
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,
@@ -275,13 +312,17 @@ export const Live2DStage = forwardRef<
           instance = loadedInstance
           if (disposed) {
             loadedInstance.destroy()
-            app.destroy(true)
+            if (appRef.current === app) {
+              appRef.current = undefined
+              app.destroy(true)
+            }
             return
           }
           modelRef.current = loadedInstance
           app.stage.addChild(loadedInstance)
           instanceAdded = true
           fitModel(loadedInstance, width, height)
+          if (activityRef.current === 'active') hasRetainedInstanceRef.current = true
 
           // Models without a LipSync group can still use the standard Cubism mouth parameter.
           app.ticker.add(() => {
@@ -291,6 +332,8 @@ export const Live2DStage = forwardRef<
             const mouth = speakingRef.current ? 0.18 + Math.abs(Math.sin(performance.now() / 82)) * 0.72 : 0
             core.setParameterValueById('ParamMouthOpenY', mouth)
           })
+          if (activityRef.current === 'active' && document.visibilityState !== 'hidden') app.ticker.start()
+          else app.ticker.stop()
 
           observer = new ResizeObserver(() => {
             const nextWidth = Math.max(1, host.clientWidth)
@@ -310,7 +353,6 @@ export const Live2DStage = forwardRef<
             fitModel(loadedInstance, nextWidth, nextHeight)
           })
           observer.observe(host)
-          rendererCleanup = attemptCleanup
           if (!recoveryModeRef.current) contextRecoveryCountRef.current = 0
           setReady(true)
           onReady?.()
@@ -318,8 +360,19 @@ export const Live2DStage = forwardRef<
         } catch (reason) {
           lastReason = reason
           attemptCleanup?.()
+          if (rendererCleanup === attemptCleanup) rendererCleanup = undefined
           observer?.disconnect()
           observer = undefined
+          if (disposed) {
+            if (instance && !instanceAdded) {
+              try {
+                instance.destroy()
+              } catch {
+                // The owning effect already disposed the partial renderer.
+              }
+            }
+            return
+          }
           if (modelRef.current === instance) modelRef.current = undefined
           if (appRef.current === app) appRef.current = undefined
           if (instance && !instanceAdded) {
@@ -356,16 +409,18 @@ export const Live2DStage = forwardRef<
       disposeResources()
       host.replaceChildren()
     }
-  }, [descriptor.source, onReady, quality, retryKey, t])
+  }, [descriptor.source, onReady, quality, renderEnabled, retryKey, t])
 
   return (
     <div
-      ref={hostRef}
       className="yachiyo-live2d-stage"
-      data-ready={ready && !error ? 'true' : 'false'}
+      data-yachiyo-tab-swipe="block"
+      data-activity={activity}
+      data-ready={renderEnabled && ready && !error ? 'true' : 'false'}
       data-error={error ? 'true' : 'false'}
-      data-speaking={speaking && !muted ? 'true' : 'false'}
+      data-speaking={speaking && !muted && activity === 'active' ? 'true' : 'false'}
     >
+      <div ref={hostRef} className="yachiyo-live2d-canvas-host" aria-hidden="true" />
       {error && <div className="yachiyo-live2d-error">{error}</div>}
     </div>
   )

@@ -10,8 +10,48 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
+set(GGML_VULKAN ON CACHE BOOL "" FORCE)
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+get_filename_component(_yachiyo_workspace_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
+set(_yachiyo_vulkan_headers "${_yachiyo_workspace_root}/.tools/vulkan-headers/include")
+if(NOT EXISTS "${_yachiyo_vulkan_headers}/vulkan/vulkan.hpp")
+    message(FATAL_ERROR "Workspace Vulkan-Headers are missing; run scripts/bootstrap-toolchain.ps1")
+endif()
+set(Vulkan_INCLUDE_DIR "${_yachiyo_vulkan_headers}" CACHE PATH "" FORCE)
+
+# The NDK glslc intentionally exposes a conservative Android shader feature set.
+# Keep the portable Vulkan kernels enabled and skip optional variants it cannot compile.
+if(ANDROID)
+    set(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN_COOPMAT2_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN_COOPMAT2_DECODE_VECTOR_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN_BFLOAT16_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN_FLOAT_E2M1_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN_FLOAT_E4M3_GLSLC_SUPPORT OFF CACHE BOOL "" FORCE)
+endif()
+
+set(_yachiyo_spirv_headers
+    "${CMAKE_ANDROID_NDK}/sources/third_party/shaderc/third_party/spirv-tools/external/spirv-headers/include")
+if(NOT EXISTS "${_yachiyo_spirv_headers}/spirv/unified1/spirv.hpp")
+    message(FATAL_ERROR "The pinned Android NDK does not contain SPIR-V Headers")
+endif()
+set(SPIRV-Headers_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/spirv-headers")
+include_directories(SYSTEM "${_yachiyo_spirv_headers}")
+if(CMAKE_HOST_WIN32)
+    set(_yachiyo_glslc "${CMAKE_ANDROID_NDK}/shader-tools/windows-x86_64/glslc.exe")
+    set(GGML_VULKAN_SHADERS_GEN_TOOLCHAIN
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows-host-toolchain.cmake" CACHE FILEPATH "" FORCE)
+elseif(CMAKE_HOST_APPLE)
+    set(_yachiyo_glslc "${CMAKE_ANDROID_NDK}/shader-tools/darwin-x86_64/glslc")
+else()
+    set(_yachiyo_glslc "${CMAKE_ANDROID_NDK}/shader-tools/linux-x86_64/glslc")
+endif()
+if(EXISTS "${_yachiyo_glslc}")
+    set(Vulkan_GLSLC_EXECUTABLE "${_yachiyo_glslc}" CACHE FILEPATH "" FORCE)
+endif()
 
 add_subdirectory(third_party/llama.cpp llama.cpp-build EXCLUDE_FROM_ALL)
 

@@ -10,27 +10,28 @@ describe('agent budget', () => {
     })
   })
 
-  it('records model requests and commits without blocking at legacy thresholds', () => {
+  it('stops model requests and commits at their hard ceilings', () => {
     const tracker = new AgentBudgetTracker({ maxModelRequests: 1, maxCommits: 1 })
     tracker.reserveModelRequest()
-    tracker.reserveModelRequest()
     tracker.reserveCommit()
-    tracker.reserveCommit()
-    expect(tracker.usage).toMatchObject({ modelRequests: 2, commits: 2 })
+    expect(() => tracker.reserveModelRequest()).toThrowError('agent_budget_exceeded:modelRequests')
+    expect(() => tracker.reserveCommit()).toThrowError('agent_budget_exceeded:commits')
+    expect(tracker.usage).toMatchObject({ modelRequests: 1, commits: 1 })
   })
 
-  it('records token and local action usage without blocking', () => {
+  it('stops token and local action usage at their hard ceilings', () => {
     const tracker = new AgentBudgetTracker({ maxTokens: 10, maxLocalActions: 1 })
-    tracker.recordTokens(11)
+    tracker.recordTokens(10)
     tracker.reserveLocalAction()
-    tracker.reserveLocalAction()
-    expect(tracker.usage).toMatchObject({ tokens: 11, localActions: 2 })
+    expect(() => tracker.recordTokens(1)).toThrowError('agent_budget_exceeded:tokens')
+    expect(() => tracker.reserveLocalAction()).toThrowError('agent_budget_exceeded:localActions')
+    expect(tracker.usage).toMatchObject({ tokens: 10, localActions: 1 })
   })
 
-  it('keeps a stable per-operation timeout without enforcing a run deadline', () => {
+  it('enforces the total run deadline', () => {
     const tracker = new AgentBudgetTracker({ deadlineMs: 10 }, 100)
-    expect(() => tracker.assertWithinDeadline(10_000)).not.toThrow()
-    expect(tracker.remainingMs).toBe(10)
+    expect(() => tracker.assertWithinDeadline(109)).not.toThrow()
+    expect(() => tracker.assertWithinDeadline(110)).toThrowError('agent_budget_exceeded:deadline')
   })
 
   it('rejects non-finite or fractional limits', () => {

@@ -14,6 +14,8 @@ import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-c
 import { getToolSetDescription, parseLinkTool, webSearchTool } from '@/packages/model-calls/toolsets/web-search'
 import workspaceBrowserToolSet from '@/packages/model-calls/toolsets/workspace-browser'
 import { createWorkspaceAgentToolSet } from '@/packages/model-calls/toolsets/workspace-agent'
+import { createCodingToolSet } from '@/packages/model-calls/toolsets/coding'
+import { codingProjectStorage } from '@/storage/CodingProjectStorage'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import { skillsController } from '@/packages/skills/controller'
 import { generateSkillsXml } from '@/stores/session/skills-xml'
@@ -35,6 +37,7 @@ interface FeatureOptionsBag {
   'knowledge-base'?: { knowledgeBase?: Pick<KnowledgeBase, 'id' | 'name'> }
   sandbox?: { sandboxEnabled?: boolean }
   workspace?: { sandboxEnabled?: boolean }
+  coding?: { projectId?: string }
   'android-device'?: { deviceControlEnabled?: boolean }
   camera?: { cameraSessionId?: string }
   skills?: { enabledSkillNames?: string[]; sandboxEnabled?: boolean }
@@ -112,11 +115,29 @@ const webSearchFactory: FeatureToolsetFactory = async (context) => {
 
 const sandboxFactory: FeatureToolsetFactory = async (context) => {
   if (!options(context, 'sandbox')?.sandboxEnabled) return null
-  return { instructions: sandboxToolSet.description, tools: { ...sandboxToolSet.tools } }
+  if (!options(context, 'coding')?.projectId) return { instructions: sandboxToolSet.description, tools: { ...sandboxToolSet.tools } }
+  const readOnlyNames = ['sandbox_read', 'sandbox_grep', 'sandbox_ls', 'sandbox_find', 'sandbox_job_status', 'sandbox_job_output']
+  const sandboxTools: ToolSet = sandboxToolSet.tools
+  return {
+    instructions: '\n<coding_sandbox>Generic shell and mutation tools are disabled. Use coding change sets and profile commands.</coding_sandbox>\n',
+    tools: Object.fromEntries(readOnlyNames.flatMap((name) => sandboxTools[name] ? [[name, sandboxTools[name]]] : [])),
+  }
+}
+
+const codingFactory: FeatureToolsetFactory = async (context) => {
+  const projectId = options(context, 'coding')?.projectId
+  if (!projectId || context.platformType !== 'mobile') return null
+  const project = await codingProjectStorage.get<import('@shared/types').CodingProjectRecord>('projects', projectId)
+  if (!project) return null
+  const set = createCodingToolSet(project)
+  return { instructions: set.description, tools: set.tools }
 }
 
 const workspaceFactory: FeatureToolsetFactory = async (context) => {
   if (context.platformType !== 'mobile' || !options(context, 'workspace')?.sandboxEnabled) return null
+  if (options(context, 'coding')?.projectId) {
+    return { instructions: workspaceBrowserToolSet.description, tools: { ...workspaceBrowserToolSet.tools } }
+  }
   const structured = createWorkspaceAgentToolSet(context.approvalSessionId || context.agentRunId)
   return {
     instructions: workspaceBrowserToolSet.description + structured.description,
@@ -153,7 +174,8 @@ const cameraFactory: FeatureToolsetFactory = async (context) => {
 const skillsFactory: FeatureToolsetFactory = async (context) => {
   const config = options(context, 'skills')
   const enabledSkillNames = config?.enabledSkillNames
-  const canWriteSkill = context.platformType === 'mobile' && Boolean(config?.sandboxEnabled)
+  const codingMode = Boolean(options(context, 'coding')?.projectId)
+  const canWriteSkill = context.platformType === 'mobile' && Boolean(config?.sandboxEnabled) && !codingMode
   if ((!enabledSkillNames || enabledSkillNames.length === 0) && !canWriteSkill) return null
   let allSkills: SkillInfo[] = []
   if (enabledSkillNames?.length) {
@@ -182,9 +204,9 @@ const skillsFactory: FeatureToolsetFactory = async (context) => {
         },
       })
     }
-    const scriptExecutionAvailable =
+    const scriptExecutionAvailable = !codingMode &&
       context.platformType !== 'mobile' ||
-      (Boolean(config?.sandboxEnabled) && enabledSkills.some((skill) => skill.scriptExecutionEnabled))
+      (!codingMode && Boolean(config?.sandboxEnabled) && enabledSkills.some((skill) => skill.scriptExecutionEnabled))
     if (scriptExecutionAvailable) {
       tools.execute_skill_script = tool({
         description:
@@ -240,6 +262,7 @@ const BUILTIN_TOOLSETS: Array<[string, FeatureToolsetFactory]> = [
   ['web-search', webSearchFactory],
   ['sandbox', sandboxFactory],
   ['workspace', workspaceFactory],
+  ['mobile-vibe-coding-v1', codingFactory],
   ['android-device', androidDeviceFactory],
   ['long-term-memory', longTermMemoryFactory],
   ['camera', cameraFactory],

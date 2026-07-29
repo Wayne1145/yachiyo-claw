@@ -18,6 +18,20 @@
     "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jdk_x64_windows_hotspot_21.0.11_10.zip",
     "sha256": "D3625E7CADF23787EA540229544B6E2AB494B3B54DA1801879E583E1DFEE0A64"
   },
+  "hostCompiler": {
+    "version": "18.1.8",
+    "path": ".tools/llvm-mingw",
+    "archive": "llvm-mingw-20240619-ucrt-x86_64.zip",
+    "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20240619/llvm-mingw-20240619-ucrt-x86_64.zip",
+    "sha256": "810703594A7E3EEA03385B5329C7EA3BD65F5E496B44CF1B68C17FF436D265E7"
+  },
+  "vulkanHeaders": {
+    "version": "1.3.275",
+    "path": ".tools/vulkan-headers",
+    "archive": "Vulkan-Headers-v1.3.275.zip",
+    "url": "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.275.zip",
+    "sha256": "2F8B6544E80EE083E11DABDA6B2474B7FF758584107DBA8468903D454A04EF2E"
+  },
   "android": {
     "sdkPath": ".tools/android-sdk",
     "commandLineTools": {

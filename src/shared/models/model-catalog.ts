@@ -43,6 +43,11 @@ export interface ModelArtifact {
   required: boolean
   companion: boolean
   etag?: string
+  backendTargets?: Array<'cpu' | 'gpu' | 'npu'>
+  socModels?: string[]
+  vendorRuntime?: { vendor: 'qualcomm' | 'mediatek' | 'google' | 'samsung'; version?: string }
+  variantGroupId?: string
+  fallbackArtifactId?: string
   metadata?: Record<string, unknown>
 }
 
@@ -448,6 +453,28 @@ function artifactIsCompanion(path: string, format: ModelFormat): boolean {
   return format !== 'unknown' || /(?:tokenizer|vocab|merges|config|generation_config|special_tokens)/.test(lower)
 }
 
+function inferAccelerationMetadata(
+  path: string,
+  format: ModelFormat,
+): Pick<ModelArtifact, 'backendTargets' | 'socModels' | 'vendorRuntime' | 'variantGroupId'> {
+  const lower = path.toLowerCase()
+  const qualcomm = lower.match(/(?:^|[^a-z0-9])(sm\d{4}|snapdragon[_-]?[a-z0-9]+)(?:[^a-z0-9]|$)/i)?.[1]
+  const mediatek = lower.match(/(?:^|[^a-z0-9])((?:dimensity|mt)[_-]?\d{4,5})(?:[^a-z0-9]|$)/i)?.[1]
+  const npuSoc = qualcomm ?? mediatek
+  if (format === 'litertlm' && npuSoc) {
+    return {
+      backendTargets: ['npu'],
+      socModels: [npuSoc.replace(/[_-]/g, '')],
+      vendorRuntime: { vendor: qualcomm ? ('qualcomm' as const) : ('mediatek' as const) },
+      variantGroupId: path.replace(npuSoc, '{soc}'),
+    }
+  }
+  if (format === 'litertlm' || format === 'gguf') {
+    return { backendTargets: ['cpu', 'gpu'], variantGroupId: path }
+  }
+  return { backendTargets: undefined, socModels: undefined, vendorRuntime: undefined, variantGroupId: undefined }
+}
+
 function buildArtifact(params: {
   modelId: string
   source: ModelCatalogSource
@@ -463,6 +490,7 @@ function buildArtifact(params: {
   const format = inferFormat(path)
   const sha256 = normalizeSha256(params.sha256)
   const sizeBytes = params.sizeBytes !== undefined && params.sizeBytes >= 0 ? params.sizeBytes : undefined
+  const acceleration = inferAccelerationMetadata(path, format)
   return {
     id: `${params.source}:${params.modelId}:${params.revision}:${path}`,
     modelId: params.modelId,
@@ -480,6 +508,7 @@ function buildArtifact(params: {
     runtime: params.runtime ?? runtimeForFormat(format),
     required: artifactIsRequired(path, format),
     companion: artifactIsCompanion(path, format),
+    ...acceleration,
     metadata: params.metadata,
   }
 }
@@ -1433,6 +1462,9 @@ function cloneJob(job: DownloadJob): DownloadJob {
     ...job,
     artifacts: job.artifacts.map((artifact) => ({
       ...artifact,
+      backendTargets: artifact.backendTargets ? [...artifact.backendTargets] : undefined,
+      socModels: artifact.socModels ? [...artifact.socModels] : undefined,
+      vendorRuntime: artifact.vendorRuntime ? { ...artifact.vendorRuntime } : undefined,
       metadata: artifact.metadata ? { ...artifact.metadata } : undefined,
     })),
     artifactIds: [...job.artifactIds],
@@ -1449,7 +1481,11 @@ function cloneJob(job: DownloadJob): DownloadJob {
   }
 }
 
-function selectDefaultArtifacts(artifacts: ModelArtifact[], runtime?: ModelRuntime): ModelArtifact[] {
+function selectDefaultArtifacts(
+  artifacts: ModelArtifact[],
+  runtime?: ModelRuntime,
+  device?: DeviceCompatibilityProfile,
+): ModelArtifact[] {
   const candidates = artifacts.filter((artifact) => artifact.required && (!runtime || artifact.runtime === runtime))
   if (candidates.length <= 1) return artifacts
 
@@ -1470,7 +1506,19 @@ function selectDefaultArtifacts(artifacts: ModelArtifact[], runtime?: ModelRunti
       artifact.format === 'tflite',
   )
   if (independentWeights.length <= 1) return artifacts
+  const normalizedSoc = device?.soc?.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const preferredNpu = device?.npu
+    ? independentWeights.find(
+        (artifact) =>
+          artifact.backendTargets?.includes('npu') &&
+          artifact.socModels?.some((soc) => {
+            const expected = soc.toLowerCase().replace(/[^a-z0-9]/g, '')
+            return Boolean(expected && (normalizedSoc === expected || normalizedSoc?.endsWith(expected)))
+          }),
+      )
+    : undefined
   const preferred =
+    preferredNpu ??
     independentWeights.find((artifact) => /q4[_-]?k[_-]?m/i.test(artifact.path)) ??
     [...independentWeights].sort(
       (left, right) => (left.sizeBytes ?? Number.MAX_SAFE_INTEGER) - (right.sizeBytes ?? Number.MAX_SAFE_INTEGER),
@@ -1488,11 +1536,23 @@ function selectDefaultArtifacts(artifacts: ModelArtifact[], runtime?: ModelRunti
         ? [preferred.id]
         : [],
   )
-  return artifacts.filter((artifact) => {
-    if (selectedIds.has(artifact.id)) return true
-    if (artifact.format === 'gguf') return false
-    return !artifact.required || !independentWeights.includes(artifact)
-  })
+  const genericFallback = preferredNpu
+    ? independentWeights.find(
+      (artifact) => artifact.id !== preferredNpu.id && artifact.backendTargets?.some((backend) => backend !== 'npu'),
+    )
+    : undefined
+  if (genericFallback) selectedIds.add(genericFallback.id)
+  return artifacts
+    .filter((artifact) => {
+      if (selectedIds.has(artifact.id)) return true
+      if (artifact.format === 'gguf') return false
+      return !artifact.required || !independentWeights.includes(artifact)
+    })
+    .map((artifact) =>
+      artifact.id === preferredNpu?.id && genericFallback
+        ? { ...artifact, fallbackArtifactId: genericFallback.id }
+        : artifact,
+    )
 }
 
 export class ModelCatalogController {
@@ -1541,7 +1601,7 @@ export class ModelCatalogController {
       const ids = new Set(request.artifactIds)
       artifacts = request.model.artifacts.filter((artifact) => ids.has(artifact.id))
     } else {
-      artifacts = selectDefaultArtifacts(artifacts, selectedRuntime)
+      artifacts = selectDefaultArtifacts(artifacts, selectedRuntime, request.device)
     }
     if (!artifacts.length) throw new ModelCatalogError('no artifacts match the requested runtime', 'invalid_request')
     if (artifacts.some((artifact) => !artifact.sha256 || artifact.sizeBytes === undefined)) {
@@ -1687,6 +1747,13 @@ export const ModelArtifactSchema = z.object({
   required: z.boolean(),
   companion: z.boolean(),
   etag: z.string().optional(),
+  backendTargets: z.array(z.enum(['cpu', 'gpu', 'npu'])).optional(),
+  socModels: z.array(z.string()).optional(),
+  vendorRuntime: z
+    .object({ vendor: z.enum(['qualcomm', 'mediatek', 'google', 'samsung']), version: z.string().optional() })
+    .optional(),
+  variantGroupId: z.string().optional(),
+  fallbackArtifactId: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
 

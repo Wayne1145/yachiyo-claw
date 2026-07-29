@@ -1,7 +1,18 @@
 import { App } from '@capacitor/app'
-import { ActionIcon } from '@mantine/core'
-import { IconChevronDown, IconChevronLeft, IconChevronUp, IconHistory, IconPuzzle } from '@tabler/icons-react'
+import { ActionIcon, Menu } from '@mantine/core'
+import {
+  IconBolt,
+  IconChevronLeft,
+  IconChevronUp,
+  IconDots,
+  IconHistory,
+  IconMessagePlus,
+  IconPuzzle,
+  IconSearch,
+  IconSettings,
+} from '@tabler/icons-react'
 import { useLocation } from '@tanstack/react-router'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { copyAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
@@ -13,46 +24,87 @@ import {
   hasYachiyoDefaultModel,
   isAllowedAndroidShellPath,
   resolveAndroidShellBackAction,
+  resolveAndroidShellParentPath,
   resolveAndroidShellTab,
   resolveAndroidShellWorkspaceView,
 } from '@/mobile/android-app-shell'
 import { getOverlays } from '@/features/ui-registry'
 import { registerBuiltinFeatureOverlays } from '@/features/builtin-overlays'
 import { getEnabledFeatureIds } from '@/features/feature-runtime'
-import { ensureAgentTaskForChat, ensureChatSessionForTask, openTaskSessionAsChat } from '@/mobile/conversation-bridge'
+import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conversation-bridge'
 import { removeBuiltInDemoSessions } from '@/mobile/demo-session-cleanup'
 import { syncInstalledLocalModelsIntoSettings } from '@/mobile/local-model-provider-sync'
 import { fetchYachiyoModels } from '@/mobile/yachiyo-api'
 import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
-import { syncAndroidSystemBars } from '@/platform/native/yachiyo_appearance'
+import {
+  type AndroidInteractionState,
+  getAndroidInteractionState,
+  onAndroidInteractionStateChanged,
+  syncAndroidSystemBars,
+} from '@/platform/native/yachiyo_appearance'
 import { router } from '@/router'
 import { initThemeApplication } from '@/stores/themeStore'
 import { useUIStore } from '@/stores/uiStore'
-import {
-  LIQUID_GLASS_QUALITY_STORAGE_KEY,
-  observeLiquidGlassQuality,
-} from '@/themes/liquid-glass-quality'
+import { LIQUID_GLASS_QUALITY_STORAGE_KEY, observeLiquidGlassQuality } from '@/themes/liquid-glass-quality'
 import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
+import { PluginPageHost } from '@/plugins/PluginPageHost'
 import { startPendingPluginInstallRecovery } from '@/plugins/install-recovery'
 import { startPendingThemeImportRecovery } from '@/themes/remote-theme'
 import { pruneAbandonedEmptySessions, useSession } from '@/stores/chatStore'
 import { createEmpty, switchCurrentSession } from '@/stores/sessionActions'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
 import { getTaskSession, listAllTaskSessions, taskSessionStore, useTaskSessionRecord } from '@/stores/taskSessionStore'
-import { AgentSessionControls } from './AgentSessionControls'
-import Toolbar from '@/components/layout/Toolbar'
+import { AgentSessionControls, describeAgentMode } from './AgentSessionControls'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { AndroidAppShellContext } from './AndroidAppShellContext'
-import { AndroidBottomNavigation } from './AndroidBottomNavigation'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
+import { AndroidInteractive } from './AndroidInteractive'
+import { AndroidMainTabPager, type AndroidTabTransitionSnapshot } from './AndroidMainTabPager'
+import { AndroidPagerHeaderActions, AndroidPagerHeaderTitle } from './AndroidPagerHeaderTransition'
+import { AndroidRetainedTabSurface } from './android-retained-state'
+import { AndroidPagerGestureLockProvider } from './android-pager-gesture-lock'
+import { AndroidSharedChromeHostProvider, AndroidStandardChromeLayer } from './AndroidSharedChrome'
 import { AndroidSettingsHome } from './AndroidSettingsHome'
+import { AndroidSettingsChromeTransition, AndroidSettingsStackSurface } from './AndroidSettingsStackSurface'
+import { AndroidTabPagePreview } from './AndroidTabPagePreview'
 import { AndroidAboutWorkspace, AndroidTasksWorkspace } from './AndroidWorkspaceHome'
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
 import { YachiyoChatLanding } from './YachiyoChatLanding'
 import { YachiyoMark } from './YachiyoMark'
 import { AndroidFlowGlassEnvironment, FlowGlassFilterDefinitions } from './AndroidFlowGlassEnvironment'
+import type { AndroidTabPageActivity } from './android-tab-page-activity'
 import './android-app-shell.css'
 import './flow-glass.css'
 import './local-model-center.css'
+
+const SETTINGS_HEADER_TITLES: Readonly<Record<string, string>> = {
+  provider: 'Model Provider',
+  'default-models': 'Default Models',
+  downloads: '下载管理',
+  themes: '主题外观',
+  features: '功能管理',
+  chat: 'Chat Settings',
+  general: 'General Settings',
+  'document-parser': 'Document Parser',
+  hotkeys: 'Keyboard Shortcuts',
+  plugins: '插件',
+  'local-models': '本地模型',
+  mcp: 'MCP',
+  'knowledge-base': '知识库',
+  skills: 'Skills',
+  speech: '语音',
+  'web-search': 'Web Search',
+  'user-memory': '用户记忆',
+  characters: '角色',
+  'plugin-runtime-test': '插件运行时测试',
+}
+
+function resolveSettingsHeaderTitle(pathname: string, translate: (key: string) => string): string {
+  if (pathname === '/settings') return 'Yachiyo Claw'
+  if (pathname === '/about') return translate('About')
+  const section = pathname.split('/').filter(Boolean)[1]
+  return translate((section && SETTINGS_HEADER_TITLES[section]) || 'Settings')
+}
 
 export function AndroidAppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
@@ -60,21 +112,32 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const lastConversationPathname = useRef(
     location.pathname === '/' || location.pathname.startsWith('/session/') || location.pathname.startsWith('/task/')
       ? location.pathname
-      : '/'
+      : '/',
   )
+  const lastTabLocation = useRef(new Map<AndroidShellTab, { pathname: string; search: Record<string, unknown> }>())
+  const tabNavigationTransactionRef = useRef(0)
   const [historyOpened, setHistoryOpened] = useState(false)
   const [conversationHeaderCollapsed, setConversationHeaderCollapsed] = useState(false)
+  const reduceMotion = useReducedMotion()
+  const [pagerTransition, setPagerTransition] = useState<AndroidTabTransitionSnapshot>()
+  const [sharedChromeHost, setSharedChromeHost] = useState<HTMLElement | null>(null)
+  const [interactionState, setInteractionState] = useState<AndroidInteractionState>({
+    navigationMode: 'unknown',
+    systemGestureInsetsCssPx: { left: 0, right: 0 },
+    touchExplorationEnabled: false,
+  })
   const customProviders = useSettingsStore((state) => state.customProviders)
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
   const licenseKey = useSettingsStore((state) => state.licenseKey)
   const providers = useSettingsStore((state) => state.providers)
   const featureOverrides = useSettingsStore((state) => state.featureOverrides)
+  const setOpenSearchDialog = useUIStore((state) => state.setOpenSearchDialog)
   const realTheme = useUIStore((state) => state.realTheme)
   const installedPlugins = usePluginStore((state) => state.installed)
   const contributionPluginIds = usePluginStore((state) => state.contributionPluginIds)
   const settings = useMemo(
     () => ({ customProviders, defaultChatModel, licenseKey, providers }),
-    [customProviders, defaultChatModel, licenseKey, providers]
+    [customProviders, defaultChatModel, licenseKey, providers],
   )
   const hasProvider = useMemo(() => hasConfiguredModelProvider(settings), [settings])
   const enabledFeatureIds = useMemo(() => getEnabledFeatureIds('android', featureOverrides), [featureOverrides])
@@ -103,17 +166,23 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const activePlugin = installedPlugins.find(
     (record) =>
       location.pathname === `/plugin/${record.manifest.id}` ||
-      location.pathname.startsWith(`/plugin/${record.manifest.id}/`)
+      location.pathname.startsWith(`/plugin/${record.manifest.id}/`),
   )
   const activeTab = activePlugin ? `plugin-${activePlugin.manifest.id}` : resolveAndroidShellTab(location.pathname)
   const activeTabLabel = t(
-    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天'
+    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天',
   )
+  const pagerTarget = pagerTransition ? shellTabs.find((tab) => tab.id === pagerTransition.targetId) : undefined
+  const pagerTargetLabel = String(t(pagerTarget?.label ?? activeTabLabel))
+  const pagerTargetPath = pagerTarget
+    ? (lastTabLocation.current.get(pagerTarget.id)?.pathname ?? pagerTarget.route)
+    : undefined
   const workspaceView = resolveAndroidShellWorkspaceView(location.pathname)
   const isAllowedPath = isAllowedAndroidShellPath(location.pathname)
   const isAgentTaskPath = location.pathname === '/task' || location.pathname.startsWith('/task/')
   const isSettingsDetail = activeTab === 'settings' && location.pathname !== '/settings'
   const isInteractive = activeTab === 'interactive'
+  const settingsHeaderTitle = resolveSettingsHeaderTitle(location.pathname, (key) => String(t(key)))
 
   useLayoutEffect(() => {
     // Apply persisted theme tokens before the shell is painted to avoid a default-color flash.
@@ -128,8 +197,30 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    void syncAndroidSystemBars({ scheme: realTheme }).catch(() => undefined)
+    void syncAndroidSystemBars({ scheme: realTheme })
+      .then(setInteractionState)
+      .catch(() => undefined)
   }, [realTheme])
+
+  useEffect(() => {
+    let disposed = false
+    let listenerHandle: Awaited<ReturnType<typeof onAndroidInteractionStateChanged>> | undefined
+    void getAndroidInteractionState()
+      .then((state) => {
+        if (!disposed) setInteractionState(state)
+      })
+      .catch(() => undefined)
+    void onAndroidInteractionStateChanged((state) => {
+      if (!disposed) setInteractionState(state)
+    }).then((handle) => {
+      if (disposed) void handle.remove()
+      else listenerHandle = handle
+    })
+    return () => {
+      disposed = true
+      if (listenerHandle) void listenerHandle.remove()
+    }
+  }, [])
 
   useEffect(() => {
     // Configure regional download defaults once. Failure is intentionally silent and retried at
@@ -151,7 +242,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       startPendingThemeImportRecovery(() => {
         void router.navigate({ to: '/settings/themes' })
       }),
-    []
+    [],
   )
 
   useEffect(() => {
@@ -165,7 +256,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       try {
         const tasks = await listAllTaskSessions()
         const protectedIds = new Set(
-          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
+          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
         )
         await pruneAbandonedEmptySessions(60_000, protectedIds)
       } catch {
@@ -208,12 +299,25 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   }, [location.pathname])
 
   useEffect(() => {
+    lastTabLocation.current.set(activeTab, {
+      pathname: location.pathname,
+      search: location.search as Record<string, unknown>,
+    })
+  }, [activeTab, location.pathname, location.search])
+
+  useEffect(() => {
     let disposed = false
     let removeListener: (() => Promise<void>) | undefined
 
     void App.addListener('backButton', async () => {
       if (historyOpened) {
         setHistoryOpened(false)
+        return
+      }
+
+      const parentPath = resolveAndroidShellParentPath(location.pathname)
+      if (parentPath) {
+        await router.navigate({ to: parentPath as '/', search: {}, replace: true })
         return
       }
 
@@ -271,29 +375,59 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   }, [isAllowedPath, location.pathname])
 
   const handleTabChange = async (tab: AndroidShellTab) => {
+    const transactionId = ++tabNavigationTransactionRef.current
+    const isCurrentTransaction = () => transactionId === tabNavigationTransactionRef.current
     const taskMatch = location.pathname.match(/^\/task\/([^/]+)$/)
+    const savedLocation = lastTabLocation.current.get(tab)
 
     if (tab === 'interactive') {
+      const savedSessionId = savedLocation?.search.sessionId
+      if (typeof savedSessionId === 'string') {
+        await router.navigate({ to: '/interactive', search: { sessionId: savedSessionId }, replace: true })
+        return
+      }
       let sessionId = location.pathname.match(/^\/session\/([^/]+)$/)?.[1]
-      if (!sessionId && taskMatch?.[1]) sessionId = await ensureChatSessionForTask(taskMatch[1])
+      if (!sessionId && taskMatch?.[1]) {
+        sessionId = await ensureChatSessionForTask(taskMatch[1])
+        if (!isCurrentTransaction()) return
+      }
       if (!sessionId) {
         const savedChatMatch = lastConversationPathname.current.match(/^\/session\/([^/]+)$/)
         const savedTaskMatch = lastConversationPathname.current.match(/^\/task\/([^/]+)$/)
         sessionId = savedChatMatch?.[1]
-        if (!sessionId && savedTaskMatch?.[1]) sessionId = await ensureChatSessionForTask(savedTaskMatch[1])
+        if (!sessionId && savedTaskMatch?.[1]) {
+          sessionId = await ensureChatSessionForTask(savedTaskMatch[1])
+          if (!isCurrentTransaction()) return
+        }
       }
-      if (!sessionId) sessionId = (await createEmpty('chat')).id
+      if (!sessionId) {
+        sessionId = (await createEmpty('chat')).id
+        if (!isCurrentTransaction()) return
+      }
+      if (!isCurrentTransaction()) return
       await router.navigate({ to: '/interactive', search: { sessionId }, replace: true })
       return
     }
 
     if (tab !== 'chat') {
+      if (savedLocation) {
+        await router.navigate({
+          to: savedLocation.pathname as '/',
+          search: savedLocation.search as never,
+          replace: true,
+        })
+        return
+      }
       const destination = shellTabs.find((candidate) => candidate.id === tab)
       if (destination) await router.navigate({ to: destination.route as '/', replace: true })
       return
     }
     if (taskMatch?.[1]) {
-      await openTaskSessionAsChat(taskMatch[1])
+      const sessionId = await ensureChatSessionForTask(taskMatch[1])
+      if (!isCurrentTransaction()) return
+      copyAgentSessionConfig(taskMatch[1], sessionId)
+      saveAgentSessionConfig(sessionId, { enabled: false, allowDangerousForConversation: false })
+      switchCurrentSession(sessionId)
       return
     }
     if (location.pathname === lastConversationPathname.current) return
@@ -326,6 +460,104 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const conversationTitle = headerTaskSession?.name || headerChatSession?.name
   const toolbarSessionId = chatMatch?.[1] || headerTaskSession?.linkedSessionId
   const showConversationTools = activeTab === 'chat'
+  const interactiveSearch = location.search as Record<string, unknown>
+  const interactiveSessionId = typeof interactiveSearch.sessionId === 'string' ? interactiveSearch.sessionId : undefined
+
+  const headerActions = useMemo<AdaptiveActionDescriptor[]>(() => {
+    if (!showConversationTools) return []
+    return [
+      {
+        id: 'search',
+        label: String(t('Search')),
+        icon: IconSearch,
+        priority: 40,
+        collapseStrategy: 'keep',
+        renderControl: () => (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size={44}
+            aria-label={String(t('Search'))}
+            onClick={() => setOpenSearchDialog(true, !toolbarSessionId)}
+          >
+            <IconSearch size={20} />
+          </ActionIcon>
+        ),
+      },
+      {
+        id: 'history',
+        label: String(t('会话记录')),
+        icon: IconHistory,
+        priority: 100,
+        collapseStrategy: 'keep',
+        renderControl: () => (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size={44}
+            aria-label={String(t('会话记录'))}
+            onClick={() => setHistoryOpened(true)}
+          >
+            <IconHistory size={21} />
+          </ActionIcon>
+        ),
+      },
+      {
+        id: 'new-topic',
+        label: String(t('New Thread')),
+        icon: IconMessagePlus,
+        priority: 120,
+        collapseStrategy: 'keep',
+        renderControl: () => (
+          <ActionIcon
+            className="yachiyo-mobile-header-new-topic"
+            variant="subtle"
+            color="gray"
+            size={44}
+            aria-label={String(t('New Thread'))}
+            onClick={() => {
+              void createEmpty('chat').then(async (session) => {
+                switchCurrentSession(session.id)
+                await router.navigate({ to: '/session/$sessionId', params: { sessionId: session.id } })
+              })
+            }}
+          >
+            <IconMessagePlus size={22} />
+          </ActionIcon>
+        ),
+      },
+      {
+        id: 'more',
+        label: String(t('More')),
+        icon: IconDots,
+        priority: 130,
+        collapseStrategy: 'keep',
+        renderControl: () => (
+          <Menu position="bottom-end" withinPortal shadow="md">
+            <Menu.Target>
+              <ActionIcon
+                className="yachiyo-mobile-header-more"
+                variant="subtle"
+                color="gray"
+                size={44}
+                aria-label={String(t('More'))}
+              >
+                <IconDots size={21} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown className="yachiyo-header-more-menu">
+              <Menu.Item
+                leftSection={<IconSettings size={18} />}
+                onClick={() => void router.navigate({ to: '/settings/chat', search: {} })}
+              >
+                {t('Chat Settings')}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        ),
+      },
+    ]
+  }, [setOpenSearchDialog, showConversationTools, t, toolbarSessionId])
 
   const handleAgentToggle = async (enabled: boolean) => {
     if (enabled) {
@@ -365,10 +597,30 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
     }
   }
 
+  const renderTabPreview = (tab: AndroidShellTab) => {
+    const descriptor = shellTabs.find((candidate) => candidate.id === tab)
+    return (
+      <AndroidTabPagePreview
+        tab={tab}
+        savedLocation={lastTabLocation.current.get(tab)}
+        fallbackRoute={descriptor?.route || '/'}
+      />
+    )
+  }
+
   const content = (() => {
     if (workspaceView === 'tasks') return <AndroidTasksWorkspace />
-    if (workspaceView === 'about') return <AndroidAboutWorkspace />
-    if (workspaceView === 'settings') return <AndroidSettingsHome />
+    if (activeTab === 'settings') {
+      const settingsPage =
+        workspaceView === 'settings' ? (
+          <AndroidSettingsHome />
+        ) : workspaceView === 'about' ? (
+          <AndroidAboutWorkspace />
+        ) : (
+          <div className="yachiyo-settings-detail">{children}</div>
+        )
+      return <AndroidSettingsStackSurface pathname={location.pathname}>{settingsPage}</AndroidSettingsStackSurface>
+    }
     if (isAgentTaskPath) return children
     if (activeTab === 'chat' && (!hasProvider || location.pathname === '/guide')) {
       return (
@@ -379,106 +631,202 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       )
     }
     if (!isAllowedPath) return <YachiyoChatLanding />
-    return activeTab === 'settings' ? <div className="yachiyo-settings-detail">{children}</div> : children
+    return children
   })()
+
+  const renderSourceContent = (activity: AndroidTabPageActivity) => {
+    if (activeTab === 'interactive') {
+      return (
+        <AndroidInteractive
+          sessionId={interactiveSessionId}
+          onSessionChange={(sessionId) =>
+            void router.navigate({ to: '/interactive', search: { sessionId }, replace: true })
+          }
+          activity={activity}
+        />
+      )
+    }
+    if (activeTab.startsWith('plugin-')) {
+      return <PluginPageHost pluginId={activeTab.slice('plugin-'.length)} activity={activity} />
+    }
+    return (
+      <AndroidRetainedTabSurface stateKey={`${activeTab}:${location.pathname}:${JSON.stringify(location.search)}`}>
+        {content}
+      </AndroidRetainedTabSurface>
+    )
+  }
+  const standardHeaderTransition = pagerTransition?.targetId === 'interactive' ? undefined : pagerTransition
 
   return (
     <AndroidAppShellContext.Provider value={true}>
-      <div className="yachiyo-mobile-shell">
-        <AndroidFlowGlassEnvironment pathname={location.pathname} />
-        <FlowGlassFilterDefinitions />
-        {shellOverlays.map((Overlay, index) => (
-          <Overlay key={`${Overlay.displayName || Overlay.name || 'feature-overlay'}-${index}`} />
-        ))}
-        <AndroidConversationHistory
-          opened={historyOpened}
-          mode={isAgentTaskPath ? 'agent' : 'chat'}
-          currentId={location.pathname.split('/').at(-1)}
-          onClose={() => setHistoryOpened(false)}
-        />
-        {!isInteractive && (
-          <div className="yachiyo-mobile-header-drawer">
-            <div className="yachiyo-mobile-header-drawer-inner">
-              <header className="yachiyo-mobile-header">
-                <div className="yachiyo-mobile-header-primary">
-                  {isSettingsDetail ? (
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      size={36}
-                      aria-label={String(t('返回设置'))}
-                      onClick={() => router.navigate({ to: '/settings' })}
-                    >
-                      <IconChevronLeft size={22} />
-                    </ActionIcon>
-                  ) : (
-                    <YachiyoMark size={36} />
-                  )}
-                  <div className="yachiyo-mobile-title">
-                    <strong>{conversationTitle || 'Yachiyo Claw'}</strong>
-                    <span>{isAgentTaskPath ? t('Agent 对话') : activeTabLabel}</span>
-                  </div>
-                  {showConversationTools && (
-                    <div className="yachiyo-mobile-conversation-tools">
-                      <Toolbar sessionId={toolbarSessionId} androidShell />
-                      <ActionIcon
-                        variant="subtle"
-                        color="gray"
-                        size={36}
-                        aria-label={String(t('会话记录'))}
-                        onClick={() => setHistoryOpened(true)}
-                      >
-                        <IconHistory size={21} />
-                      </ActionIcon>
-                    </div>
-                  )}
-                  <div className="yachiyo-connection-status" data-connected={hasProvider ? 'true' : 'false'}>
-                    <span aria-hidden="true" />
-                    {hasProvider ? t('已连接') : t('未连接')}
+      <AndroidPagerGestureLockProvider>
+        <AndroidSharedChromeHostProvider host={sharedChromeHost}>
+          <div className="yachiyo-mobile-shell">
+            <AndroidFlowGlassEnvironment pathname={location.pathname} />
+            {pagerTransition && pagerTargetPath && (
+              <AndroidFlowGlassEnvironment pathname={pagerTargetPath} transitionOpacity={pagerTransition.progress} />
+            )}
+            <FlowGlassFilterDefinitions />
+            {shellOverlays.map((Overlay, index) => (
+              <Overlay key={`${Overlay.displayName || Overlay.name || 'feature-overlay'}-${index}`} />
+            ))}
+            <AndroidConversationHistory
+              opened={historyOpened}
+              mode={isAgentTaskPath ? 'agent' : 'chat'}
+              currentId={location.pathname.split('/').at(-1)}
+              onClose={() => setHistoryOpened(false)}
+            />
+            <div className="yachiyo-mobile-header-drawer">
+              <div className="yachiyo-mobile-header-drawer-inner">
+                <header className="yachiyo-mobile-header">
+                  <div className="yachiyo-mobile-header-primary">
+                    <AndroidStandardChromeLayer activeInteractive={isInteractive} transition={pagerTransition}>
+                      {activeTab === 'settings' ? (
+                        <AndroidSettingsChromeTransition
+                          pathname={location.pathname}
+                          className="yachiyo-settings-chrome-leading"
+                        >
+                          {isSettingsDetail ? (
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              size={44}
+                              aria-label={String(t('返回设置'))}
+                              onClick={() =>
+                                router.navigate({
+                                  to: (resolveAndroidShellParentPath(location.pathname) || '/settings') as '/',
+                                  search: {},
+                                })
+                              }
+                            >
+                              <IconChevronLeft size={22} />
+                            </ActionIcon>
+                          ) : (
+                            <YachiyoMark size={36} />
+                          )}
+                        </AndroidSettingsChromeTransition>
+                      ) : (
+                        <YachiyoMark size={36} />
+                      )}
+                      {activeTab === 'settings' ? (
+                        <AndroidSettingsChromeTransition
+                          pathname={location.pathname}
+                          className="yachiyo-settings-chrome-title"
+                        >
+                          <AndroidPagerHeaderTitle
+                            title={settingsHeaderTitle}
+                            subtitle={String(t('Settings'))}
+                            targetTitle="Yachiyo Claw"
+                            targetSubtitle={pagerTargetLabel}
+                            connected={hasProvider}
+                            transition={standardHeaderTransition}
+                          />
+                        </AndroidSettingsChromeTransition>
+                      ) : (
+                        <AndroidPagerHeaderTitle
+                          title={conversationTitle || 'Yachiyo Claw'}
+                          subtitle={String(isAgentTaskPath ? t('Agent 对话') : activeTabLabel)}
+                          targetTitle="Yachiyo Claw"
+                          targetSubtitle={pagerTargetLabel}
+                          connected={hasProvider}
+                          transition={standardHeaderTransition}
+                        />
+                      )}
+                      {headerActions.length > 0 && (
+                        <AndroidPagerHeaderActions transition={standardHeaderTransition}>
+                          <AdaptiveActionCluster
+                            className="yachiyo-mobile-conversation-tools"
+                            ariaLabel={String(t('会话操作'))}
+                            actions={headerActions}
+                          />
+                        </AndroidPagerHeaderActions>
+                      )}
+                    </AndroidStandardChromeLayer>
+                    <div
+                      ref={setSharedChromeHost}
+                      className="yachiyo-shared-interactive-chrome-host"
+                      aria-live="polite"
+                    />
                   </div>
                   {activeTab === 'chat' && (
-                    <ActionIcon
-                      className="yachiyo-mobile-header-collapse"
-                      variant="subtle"
-                      color="gray"
-                      size={30}
-                      aria-label={String(conversationHeaderCollapsed ? t('展开顶部') : t('收起顶部'))}
-                      aria-expanded={!conversationHeaderCollapsed}
-                      onClick={() => setConversationHeaderCollapsed((value) => !value)}
-                    >
-                      {conversationHeaderCollapsed ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
-                    </ActionIcon>
-                  )}
-                </div>
-                {activeTab === 'chat' && (
-                  <div
-                    className="yachiyo-mobile-header-collapsible"
-                    data-collapsed={conversationHeaderCollapsed ? 'true' : 'false'}
-                  >
-                    <div className="yachiyo-mobile-header-collapsible-inner">
-                      <AgentSessionControls
-                        sessionId={conversationConfigId}
-                        enabled={isAgentTaskPath}
-                        onToggle={handleAgentToggle}
-                      />
+                    <div className="yachiyo-agent-disclosure" data-collapsed={conversationHeaderCollapsed || undefined}>
+                      <button
+                        type="button"
+                        className="yachiyo-agent-disclosure-trigger"
+                        aria-expanded={!conversationHeaderCollapsed}
+                        onClick={() => setConversationHeaderCollapsed((value) => !value)}
+                      >
+                        <IconBolt size={18} aria-hidden />
+                        <span>{describeAgentMode(conversationConfigId, isAgentTaskPath, (key) => String(t(key)))}</span>
+                        <motion.span
+                          className="yachiyo-mobile-header-collapse-glyph"
+                          aria-hidden="true"
+                          animate={{ rotate: conversationHeaderCollapsed ? 180 : 0 }}
+                          transition={
+                            reduceMotion
+                              ? { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }
+                              : { type: 'spring', mass: 1, stiffness: 420, damping: 40 }
+                          }
+                        >
+                          <IconChevronUp size={18} />
+                        </motion.span>
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {!conversationHeaderCollapsed && (
+                          <motion.div
+                            key="conversation-agent-controls"
+                            className="yachiyo-mobile-header-collapsible"
+                            data-state="expanded"
+                            initial={reduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, y: -8 }}
+                            animate={reduceMotion ? { height: 'auto', opacity: 1 } : { height: 'auto', opacity: 1, y: 0 }}
+                            exit={reduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, y: -8 }}
+                            transition={
+                              reduceMotion
+                                ? { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }
+                                : { type: 'spring', mass: 1, stiffness: 420, damping: 40 }
+                            }
+                          >
+                            <motion.div
+                              className="yachiyo-mobile-header-collapsible-inner"
+                              initial={reduceMotion ? false : { scale: 0.99, filter: 'blur(3px)' }}
+                              animate={{ scale: 1, filter: 'blur(0px)' }}
+                              exit={reduceMotion ? { opacity: 0 } : { scale: 0.99, filter: 'blur(3px)' }}
+                              transition={
+                                reduceMotion
+                                  ? { duration: 0.18, ease: 'easeOut' }
+                                  : { type: 'spring', mass: 1, stiffness: 420, damping: 40 }
+                              }
+                            >
+                              <AgentSessionControls
+                                sessionId={conversationConfigId}
+                                enabled={isAgentTaskPath}
+                                onToggle={handleAgentToggle}
+                                showStatus={false}
+                              />
+                            </motion.div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                  </div>
-                )}
-              </header>
+                  )}
+                </header>
+              </div>
             </div>
+
+            <AndroidMainTabPager
+              activeTab={activeTab}
+              items={shellTabs}
+              renderPreview={renderTabPreview}
+              renderSource={renderSourceContent}
+              onChange={handleTabChange}
+              onTransitionChange={setPagerTransition}
+              interactionState={interactionState}
+            >
+              {content}
+            </AndroidMainTabPager>
           </div>
-        )}
-
-        <div key={location.pathname} className="yachiyo-mobile-content">
-          {content}
-        </div>
-
-        <AndroidBottomNavigation
-          activeTab={activeTab}
-          items={shellTabs}
-          onChange={(tab) => void handleTabChange(tab)}
-        />
-      </div>
+        </AndroidSharedChromeHostProvider>
+      </AndroidPagerGestureLockProvider>
     </AndroidAppShellContext.Provider>
   )
 }

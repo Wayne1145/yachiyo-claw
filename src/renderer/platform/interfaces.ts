@@ -116,8 +116,9 @@ export interface Platform extends Storage {
   sandboxExec?(params: {
     command: string
     timeout?: number
+    alwaysAsk?: boolean
   }): Promise<{ stdout: string; stderr: string; exitCode: number }>
-  sandboxStartBackground?(params: { command: string; timeout?: number }): Promise<{ accepted: boolean; jobId: string }>
+  sandboxStartBackground?(params: { command: string; timeout?: number; alwaysAsk?: boolean }): Promise<{ accepted: boolean; jobId: string }>
   sandboxListJobs?(): Promise<{ jobs: import('./native/yachiyo_sandbox').NativeSandboxJob[] }>
   sandboxQueryJob?(params: { jobId: string }): Promise<import('./native/yachiyo_sandbox').NativeSandboxJob>
   sandboxReadJobOutput?(params: { jobId: string; stdoutOffset?: number; stderrOffset?: number }): Promise<{
@@ -130,6 +131,7 @@ export interface Platform extends Storage {
   sandboxInstallAndroidToolchain?(): Promise<{ accepted: boolean; jobId?: string; reason?: string }>
   sandboxRead?(params: { filePath: string }): Promise<{ success: boolean; content?: string; error?: string }>
   sandboxWrite?(params: { filePath: string; content: string }): Promise<{ success: boolean; error?: string }>
+  sandboxDelete?(params: { filePath: string }): Promise<{ success: boolean; error?: string }>
   sandboxEdit?(params: {
     filePath: string
     search: string
@@ -149,13 +151,25 @@ export interface Platform extends Storage {
   sandboxReset?(): Promise<{ success: boolean; error?: string }>
   sandboxStatus?(): Promise<{
     state: string
+    installed?: boolean
+    toolchainReady?: boolean
     workingDirectory?: string | null
     platform?: string
+    distribution?: string
+    freeBytes?: number
+    abi?: string
     androidToolchainReady?: boolean
     androidToolchainSupported?: boolean
     androidToolchainVariant?: 'x86_64-official' | 'arm64-patched-aapt2' | 'unsupported'
   }>
   sandboxCheckAvailability?(): Promise<{ available: boolean; reason?: string }>
+  codingGit?(operation:
+    | { kind: 'status' }
+    | { kind: 'diff'; staged: boolean }
+    | { kind: 'create-branch'; name: string }
+    | { kind: 'commit'; message: string }
+    | { kind: 'restore-files'; paths: string[] }
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }>
 
   // Native directory dialog when supported by the platform.
   openDirectoryDialog?(): Promise<{ canceled: boolean; path?: string }>
@@ -191,6 +205,12 @@ export interface Platform extends Storage {
     error?: string
   }>
   openWorkspacePreview?(id: string): Promise<{ success: boolean; url?: string; error?: string }>
+  inspectWorkspaceApk?(params: { workspaceKey: string; path: string }): Promise<import('./native/yachiyo_artifact').NativeApkInspection>
+  installWorkspaceApk?(params: { workspaceKey: string; path: string; expectedSha256: string }): Promise<{ accepted: boolean; packageName: string; sha256: string }>
+  workspacePackageStatus?(packageName: string): Promise<{ installed: boolean; packageName: string; versionName?: string; versionCode?: number }>
+  launchWorkspacePackage?(packageName: string): Promise<{ launched: boolean }>
+  workspaceInstallPermission?(): Promise<{ allowed: boolean }>
+  openWorkspaceInstallPermission?(): Promise<{ opened: boolean }>
   controlledBrowserNavigate?(url: string): Promise<{ success: boolean; url?: string; error?: string }>
   controlledBrowserClick?(selector: string): Promise<{ success: boolean; value?: unknown; error?: string }>
   controlledBrowserType?(selector: string, text: string): Promise<{ success: boolean; value?: unknown; error?: string }>

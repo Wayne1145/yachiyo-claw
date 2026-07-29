@@ -13,12 +13,18 @@ import {
   IconUserHeart,
   IconWand,
   IconWorldSearch,
+  IconCode,
   IconPuzzle,
 } from '@tabler/icons-react'
 import type { FeatureUiContribution } from './ui-contract'
 import { hasFeatureUi, registerFeatureUi } from './ui-registry'
 
 const BUILTIN_UI: readonly FeatureUiContribution[] = [
+  {
+    featureId: 'mobile-vibe-coding-v1',
+    tab: { id: 'develop', label: '开发', icon: IconCode, order: 250, route: '/develop' },
+    ownedRoutes: ['/develop', '/develop/*'],
+  },
   {
     featureId: 'tasks',
     tab: { id: 'tasks', label: '任务', icon: IconListCheck, order: 300, route: '/tasks' },

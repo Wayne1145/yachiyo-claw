@@ -999,6 +999,10 @@ export interface LoadedPlugin {
   view: PluginView | null
 }
 
+export interface LoadPluginForPageOptions {
+  startRuntime?: boolean
+}
+
 async function assertPluginRunnable(record: InstalledPluginRecord): Promise<void> {
   if (!isPluginFeatureEnabled()) throw new Error('plugin_feature_disabled')
   if (record.enabled === false) throw new Error('plugin_disabled_by_user')
@@ -1014,7 +1018,10 @@ async function assertPluginRunnable(record: InstalledPluginRecord): Promise<void
  * plugins boots (or reuses) the Worker runtime with the entry read back from disk and re-checked
  * against entrySha256 — installed bytes are not implicitly trusted at load time either.
  */
-export async function loadPluginForPage(pluginId: string): Promise<LoadedPlugin | null> {
+export async function loadPluginForPage(
+  pluginId: string,
+  options: LoadPluginForPageOptions = {}
+): Promise<LoadedPlugin | null> {
   const record = await localforagePluginRegistry.get(pluginId)
   if (!record) return null
   // The page and Agent paths share this exact gate; neither may revive an incompatible/disabled plugin.
@@ -1030,7 +1037,9 @@ export async function loadPluginForPage(pluginId: string): Promise<LoadedPlugin 
   }).allowed
 
   const view = uiGranted ? await loadBundledPluginView(record) : null
-  if (!record.manifest.entry) return { record, runtime: null, tools: [], uiGranted, view }
+  if (!record.manifest.entry || options.startRuntime === false) {
+    return { record, runtime: null, tools: [], uiGranted, view }
+  }
   const { runtime, tools } = await ensurePluginRuntime(record)
   return { record, runtime, tools, uiGranted, view }
 }
@@ -1234,6 +1243,17 @@ export async function invokeLoadedPluginTool(
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : 'plugin_invocation_failed'
+    if (message === 'cancelled' || message === 'disposed') {
+      appendPluginAudit({
+        at: Date.now(),
+        principal: { kind: 'plugin', pluginId },
+        event: 'invocation_cancelled',
+        status: 'cancelled',
+        toolName: name.slice(0, 160),
+      })
+      if (runtime.isDisposed() && runtimes.get(pluginId) === runtime) runtimes.delete(pluginId)
+      throw error
+    }
     await notePluginFailure(pluginId, message === 'timeout' ? 'timeout' : 'error', message).catch(() => {})
     appendPluginAudit({
       at: Date.now(),

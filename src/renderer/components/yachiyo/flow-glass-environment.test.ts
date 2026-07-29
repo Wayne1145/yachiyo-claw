@@ -8,6 +8,8 @@ describe('flow glass environment mapping', () => {
     ['/interactive', 'interactive'],
     ['/task/abc', 'tasks'],
     ['/tasks', 'tasks'],
+    ['/develop', 'tasks'],
+    ['/develop/project-1', 'tasks'],
     ['/workspace/tasks', 'tasks'],
     ['/about', 'settings'],
     ['/settings/provider', 'settings'],

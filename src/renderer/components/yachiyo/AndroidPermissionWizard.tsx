@@ -35,7 +35,7 @@ function PermissionRow({
   const { t } = useTranslation()
 
   return (
-    <Flex className="yachiyo-permission-row" align="center" gap="sm">
+    <Flex className="yachiyo-permission-row" align="center" gap="sm" wrap="wrap">
       <div className="yachiyo-permission-status" data-granted={statusUnknown ? undefined : granted}>
         {statusUnknown ? <IconExternalLink size={16} /> : granted ? <IconCheck size={16} /> : <IconX size={16} />}
       </div>
@@ -57,7 +57,7 @@ function PermissionRow({
       {(!granted || statusUnknown) && onAction && (
         <Button
           className="yachiyo-permission-action"
-          size="compact-sm"
+          size="sm"
           variant="light"
           loading={actionLoading}
           rightSection={<IconExternalLink size={14} />}

@@ -30,6 +30,54 @@ export interface NativeModelLoadProgressEvent {
   percent: number
 }
 
+export type NativeAccelerationMode = 'auto' | 'extreme'
+export type NativeAccelerationBackend = 'auto' | 'cpu' | 'gpu' | 'npu'
+
+export interface NativeAccelerationSettings {
+  mode: NativeAccelerationMode
+  requestedBackend: NativeAccelerationBackend
+}
+
+export interface NativeAccelerationBenchmark {
+  backend?: NativeAccelerationBackend
+  activeBackend?: string
+  modelPath?: string
+  initializationMs?: number
+  firstTokenMs?: number
+  prefillTokensPerSecond?: number
+  decodeTokensPerSecond?: number
+  residentBytes?: number
+  gpuMemoryBytes?: number
+  gpuLayers?: number
+  offloadedLayers?: number
+  cpuThreads?: number
+  gpuDevice?: string
+  thermalStatus?: number
+  score?: number
+  failureReason?: string
+}
+
+export interface NativeAccelerationProfile {
+  schemaVersion: 1
+  cacheKey: string
+  mode: NativeAccelerationMode
+  selectedBackend: Exclude<NativeAccelerationBackend, 'auto'>
+  selectedModelPath: string
+  modelVariant?: string
+  declaredNpuCompatible?: boolean
+  thermalStatus?: number
+  optimizedAt: number
+  selected: NativeAccelerationBenchmark
+  benchmarks: NativeAccelerationBenchmark[]
+}
+
+export interface NativeAccelerationRuntime extends NativeAccelerationBenchmark {
+  requestedBackend?: NativeAccelerationBackend
+  mode?: NativeAccelerationMode
+  modelVariant?: string
+  fallbackReason?: string
+}
+
 interface NativeModelManagerPlugin {
   list(): Promise<{ schemaVersion: 1; jobs: DownloadJob[] }>
   enqueue(options: { job: DownloadJob }): Promise<{ accepted: boolean; jobId: string }>
@@ -58,6 +106,13 @@ interface NativeModelManagerPlugin {
   }>
   loadModel(options: { modelId: string }): Promise<NativeModelRuntimeState>
   runtimeState(options: { modelId: string }): Promise<NativeModelRuntimeState>
+  accelerationSettings(options: { modelId: string }): Promise<NativeAccelerationSettings>
+  setAccelerationSettings(options: {
+    modelId: string
+    mode: NativeAccelerationMode
+    requestedBackend: NativeAccelerationBackend
+  }): Promise<NativeAccelerationSettings>
+  optimizeModel(options: { modelId: string }): Promise<NativeAccelerationProfile>
   cancelInference(options: { requestId: string }): Promise<{ cancelled: boolean }>
   embed(options: { modelId: string; texts: string[] }): Promise<{ modelId: string; embeddings: number[][] }>
   unload(options?: { modelId?: string }): Promise<void>
@@ -77,6 +132,7 @@ export interface NativeModelRuntimeState {
   modelBytes?: number
   residentBytes?: number
   loadDurationMs?: number
+  acceleration?: NativeAccelerationRuntime
 }
 
 export const yachiyoModelManagerNative = createFeatureGatedPlugin(
@@ -232,6 +288,13 @@ export const listNativeModelJobs = () => yachiyoModelManagerNative.list()
 export const deleteNativeModel = (modelId: string) => yachiyoModelManagerNative.deleteModel({ modelId })
 export const loadNativeModel = (modelId: string) => yachiyoModelManagerNative.loadModel({ modelId })
 export const getNativeModelRuntimeState = (modelId: string) => yachiyoModelManagerNative.runtimeState({ modelId })
+export const getNativeModelAccelerationSettings = (modelId: string) =>
+  yachiyoModelManagerNative.accelerationSettings({ modelId })
+export const setNativeModelAccelerationSettings = (
+  modelId: string,
+  settings: NativeAccelerationSettings,
+) => yachiyoModelManagerNative.setAccelerationSettings({ modelId, ...settings })
+export const optimizeNativeModel = (modelId: string) => yachiyoModelManagerNative.optimizeModel({ modelId })
 
 export function subscribeNativeModelProgress(
   listener: (event: NativeModelProgressEvent) => void,

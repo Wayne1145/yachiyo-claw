@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Set;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,10 +41,12 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     // Request ids the caller asked to cancel; observed by the polling loop for a clean cancelled state.
     private final Set<String> cancelledRequests = ConcurrentHashMap.newKeySet();
     private ModelRegistryStore store;
+    private AccelerationCoordinator acceleration;
 
     @Override
     public void load() {
         store = new ModelRegistryStore(getContext());
+        acceleration = new AccelerationCoordinator(getContext());
         clearStaleInferenceFiles();
     }
 
@@ -89,6 +92,10 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         result.put("supportedFormats", new JSArray().put("litertlm").put("gguf").put("tflite"));
         result.put("soc", Build.VERSION.SDK_INT >= 31 ? Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL : Build.HARDWARE);
         result.put("cpu", Build.HARDWARE);
+        result.put("gpu", getContext().getPackageManager().hasSystemFeature(
+            android.content.pm.PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL) ? "vulkan" : "");
+        result.put("npu", AccelerationRuntimeSupport.npuDispatchDirectory(getContext()) == null
+            ? "" : AccelerationRuntimeSupport.socModel());
         call.resolve(result);
     }
 
@@ -232,12 +239,16 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             try {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
-                String modelPath = store.resolveRuntimeFile(job).getPath();
-                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath, false);
+                List<File> models = store.resolveRuntimeFiles(job);
+                JSONObject configuration = accelerationConfiguration(modelId, job, models);
+                String modelPath = configuration.getString("modelPath");
+                requireInferenceMemory(modelPath, false);
                 JSONObject payload = new JSONObject().put("op", "chat").put("modelPath", modelPath)
                     .put("messages", new JSONArray(messages.toString()))
-                    .put("tools", new JSONObject(tools.toString())).put("requestId", requestId).put("maxTokens", maxTokens);
-                JSObject result = runInIsolatedProcess(payload, requestId, modelId);
+                    .put("tools", new JSONObject(tools.toString())).put("requestId", requestId).put("maxTokens", maxTokens)
+                    .put("configuration", configuration);
+                JSObject result = runWithBackendCrashFallback(payload, requestId, modelId, false);
+                acceleration.recordPerformance(modelId, configuration.optJSONObject("profile"), result.optJSONObject("acceleration"));
                 if (!requestId.isBlank()) result.put("requestId", requestId);
                 call.resolve(result);
             } catch (Throwable error) {
@@ -255,11 +266,14 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             try {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
-                String modelPath = store.resolveRuntimeFile(job).getPath();
-                if (LocalModelFormat.isRunnableGgufPath(modelPath)) requireInferenceMemory(modelPath, true);
+                List<File> models = store.resolveRuntimeFiles(job);
+                JSONObject configuration = accelerationConfiguration(modelId, job, models);
+                String modelPath = configuration.getString("modelPath");
+                requireInferenceMemory(modelPath, true);
                 JSONObject payload = new JSONObject().put("op", "load").put("modelId", modelId)
-                    .put("modelPath", modelPath).put("requestId", requestId).put("eager", true);
-                JSObject result = runInIsolatedProcess(payload, requestId, modelId);
+                    .put("modelPath", modelPath).put("requestId", requestId).put("eager", true)
+                    .put("configuration", configuration);
+                JSObject result = runWithBackendCrashFallback(payload, requestId, modelId, true);
                 result.put("modelId", modelId);
                 call.resolve(result);
             } catch (Throwable error) {
@@ -277,12 +291,60 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             try {
                 JSONObject job = store.findCompletedModel(modelId);
                 if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
-                String modelPath = store.resolveRuntimeFile(job).getPath();
+                List<File> models = store.resolveRuntimeFiles(job);
+                String modelPath = models.get(0).getPath();
+                JSONArray modelPaths = new JSONArray();
+                for (File model : models) modelPaths.put(model.getPath());
                 JSONObject payload = new JSONObject().put("op", "status").put("modelId", modelId)
-                    .put("modelPath", modelPath).put("requestId", requestId);
+                    .put("modelPath", modelPath).put("modelPaths", modelPaths).put("requestId", requestId);
                 JSObject result = runInIsolatedProcess(payload, requestId, modelId);
                 result.put("modelId", modelId);
                 call.resolve(result);
+            } catch (Throwable error) {
+                Exception cause = error instanceof Exception ? (Exception) error : new RuntimeException(error);
+                call.reject(safeError(error), cause);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void accelerationSettings(PluginCall call) {
+        try {
+            String modelId = call.getString("modelId", "");
+            if (modelId.isBlank()) throw new IllegalArgumentException("model_id_required");
+            call.resolve(JSObject.fromJSONObject(acceleration.settings(modelId)));
+        } catch (Exception error) {
+            call.reject(safeError(error), error);
+        }
+    }
+
+    @PluginMethod
+    public void setAccelerationSettings(PluginCall call) {
+        try {
+            String modelId = call.getString("modelId", "");
+            if (modelId.isBlank()) throw new IllegalArgumentException("model_id_required");
+            acceleration.saveSettings(
+                modelId,
+                call.getString("mode", AccelerationPolicy.MODE_AUTO),
+                call.getString("requestedBackend", AccelerationPolicy.BACKEND_AUTO));
+            call.resolve(JSObject.fromJSONObject(acceleration.settings(modelId)));
+        } catch (Exception error) {
+            call.reject(safeError(error), error);
+        }
+    }
+
+    @PluginMethod
+    public void optimizeModel(PluginCall call) {
+        String modelId = call.getString("modelId", "");
+        inferenceExecutor.execute(() -> {
+            try {
+                JSONObject job = store.findCompletedModel(modelId);
+                if (job == null) throw new IllegalArgumentException("local_model_not_downloaded");
+                List<File> models = store.resolveRuntimeFiles(job);
+                for (File model : models) requireInferenceMemory(model.getPath(), false);
+                JSONObject profile = acceleration.optimize(modelId, job, models,
+                    request -> runBenchmarkRequest(modelId, request));
+                call.resolve(JSObject.fromJSONObject(profile));
             } catch (Throwable error) {
                 Exception cause = error instanceof Exception ? (Exception) error : new RuntimeException(error);
                 call.reject(safeError(error), cause);
@@ -394,12 +456,61 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         }
     }
 
+    private JSObject runWithBackendCrashFallback(
+        JSONObject payload,
+        String requestId,
+        String modelId,
+        boolean eager
+    ) throws Exception {
+        try {
+            return runInIsolatedProcess(payload, requestId, modelId);
+        } catch (IllegalStateException error) {
+            if (!"local_inference_process_crashed".equals(error.getMessage())) throw error;
+            JSONObject configuration = payload.optJSONObject("configuration");
+            if (configuration == null) throw error;
+            JSONObject fallback = acceleration.quarantineAndFallback(
+                modelId,
+                configuration.optJSONObject("profile"),
+                configuration.optString("selectedBackend"),
+                "native_process_crash");
+            String fallbackPath = fallback.getString("modelPath");
+            requireInferenceMemory(fallbackPath, eager);
+            replaceJsonObject(configuration, fallback);
+            payload.put("modelPath", fallbackPath).put("configuration", configuration);
+            return runInIsolatedProcess(payload, requestId, modelId);
+        }
+    }
+
+    private static void replaceJsonObject(JSONObject target, JSONObject source) {
+        List<String> existing = new java.util.ArrayList<>();
+        for (java.util.Iterator<String> keys = target.keys(); keys.hasNext();) existing.add(keys.next());
+        for (String key : existing) target.remove(key);
+        for (java.util.Iterator<String> keys = source.keys(); keys.hasNext();) {
+            String key = keys.next();
+            try { target.put(key, source.opt(key)); } catch (org.json.JSONException impossible) {
+                throw new IllegalStateException("local_acceleration_configuration_invalid", impossible);
+            }
+        }
+    }
+
     @PluginMethod
     public void unload(PluginCall call) {
         inferenceExecutor.execute(() -> {
             startInferenceService(new Intent(getContext(), LocalInferenceService.class).setAction(LocalInferenceService.ACTION_UNLOAD));
             call.resolve();
         });
+    }
+
+    private JSONObject accelerationConfiguration(String modelId, JSONObject job, List<File> models) throws Exception {
+        JSONObject profile = acceleration.ensureProfile(modelId, job, models,
+            request -> runBenchmarkRequest(modelId, request));
+        return acceleration.runtimeConfiguration(modelId, profile);
+    }
+
+    private JSONObject runBenchmarkRequest(String modelId, JSONObject request) throws Exception {
+        String requestId = "benchmark-" + java.util.UUID.randomUUID();
+        request.put("requestId", requestId);
+        return new JSONObject(runInIsolatedProcess(request, requestId, modelId).toString());
     }
 
     @PluginMethod
@@ -526,7 +637,9 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         long required = eager
             ? Math.addExact(model.length(), runtimeHeadroom)
             : Math.max(768L * 1024L * 1024L, 512L * 1024L * 1024L + model.length() / 6L);
-        if (memory.availMem < required || memory.lowMemory) throw new IllegalStateException("local_model_memory_insufficient");
+        if (!AccelerationPolicy.hasInferenceHeadroom(memory.totalMem, memory.availMem, required) || memory.lowMemory) {
+            throw new IllegalStateException("local_model_memory_insufficient");
+        }
     }
 
     private boolean isInferenceProcessRunning() {

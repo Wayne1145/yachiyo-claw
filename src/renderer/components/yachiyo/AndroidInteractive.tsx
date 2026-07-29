@@ -3,6 +3,7 @@ import {
   Button,
   FileButton,
   Loader,
+  Menu,
   SegmentedControl,
   Select,
   Text,
@@ -11,16 +12,20 @@ import {
 } from '@mantine/core'
 import { createMessage, ModelProviderEnum, type ReasoningStrength } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
+import { getSessionReasoningStrength, REASONING_STRENGTHS } from '@shared/utils/reasoning-strength'
 import {
   IconCamera,
+  IconBrain,
+  IconArrowUp,
+  IconCheck,
   IconChevronDown,
   IconCpu,
   IconHistory,
-  IconKeyboard,
   IconMicrophone,
   IconPlayerStop,
   IconSettings,
   IconUpload,
+  IconUserCircle,
   IconVolume,
   IconVolumeOff,
   IconX,
@@ -34,6 +39,7 @@ import ModelSelector from '@/components/ModelSelector'
 import { useProviders } from '@/hooks/useProviders'
 import { saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
+import { listCharacterProfiles, selectSessionCharacter } from '@/mobile/character-profiles'
 import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conversation-bridge'
 import { applyLive2DPromptToSession } from '@/mobile/interactive-conversation'
 import { resolveInteractiveModelSelection, updateInteractiveModelSelection } from '@/mobile/interactive-model-selection'
@@ -64,30 +70,43 @@ import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { submitTaskMessage } from '@/stores/taskSessionActions'
+import { flowGlassHaptics } from '@/utils/mobile-haptics'
 import { updateTaskSession, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
+import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
+import { AndroidInteractiveChrome } from './AndroidSharedChrome'
 import { CharacterSelector } from './CharacterSelector'
 import { Live2DStage, type Live2DStageHandle } from './Live2DStage'
+import { useAndroidRetainedState } from './android-retained-state'
+import type { AndroidTabPageActivity } from './android-tab-page-activity'
 
 export function AndroidInteractive({
   sessionId,
   onSessionChange,
+  activity = 'active',
 }: {
   sessionId?: string
   onSessionChange: (sessionId: string) => void
+  activity?: AndroidTabPageActivity
 }) {
   const { t } = useTranslation()
+  const retainedSessionKey = sessionId || 'new'
   const [models, setModels] = useState<Live2DModelDescriptor[]>([])
   const [selectedModelId, setSelectedModelId] = useState(getSelectedLive2DModelId)
-  const [modelPickerOpen, setModelPickerOpen] = useState(!hasCompletedLive2DOnboarding())
+  const [modelPickerOpen, setModelPickerOpen] = useState(() => activity === 'active' && !hasCompletedLive2DOnboarding())
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [muted, setMuted] = useState(false)
   const [ttsSpeaking, setTtsSpeaking] = useState(false)
   const [bubbleVisible, setBubbleVisible] = useState(false)
-  const [input, setInput] = useState('')
-  const [agentMode, setAgentMode] = useState(false)
-  const [taskId, setTaskId] = useState<string>()
+  const [input, setInput] = useAndroidRetainedState(`interactive:${retainedSessionKey}:composer-draft`, '')
+  const [agentMode, setAgentMode] = useAndroidRetainedState(
+    `interactive:${retainedSessionKey}:conversation-mode`,
+    false
+  )
+  const [taskId, setTaskId] = useAndroidRetainedState<string | undefined>(
+    `interactive:${retainedSessionKey}:agent-task`,
+    undefined
+  )
   const [submitting, setSubmitting] = useState(false)
   const [recording, setRecording] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
@@ -100,6 +119,21 @@ export function AndroidInteractive({
   const stageRef = useRef<Live2DStageHandle>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream>()
+  const cameraDragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+    moved: boolean
+  }>()
+  const suppressCameraClickRef = useRef(false)
+  const activityRef = useRef(activity)
+  const sessionIdRef = useRef(sessionId)
+  const onSessionChangeRef = useRef(onSessionChange)
+  const sessionCreationGenerationRef = useRef(0)
+  const sessionCreationRef = useRef<Promise<{ id: string }>>()
+  const onboardingPromptedRef = useRef(activity === 'active')
   const spokenRef = useRef<{ id?: string; length: number }>({ length: 0 })
   const speechQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechGenerationRef = useRef(0)
@@ -111,14 +145,46 @@ export function AndroidInteractive({
   const { providers } = useProviders()
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
 
+  activityRef.current = activity
+  sessionIdRef.current = sessionId
+  onSessionChangeRef.current = onSessionChange
+
+  useEffect(() => {
+    if (activity !== 'active' || onboardingPromptedRef.current) return
+    onboardingPromptedRef.current = true
+    if (!hasCompletedLive2DOnboarding()) setModelPickerOpen(true)
+  }, [activity])
+
   useEffect(() => {
     void listLive2DModels().then(setModels)
   }, [])
 
   useEffect(() => {
-    if (sessionId) return
-    void createEmpty('chat').then((created) => onSessionChange(created.id))
-  }, [onSessionChange, sessionId])
+    const generation = ++sessionCreationGenerationRef.current
+    if (activity !== 'active' || sessionId) return
+
+    const creation = sessionCreationRef.current ?? createEmpty('chat')
+    sessionCreationRef.current = creation
+    void creation
+      .then((created) => {
+        if (
+          generation !== sessionCreationGenerationRef.current ||
+          activityRef.current !== 'active' ||
+          sessionIdRef.current
+        ) {
+          return
+        }
+        onSessionChangeRef.current(created.id)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (sessionCreationRef.current === creation) sessionCreationRef.current = undefined
+      })
+
+    return () => {
+      if (sessionCreationGenerationRef.current === generation) sessionCreationGenerationRef.current += 1
+    }
+  }, [activity, sessionId])
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId) || models[0],
@@ -151,9 +217,10 @@ export function AndroidInteractive({
   const latestText = latestAssistant ? getMessageText(latestAssistant) : ''
   const bubbleText = selectedModel ? hideValidLive2DMarkers(latestText, selectedModel.actions).trim() : latestText
   const generating = Boolean(latestAssistant?.generating)
+  const cameraActive = cameraEnabled && activity !== 'inactive'
 
   useEffect(() => {
-    if (!latestAssistant || muted) return
+    if (!latestAssistant || muted || activity !== 'active') return
     if (spokenRef.current.id !== latestAssistant.id) {
       spokenRef.current = { id: latestAssistant.id, length: 0 }
       speechGenerationRef.current += 1
@@ -167,7 +234,7 @@ export function AndroidInteractive({
       const generation = speechGenerationRef.current
       speechQueueRef.current = speechQueueRef.current
         .then(async () => {
-          if (generation !== speechGenerationRef.current || muted) return
+          if (generation !== speechGenerationRef.current || muted || activityRef.current !== 'active') return
           await speakText(segment, {
             onStart: () => {
               if (generation === speechGenerationRef.current) setTtsSpeaking(true)
@@ -192,7 +259,7 @@ export function AndroidInteractive({
       spokenRef.current.length = visible.length
       if (tail) queueSpeech(tail)
     }
-  }, [generating, latestAssistant, latestText, muted, selectedModel])
+  }, [activity, generating, latestAssistant, latestText, muted, selectedModel])
 
   useEffect(() => {
     if (!muted) return
@@ -222,40 +289,85 @@ export function AndroidInteractive({
     () => () => {
       speechGenerationRef.current += 1
       void stopSpeaking()
-      if (interactiveRecognitionActiveRef.current) void stopAndroidSpeechRecognition()
+      voiceRecognitionAttemptRef.current += 1
+      if (interactiveRecognitionActiveRef.current) {
+        interactiveRecognitionActiveRef.current = false
+        void stopAndroidSpeechRecognition()
+      }
     },
     []
   )
 
+  const stopTransientResources = useCallback(() => {
+    speechGenerationRef.current += 1
+    speechQueueRef.current = Promise.resolve()
+    setTtsSpeaking(false)
+    void stopSpeaking()
+
+    voiceRecognitionAttemptRef.current += 1
+    if (interactiveRecognitionActiveRef.current) {
+      interactiveRecognitionActiveRef.current = false
+      setRecording(false)
+      void stopAndroidSpeechRecognition()
+    }
+    setCameraEnabled(false)
+  }, [])
+
   useEffect(() => {
-    if (!cameraEnabled) {
-      cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
-      cameraStreamRef.current = undefined
+    if (activity !== 'inactive') return
+    stopTransientResources()
+  }, [activity, stopTransientResources])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') stopTransientResources()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    if (document.visibilityState === 'hidden') onVisibilityChange()
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [stopTransientResources])
+
+  useEffect(() => {
+    const video = videoRef.current
+    let disposed = false
+    let ownedStream: MediaStream | undefined
+
+    const releaseStream = (stream: MediaStream | undefined) => {
+      stream?.getTracks().forEach((track) => track.stop())
+      if (cameraStreamRef.current === stream) cameraStreamRef.current = undefined
+      if (video && (!stream || video.srcObject === stream)) video.srcObject = null
+    }
+
+    if (!cameraActive) {
+      releaseStream(cameraStreamRef.current)
       return
     }
-    let disposed = false
+
     void navigator.mediaDevices
       .getUserMedia({ video: { facingMode: { ideal: cameraFacing }, width: { ideal: 1280 } }, audio: false })
       .then((stream) => {
+        ownedStream = stream
         if (disposed) {
-          stream.getTracks().forEach((track) => track.stop())
+          releaseStream(stream)
           return
         }
-        cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
+        releaseStream(cameraStreamRef.current)
         cameraStreamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          void videoRef.current.play()
+        if (video) {
+          video.srcObject = stream
+          void video.play().catch(() => undefined)
         }
       })
       .catch(() => {
+        if (disposed) return
         setCameraEnabled(false)
         setNotice(String(t('无法打开摄像头，请授予相机权限')))
       })
     return () => {
       disposed = true
+      releaseStream(ownedStream)
     }
-  }, [cameraEnabled, cameraFacing, t])
+  }, [cameraActive, cameraFacing, t])
 
   const captureCurrentCamera = useCallback(() => {
     const video = videoRef.current
@@ -281,14 +393,14 @@ export function AndroidInteractive({
   }, [])
 
   useEffect(() => {
-    if (!cameraEnabled) return
+    if (!cameraActive) return
     const ids = [sessionId, taskId].filter((id): id is string => Boolean(id))
     ids.forEach((id) => registerCameraCaptureProvider(id, captureCurrentCamera))
     return () => ids.forEach((id) => unregisterCameraCaptureProvider(id, captureCurrentCamera))
-  }, [cameraEnabled, captureCurrentCamera, sessionId, taskId])
+  }, [cameraActive, captureCurrentCamera, sessionId, taskId])
 
   useEffect(() => {
-    if (!selectedModel || !latestAssistant) return
+    if (activity !== 'active' || !selectedModel || !latestAssistant) return
     if (handledMessageRef.current.id !== latestAssistant.id) {
       handledMessageRef.current = { id: latestAssistant.id, markers: new Set() }
     }
@@ -299,7 +411,7 @@ export function AndroidInteractive({
       handledMessageRef.current.markers.add(markerId)
       void stageRef.current?.perform(event.action)
     })
-  }, [latestAssistant, latestText, selectedModel])
+  }, [activity, latestAssistant, latestText, selectedModel])
 
   const chooseModel = (model: Live2DModelDescriptor) => {
     setSelectedModelId(model.id)
@@ -383,96 +495,235 @@ export function AndroidInteractive({
           needGenerating: true,
         })
       }
+      void flowGlassHaptics.lightImpact()
     } finally {
       setSubmitting(false)
     }
   }
 
+  const interactiveHeaderActions: AdaptiveActionDescriptor[] = [
+    {
+      id: 'character',
+      label: String(t('切换人格')),
+      icon: IconUserCircle,
+      priority: 20,
+      group: 'identity',
+      collapseStrategy: 'icon-then-overflow',
+      renderControl: ({ presentation }) => (
+        <CharacterSelector sessionId={sessionId} compact={presentation === 'icon'} />
+      ),
+      menuAction: {
+        render: ({ closeMenu }) => (
+          <>
+            <Menu.Label>{t('切换人格')}</Menu.Label>
+            {listCharacterProfiles().map((profile) => (
+              <Menu.Item
+                key={profile.id}
+                leftSection={<img src={profile.avatar} alt="" className="yachiyo-character-menu-avatar" />}
+                onClick={() => {
+                  closeMenu()
+                  if (sessionId) void selectSessionCharacter(sessionId, profile)
+                }}
+              >
+                {profile.name}
+              </Menu.Item>
+            ))}
+          </>
+        ),
+      },
+    },
+    {
+      id: 'reasoning',
+      label: String(t('推理强度')),
+      icon: IconBrain,
+      priority: 30,
+      group: 'identity',
+      collapseStrategy: 'icon-then-overflow',
+      renderControl: () => (
+        <ReasoningStrengthControl
+          settings={agentMode ? task?.settings : session?.settings}
+          onChange={(value) => void updateReasoningStrength(value)}
+          compact
+        />
+      ),
+      menuAction: {
+        render: ({ closeMenu }) => {
+          const selectedStrength =
+            getSessionReasoningStrength(agentMode ? task?.settings : session?.settings) || 'medium'
+          const labels: Record<ReasoningStrength, string> = {
+            off: String(t('不思考')),
+            minimal: String(t('极低')),
+            low: String(t('低')),
+            medium: String(t('中')),
+            high: String(t('高')),
+            max: 'MAX',
+          }
+          return (
+            <>
+              <Menu.Label>{t('推理强度')}</Menu.Label>
+              {REASONING_STRENGTHS.map((strength) => (
+                <Menu.Item
+                  key={strength}
+                  rightSection={selectedStrength === strength ? <IconCheck size={15} /> : undefined}
+                  onClick={() => {
+                    closeMenu()
+                    void updateReasoningStrength(strength)
+                  }}
+                >
+                  {labels[strength]}
+                </Menu.Item>
+              ))}
+            </>
+          )
+        },
+      },
+    },
+    {
+      id: 'mode',
+      label: String(t('对话模式')),
+      priority: 100,
+      group: 'mode',
+      collapseStrategy: 'keep',
+      renderControl: () => (
+        <SegmentedControl
+          className="yachiyo-interactive-mode-control"
+          size="xs"
+          value={agentMode ? 'agent' : 'chat'}
+          data={[
+            { label: t('聊天'), value: 'chat' },
+            { label: t('Agent'), value: 'agent' },
+          ]}
+          onChange={(value) => void toggleAgent(value)}
+        />
+      ),
+    },
+    {
+      id: 'mute',
+      label: String(muted ? t('取消静音') : t('静音')),
+      priority: 90,
+      group: 'media',
+      collapseStrategy: 'keep',
+      renderControl: () => (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size={44}
+          aria-label={muted ? t('取消静音') : t('静音')}
+          data-active={muted ? 'true' : 'false'}
+          onClick={() => setMuted(!muted)}
+        >
+          {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
+        </ActionIcon>
+      ),
+    },
+    {
+      id: 'camera',
+      label: String(t('摄像头')),
+      priority: 80,
+      group: 'media',
+      collapseStrategy: 'keep',
+      renderControl: () => (
+        <ActionIcon
+          variant="subtle"
+          color={cameraEnabled ? 'chatbox-brand' : 'gray'}
+          size={44}
+          aria-label={t('摄像头')}
+          data-active={cameraEnabled ? 'true' : 'false'}
+          data-yachiyo-tab-swipe="block"
+          onClick={() => setCameraEnabled(!cameraEnabled)}
+        >
+          <IconCamera size={21} />
+        </ActionIcon>
+      ),
+    },
+    {
+      id: 'settings',
+      label: String(t('交互设置')),
+      icon: IconSettings,
+      priority: 10,
+      group: 'secondary',
+      collapseStrategy: 'overflow',
+      renderControl: () => (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size={44}
+          aria-label={t('交互设置')}
+          onClick={() => setModelPickerOpen(true)}
+        >
+          <IconSettings size={21} />
+        </ActionIcon>
+      ),
+      menuAction: { onSelect: () => setModelPickerOpen(true) },
+    },
+  ]
+
+  const interactiveChrome = (
+    <AndroidInteractiveChrome>
+      <div className="yachiyo-interactive-header-main">
+        <ActionIcon
+          size={44}
+          variant="subtle"
+          color="gray"
+          aria-label={t('会话记录')}
+          onClick={() => setHistoryOpen(true)}
+        >
+          <IconHistory size={21} />
+        </ActionIcon>
+        <button type="button" className="yachiyo-interactive-title" onClick={() => setModelPickerOpen(true)}>
+          <strong>{selectedModel?.name || t('交互式对话')}</strong>
+          <span>{session?.name || t('交互式对话')}</span>
+        </button>
+        <ModelSelector
+          onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
+          selectedProviderId={conversationModel?.provider}
+          selectedModelId={conversationModel?.modelId}
+          modelFilter={(model, providerId) =>
+            !agentMode ||
+            providerId === ModelProviderEnum.Yachiyo ||
+            providerId === ModelProviderEnum.Local ||
+            Boolean(model.capabilities?.includes('tool_use'))
+          }
+          position="bottom-end"
+          transitionProps={{ transition: 'fade-down', duration: 180 }}
+        >
+          <UnstyledButton
+            className="yachiyo-interactive-llm-selector"
+            aria-label={t('切换模型：{{model}}', { model: conversationModelName })}
+            title={conversationModelName}
+          >
+            {conversationModel?.provider === ModelProviderEnum.Local ? (
+              <IconCpu size={18} aria-hidden="true" />
+            ) : (
+              conversationModel && <ProviderImageIcon size={18} provider={conversationModel.provider} />
+            )}
+            <span>{conversationModelName}</span>
+            <IconChevronDown size={14} />
+          </UnstyledButton>
+        </ModelSelector>
+      </div>
+      <AdaptiveActionCluster
+        className="yachiyo-interactive-header-actions"
+        ariaLabel={String(t('交互操作'))}
+        actions={interactiveHeaderActions}
+      />
+    </AndroidInteractiveChrome>
+  )
+
   if (!selectedModel) {
     return (
-      <div className="yachiyo-interactive-loading">
-        <Loader color="chatbox-brand" />
-      </div>
+      <main className="yachiyo-interactive-page" data-activity={activity}>
+        {interactiveChrome}
+        <div className="yachiyo-interactive-loading">
+          <Loader color="chatbox-brand" />
+        </div>
+      </main>
     )
   }
 
   return (
-    <main className="yachiyo-interactive-page">
-      <header className="yachiyo-interactive-header">
-        <div className="yachiyo-interactive-header-main">
-          <ActionIcon variant="subtle" color="gray" aria-label={t('会话记录')} onClick={() => setHistoryOpen(true)}>
-            <IconHistory size={21} />
-          </ActionIcon>
-          <button type="button" className="yachiyo-interactive-title" onClick={() => setModelPickerOpen(true)}>
-            <strong>{selectedModel.name}</strong>
-            <span>{session?.name || t('交互式对话')}</span>
-          </button>
-          <ModelSelector
-            onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
-            selectedProviderId={conversationModel?.provider}
-            selectedModelId={conversationModel?.modelId}
-            modelFilter={(model, providerId) =>
-              !agentMode ||
-              providerId === ModelProviderEnum.Yachiyo ||
-              providerId === ModelProviderEnum.Local ||
-              Boolean(model.capabilities?.includes('tool_use'))
-            }
-            position="bottom-end"
-            transitionProps={{ transition: 'fade-down', duration: 180 }}
-          >
-            <UnstyledButton
-              className="yachiyo-interactive-llm-selector"
-              aria-label={t('切换模型：{{model}}', { model: conversationModelName })}
-              title={conversationModelName}
-            >
-              {conversationModel?.provider === ModelProviderEnum.Local ? (
-                <IconCpu size={18} aria-hidden="true" />
-              ) : (
-                conversationModel && <ProviderImageIcon size={18} provider={conversationModel.provider} />
-              )}
-              <span>{conversationModelName}</span>
-              <IconChevronDown size={14} />
-            </UnstyledButton>
-          </ModelSelector>
-        </div>
-        <div className="yachiyo-interactive-header-actions">
-          <CharacterSelector sessionId={sessionId} />
-          <ReasoningStrengthControl
-            settings={agentMode ? task?.settings : session?.settings}
-            onChange={(value) => void updateReasoningStrength(value)}
-            compact
-          />
-          <SegmentedControl
-            className="yachiyo-interactive-mode-control"
-            size="xs"
-            value={agentMode ? 'agent' : 'chat'}
-            data={[
-              { label: t('聊天'), value: 'chat' },
-              { label: t('Agent'), value: 'agent' },
-            ]}
-            onChange={(value) => void toggleAgent(value)}
-          />
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            aria-label={muted ? t('取消静音') : t('静音')}
-            onClick={() => setMuted(!muted)}
-          >
-            {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color={cameraEnabled ? 'chatbox-brand' : 'gray'}
-            aria-label={t('摄像头')}
-            onClick={() => setCameraEnabled(!cameraEnabled)}
-          >
-            <IconCamera size={21} />
-          </ActionIcon>
-          <ActionIcon variant="subtle" color="gray" aria-label={t('交互设置')} onClick={() => setModelPickerOpen(true)}>
-            <IconSettings size={21} />
-          </ActionIcon>
-        </div>
-      </header>
+    <main className="yachiyo-interactive-page" data-activity={activity}>
+      {interactiveChrome}
 
       <section className="yachiyo-interactive-scene">
         <div
@@ -485,29 +736,64 @@ export function AndroidInteractive({
           speaking={ttsSpeaking}
           muted={muted}
           quality={renderQuality}
+          activity={activity}
         />
-        {cameraEnabled && (
+        {cameraActive && (
           <div
             className="yachiyo-camera-preview"
+            data-yachiyo-tab-swipe="block"
             style={{ transform: `translate(${cameraPosition.x}px, ${cameraPosition.y}px)` }}
             onPointerDown={(event) => {
-              const start = { clientX: event.clientX, clientY: event.clientY, position: cameraPosition }
-              event.currentTarget.setPointerCapture(event.pointerId)
-              const move = (moveEvent: PointerEvent) =>
-                setCameraPosition({
-                  x: start.position.x + moveEvent.clientX - start.clientX,
-                  y: start.position.y + moveEvent.clientY - start.clientY,
-                })
-              const up = () => {
-                window.removeEventListener('pointermove', move)
-                window.removeEventListener('pointerup', up)
+              if (activityRef.current !== 'active' || event.isPrimary === false || event.button !== 0) return
+              suppressCameraClickRef.current = false
+              cameraDragRef.current = {
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                originX: cameraPosition.x,
+                originY: cameraPosition.y,
+                moved: false,
               }
-              window.addEventListener('pointermove', move)
-              window.addEventListener('pointerup', up)
+              event.currentTarget.setPointerCapture(event.pointerId)
             }}
-            onClick={() => setCameraFacing(cameraFacing === 'user' ? 'environment' : 'user')}
+            onPointerMove={(event) => {
+              const drag = cameraDragRef.current
+              if (!drag || drag.pointerId !== event.pointerId) return
+              const dx = event.clientX - drag.startX
+              const dy = event.clientY - drag.startY
+              if (!drag.moved && Math.hypot(dx, dy) >= 4) drag.moved = true
+              setCameraPosition({ x: drag.originX + dx, y: drag.originY + dy })
+            }}
+            onPointerUp={(event) => {
+              const drag = cameraDragRef.current
+              if (!drag || drag.pointerId !== event.pointerId) return
+              suppressCameraClickRef.current = drag.moved
+              cameraDragRef.current = undefined
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId)
+              }
+            }}
+            onPointerCancel={(event) => {
+              const drag = cameraDragRef.current
+              if (!drag || drag.pointerId !== event.pointerId) return
+              suppressCameraClickRef.current = drag.moved
+              cameraDragRef.current = undefined
+            }}
+            onLostPointerCapture={(event) => {
+              const drag = cameraDragRef.current
+              if (!drag || drag.pointerId !== event.pointerId) return
+              suppressCameraClickRef.current = drag.moved
+              cameraDragRef.current = undefined
+            }}
+            onClick={() => {
+              if (suppressCameraClickRef.current) {
+                suppressCameraClickRef.current = false
+                return
+              }
+              setCameraFacing(cameraFacing === 'user' ? 'environment' : 'user')
+            }}
           >
-            <video ref={videoRef} muted playsInline />
+            <video ref={videoRef} muted playsInline draggable={false} />
           </div>
         )}
         {bubbleText && bubbleVisible && (
@@ -532,9 +818,12 @@ export function AndroidInteractive({
         <button
           type="button"
           className="yachiyo-interactive-round-button yachiyo-interactive-mic"
+          aria-label={String(t(recording ? '松开发送' : '按住说话'))}
+          data-yachiyo-tab-swipe="block"
           data-recording={recording ? 'true' : 'false'}
-          onPointerDown={() => {
-            if (interactiveRecognitionActiveRef.current) return
+          onPointerDown={(event) => {
+            if (activityRef.current !== 'active' || interactiveRecognitionActiveRef.current) return
+            event.currentTarget.setPointerCapture(event.pointerId)
             const attempt = ++voiceRecognitionAttemptRef.current
             interactiveRecognitionActiveRef.current = true
             setRecording(true)
@@ -550,6 +839,7 @@ export function AndroidInteractive({
                 void submit(text)
               })
               .catch((error) => {
+                if (voiceRecognitionAttemptRef.current !== attempt) return
                 const message = getSpeechRecognitionErrorMessage(error)
                 // The speech runtime formats HTTP failures before this UI can translate them.
                 const httpFailure = message.match(/^语音识别 API 请求失败（HTTP (.+)）。$/)
@@ -568,9 +858,12 @@ export function AndroidInteractive({
                 }
               })
           }}
-          onPointerUp={() => {
+          onPointerUp={(event) => {
             setRecording(false)
             void stopAndroidSpeechRecognition()
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId)
+            }
           }}
           onPointerCancel={() => {
             setRecording(false)
@@ -579,36 +872,32 @@ export function AndroidInteractive({
           onContextMenu={(event) => event.preventDefault()}
         >
           {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
-          <span>{recording ? t('松开发送') : t('按住说话')}</span>
         </button>
-        <div className="yachiyo-interactive-keyboard" data-open={keyboardOpen ? 'true' : 'false'}>
-          {keyboardOpen && (
-            <Textarea
-              value={input}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              placeholder={String(t('输入消息'))}
-              autosize
-              minRows={1}
-              maxRows={4}
-              autoFocus
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  void submit()
-                }
-              }}
-            />
-          )}
-          <button
-            type="button"
-            className="yachiyo-interactive-round-button"
-            aria-label={String(keyboardOpen ? t('发送消息') : t('打开键盘'))}
-            onClick={() => (keyboardOpen && input.trim() ? void submit() : setKeyboardOpen(!keyboardOpen))}
-          >
-            <IconKeyboard size={24} />
-            {keyboardOpen && <span>{input.trim() ? t('发送') : t('收起')}</span>}
-          </button>
-        </div>
+        <Textarea
+          className="yachiyo-interactive-keyboard-input"
+          data-yachiyo-tab-swipe="block"
+          value={input}
+          onChange={(event) => setInput(event.currentTarget.value)}
+          placeholder={String(t('输入消息'))}
+          autosize
+          minRows={1}
+          maxRows={4}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              void submit()
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="yachiyo-interactive-round-button yachiyo-interactive-send"
+          aria-label={String(t('发送消息'))}
+          disabled={!input.trim() || submitting}
+          onClick={() => void submit()}
+        >
+          <IconArrowUp size={24} />
+        </button>
       </footer>
 
       <AndroidConversationHistory
@@ -623,13 +912,15 @@ export function AndroidInteractive({
         opened={modelPickerOpen}
         onClose={() => setModelPickerOpen(false)}
         title={t('Live2D 模型')}
+        className="yachiyo-live2d-picker-modal"
         centered
       >
         <div className="yachiyo-live2d-picker">
-          <Text size="sm" c="dimmed">
+          <Text size="sm" c="dimmed" className="yachiyo-live2d-picker-description">
             {t('选择内置模型，或导入包含 .model3.json 的 ZIP 模型包。')}
           </Text>
           <Select
+            className="yachiyo-live2d-quality-control"
             label={t('显示质量')}
             value={renderQuality}
             allowDeselect={false}
@@ -675,7 +966,11 @@ export function AndroidInteractive({
           ))}
           <FileButton accept="application/zip,.zip" onChange={importModel}>
             {(props) => (
-              <Button {...props} leftSection={<IconUpload size={18} />}>
+              <Button
+                {...props}
+                className="yachiyo-live2d-import-button"
+                leftSection={<IconUpload size={18} />}
+              >
                 {t('导入 Live2D ZIP')}
               </Button>
             )}
@@ -694,7 +989,7 @@ export function AndroidInteractive({
             }}
           >
             {(props) => (
-              <Button {...props} variant="light">
+              <Button {...props} className="yachiyo-live2d-background-button" variant="light">
                 {t('更换交互背景')}
               </Button>
             )}

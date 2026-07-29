@@ -24,6 +24,7 @@ import {
   setActiveAgentRun,
 } from '@/mobile/agent-approval'
 import { AgentLoopGuard, AgentLoopStoppedError } from '@/mobile/agent-loop-guard'
+import { KNOWN_PRICE_AGENT_BUDGET, UNKNOWN_PRICE_AGENT_BUDGET } from '@/mobile/agent-budget'
 import { AgentRunCheckpointStore, type AgentRunCheckpoint } from '@/mobile/agent-run-checkpoints'
 import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-policy'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
@@ -287,8 +288,10 @@ async function generateTaskResponse(
     const dependencies = await createModelDependencies()
     const model = await createModel(sessionSettings, dependencies)
     const knownPrice = resolveDefaultAgentPrice(provider, modelId)
-    // Usage is recorded for diagnostics and context UI only. It never blocks a run.
-    const usageLedger = createAgentUsageLedger({ priceResolver: () => knownPrice })
+    const usageLedger = createAgentUsageLedger({
+      priceResolver: () => knownPrice,
+      budget: knownPrice ? KNOWN_PRICE_AGENT_BUDGET : UNKNOWN_PRICE_AGENT_BUDGET,
+    })
     await usageLedger.recoverPendingReservations(Date.now(), agentRunId).catch((error) => {
       log.debug('usage ledger recovery skipped:', error)
     })
@@ -380,6 +383,7 @@ async function generateTaskResponse(
         'knowledge-base': { knowledgeBase },
         sandbox: { sandboxEnabled },
         workspace: { sandboxEnabled },
+        coding: { projectId: session?.mode === 'coding' ? session.codingProjectId : undefined },
         skills: { enabledSkillNames, sandboxEnabled },
         'android-device': { deviceControlEnabled: deviceAgent },
         camera: { cameraSessionId: taskId },
@@ -436,8 +440,7 @@ async function generateTaskResponse(
                   .filter(([, value]) => Boolean(value)),
               )
             : toolDefinitions
-          const reservation = await usageLedger
-            .reserve({
+          const reservation = await usageLedger.reserve({
               provider,
               model: modelId,
               taskId: agentRunId,
@@ -448,11 +451,7 @@ async function generateTaskResponse(
               results: messages.filter((message) => message.role === 'tool'),
               price: knownPrice,
             })
-            .catch((error) => {
-              log.debug('usage ledger reservation skipped:', error)
-              return undefined
-            })
-          if (reservation) usageReservations.set(stepNumber, reservation.reservationId)
+          usageReservations.set(stepNumber, reservation.reservationId)
         },
         onStepFinish: async ({ stepNumber, usage, result }) => {
           await runCheckpointStore.addStepResult(agentRunId, stepNumber, result)

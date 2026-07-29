@@ -56,4 +56,10 @@ final class AppearanceSystemBarPolicy {
         // Unknown is deliberately conservative until the first root-insets pass completes.
         return mode != NavigationMode.GESTURE;
     }
+
+    static double cssPixels(int physicalPixels, float density) {
+        if (physicalPixels <= 0) return 0d;
+        float safeDensity = density > 0f ? density : 1f;
+        return physicalPixels / (double) safeDensity;
+    }
 }

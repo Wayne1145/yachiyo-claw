@@ -94,7 +94,7 @@ const TokenCountMenu: FC<Props> = ({
       }}
     >
       <Menu.Target>{children}</Menu.Target>
-      <Menu.Dropdown className="min-w-56">
+      <Menu.Dropdown className="yachiyo-composer-popover yachiyo-composer-token-menu min-w-56">
         <Flex justify="space-between" align="center" px="xs" pt="xs" pb="4">
           <Text size="sm" fw={600}>
             {t('Estimated Token Usage')}

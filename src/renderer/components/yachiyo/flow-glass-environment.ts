@@ -16,6 +16,8 @@ export function resolveFlowGlassEnvironment(pathname: string): FlowGlassEnvironm
     pathname.startsWith('/tasks/') ||
     pathname === '/task' ||
     pathname.startsWith('/task/') ||
+    pathname === '/develop' ||
+    pathname.startsWith('/develop/') ||
     pathname.startsWith('/workspace') ||
     pathname.startsWith('/scheduled')
   ) {

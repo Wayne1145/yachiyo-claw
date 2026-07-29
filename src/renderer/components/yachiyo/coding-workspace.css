@@ -1,0 +1,636 @@
+.coding-home,
+.coding-workspace {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  color: var(--yachiyo-text, inherit);
+}
+
+.coding-home {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: calc(78px + var(--mobile-safe-area-inset-top, 0px)) 16px
+    calc(84px + var(--mobile-safe-area-inset-bottom, 0px));
+  background: transparent;
+}
+
+.coding-home > .mantine-Stack-root {
+  width: min(100%, 720px);
+  margin: 0 auto;
+}
+
+.coding-home-intro {
+  padding-inline: 2px;
+}
+
+.coding-home-intro .mantine-Title-root {
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.coding-capability-band {
+  padding: 14px;
+  border: 1px solid var(--chatbox-border-primary);
+  border-radius: 8px;
+  background: var(--chatbox-background-secondary);
+}
+
+.coding-home-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coding-home-actions .mantine-Button-root {
+  min-width: 0;
+}
+
+.coding-recent-projects {
+  min-width: 0;
+}
+
+.coding-project-row,
+.coding-run-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--chatbox-border-primary);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--chatbox-background-primary);
+  text-align: left;
+  gap: 12px;
+}
+
+.coding-project-row span,
+.coding-run-row span {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.coding-project-row strong,
+.coding-project-row small,
+.coding-run-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coding-project-row small,
+.coding-run-row small {
+  color: var(--chatbox-tint-tertiary);
+}
+
+.coding-workspace {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: calc(72px + var(--mobile-safe-area-inset-top, 0px)) 10px
+    calc(76px + var(--mobile-safe-area-inset-bottom, 0px));
+  background: transparent;
+}
+
+.coding-project-header {
+  flex: 0 0 auto;
+  min-height: 58px;
+  padding: 8px 6px 10px;
+}
+
+.coding-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.coding-tabs .mantine-Tabs-list {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+
+.coding-tabs .mantine-Tabs-tab {
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: 6px;
+}
+
+.coding-tabs .mantine-Tabs-tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.coding-tabs .mantine-Tabs-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 2px 2px;
+}
+
+.coding-pane {
+  height: 100%;
+  min-height: 0;
+}
+
+.coding-message {
+  max-width: 88%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--chatbox-background-secondary);
+}
+
+.coding-message[data-role="user"] {
+  margin-left: auto;
+  background: var(--chatbox-brand-light);
+}
+
+.coding-project-pane {
+  display: grid;
+  grid-template-columns: minmax(120px, 34%) 1fr;
+  height: 100%;
+  min-height: 0;
+  gap: 10px;
+}
+
+.coding-project-pane aside {
+  overflow: auto;
+  border: 1px solid var(--chatbox-border-primary);
+  border-radius: 8px;
+}
+
+.coding-project-pane aside button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  gap: 6px;
+}
+
+.coding-project-pane aside button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coding-project-pane section {
+  min-width: 0;
+  overflow: auto;
+}
+
+.coding-editor textarea {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.coding-change {
+  padding: 12px;
+  border: 1px solid var(--chatbox-border-primary);
+  border-radius: 8px;
+}
+
+.coding-diff,
+.coding-log {
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.coding-diff {
+  margin-top: 4px;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home {
+  padding-top: calc(var(--flow-header-height) + 18px);
+  padding-bottom: calc(var(--flow-nav-height) + 24px);
+  color: var(--flow-text);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-workspace {
+  padding-top: calc(var(--flow-header-height) + 8px);
+  padding-bottom: calc(var(--flow-nav-height) + 10px);
+  color: var(--flow-text);
+}
+
+html[data-yachiyo-appearance="flow-glass"] :is(
+  .coding-capability-band,
+  .coding-project-row,
+  .coding-run-row,
+  .coding-change,
+  .coding-project-pane aside,
+  .coding-tabs .mantine-Tabs-list
+) {
+  border-color: var(--flow-divider);
+  border-radius: var(--flow-r-content);
+  color: var(--flow-text);
+  background: linear-gradient(155deg, var(--flow-edge-mid), transparent 46%), var(--flow-group-fill);
+  box-shadow: inset 0 1px 0 var(--flow-edge-mid), 0 8px 24px rgba(28, 51, 73, 0.07);
+  backdrop-filter: blur(16px) saturate(1.18);
+  -webkit-backdrop-filter: blur(16px) saturate(1.18);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid var(--flow-edge-mid);
+  border-radius: var(--flow-r-panel);
+  corner-shape: squircle;
+  background:
+    linear-gradient(124deg, color-mix(in srgb, var(--flow-blue) 7%, transparent), transparent 36%),
+    linear-gradient(164deg, var(--flow-edge-light), transparent 24%, var(--flow-edge-mid) 58%, transparent 82%),
+    var(--flow-chrome-fill);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark),
+    inset 1px 0 0 color-mix(in srgb, var(--flow-edge-light) 62%, transparent),
+    var(--flow-shadow-chrome);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::before,
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::after {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  content: "";
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::before {
+  top: 0;
+  right: 10%;
+  left: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--flow-edge-light) 22%, var(--flow-edge-light) 72%, transparent);
+  opacity: 0.9;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::after {
+  inset: 1px;
+  border: 1px solid color-mix(in srgb, var(--flow-edge-light) 38%, transparent);
+  border-radius: calc(var(--flow-r-panel) - 1px);
+  corner-shape: squircle;
+  box-shadow: inset 0 -10px 22px color-mix(in srgb, var(--flow-edge-dark) 26%, transparent);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-header,
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-status,
+html[data-yachiyo-appearance="flow-glass"] .coding-environment-action {
+  position: relative;
+  z-index: 1;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-refresh-control.mantine-Button-root {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--flow-blue);
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-refresh-control.mantine-Button-root:active {
+  border-color: var(--flow-edge-mid);
+  background: var(--flow-control-fill);
+  box-shadow: inset 0 1px 0 var(--flow-edge-light);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-status .mantine-Badge-root {
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+  padding-inline: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-status .mantine-Badge-label {
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-environment-action.mantine-Button-root {
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--flow-blue) 22%, var(--flow-edge-mid));
+  color: var(--flow-blue);
+  background: color-mix(in srgb, var(--flow-blue) 10%, var(--flow-control-fill));
+  box-shadow: inset 0 1px 0 var(--flow-edge-light), inset 0 -1px 0 var(--flow-edge-dark);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-actions {
+  gap: 12px;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-root {
+  position: relative;
+  overflow: hidden;
+  min-height: 52px;
+  border: 1px solid var(--flow-edge-mid);
+  border-radius: calc(var(--flow-r-panel) - 2px);
+  corner-shape: squircle;
+  color: var(--flow-text);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark),
+    var(--flow-shadow-control);
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  transition: transform 130ms ease-out, border-color 130ms ease-out, background-color 130ms ease-out, box-shadow 130ms ease-out;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action-primary.mantine-Button-root {
+  border-color: color-mix(in srgb, var(--flow-blue) 34%, var(--flow-edge-mid));
+  background:
+    linear-gradient(155deg, color-mix(in srgb, white 32%, transparent), transparent 38%),
+    color-mix(in srgb, var(--flow-blue) 24%, var(--flow-control-fill));
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action-primary :is(.mantine-Button-section, .mantine-Button-label) {
+  color: var(--flow-blue);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action-secondary.mantine-Button-root {
+  background:
+    linear-gradient(155deg, var(--flow-edge-light), transparent 40%),
+    var(--flow-control-fill);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action-secondary .mantine-Button-section {
+  color: var(--flow-blue);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-root:active {
+  transform: scale(0.98);
+  border-color: color-mix(in srgb, var(--flow-blue) 42%, var(--flow-edge-mid));
+  box-shadow:
+    inset 0 2px 0 var(--flow-edge-light),
+    inset 0 -2px 0 var(--flow-edge-dark),
+    0 4px 14px color-mix(in srgb, var(--flow-blue) 12%, transparent);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-empty-state {
+  display: flex;
+  align-items: center;
+  min-height: 60px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 82%, transparent);
+  border-radius: var(--flow-r-content);
+  corner-shape: squircle;
+  color: var(--flow-text-secondary);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 54%, transparent), transparent 46%), color-mix(in srgb, var(--flow-control-fill) 72%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--flow-edge-dark) 55%, transparent);
+  backdrop-filter: blur(14px) saturate(1.16);
+  -webkit-backdrop-filter: blur(14px) saturate(1.16);
+  gap: 10px;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-project-row,
+html[data-yachiyo-appearance="flow-glass"] .coding-run-row {
+  background: linear-gradient(155deg, var(--flow-edge-mid), transparent 52%), var(--flow-control-fill);
+  box-shadow: inset 0 1px 0 var(--flow-edge-light), var(--flow-shadow-control);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-project-row:active,
+html[data-yachiyo-appearance="flow-glass"] .coding-run-row:active,
+html[data-yachiyo-appearance="flow-glass"] .coding-project-pane aside button:active {
+  background: color-mix(in srgb, var(--flow-blue) 12%, var(--flow-control-fill));
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-list {
+  padding: 4px;
+  border-bottom: 1px solid var(--flow-divider);
+  border-radius: 18px;
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-tab {
+  border: 0;
+  border-radius: 14px;
+  color: var(--flow-text-secondary);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-tab[data-active] {
+  color: var(--flow-blue);
+  background: color-mix(in srgb, var(--flow-blue) 12%, var(--flow-control-fill));
+  box-shadow: inset 0 1px 0 var(--flow-edge-light);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-message {
+  border-color: var(--flow-divider);
+  border-radius: var(--flow-r-content);
+  color: var(--flow-text);
+  background: var(--flow-content-fill);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .coding-message[data-role="user"] {
+  border-color: color-mix(in srgb, var(--flow-blue) 24%, var(--flow-divider));
+  background: color-mix(in srgb, var(--flow-blue) 12%, var(--flow-content-fill));
+}
+
+html[data-yachiyo-appearance="flow-glass"] :is(
+  .coding-home,
+  .coding-workspace,
+  .coding-create-modal
+) :is(.mantine-Input-input, .mantine-Textarea-input, .mantine-SegmentedControl-root) {
+  border-color: var(--flow-divider);
+  border-radius: var(--flow-r-content);
+  color: var(--flow-text);
+  background: var(--flow-control-fill);
+}
+
+html[data-yachiyo-appearance="flow-glass"] :is(.coding-home, .coding-workspace) .mantine-Button-root:not(.coding-home-action, .coding-refresh-control, .coding-environment-action) {
+  border-radius: 16px;
+}
+
+html[data-yachiyo-appearance="flow-glass"] :is(.coding-diff, .coding-log) {
+  border: 1px solid var(--flow-divider);
+  border-radius: 12px;
+  color: var(--flow-text);
+  background: var(--flow-content-fill);
+}
+
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] :is(
+  .coding-capability-band,
+  .coding-capability-status .mantine-Badge-root,
+  .coding-environment-action,
+  .coding-home-action,
+  .coding-empty-state,
+  .coding-project-row,
+  .coding-run-row,
+  .coding-change,
+  .coding-project-pane aside,
+  .coding-tabs .mantine-Tabs-list
+) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] :is(
+  .coding-capability-band,
+  .coding-environment-action,
+  .coding-home-action
+) {
+  background: var(--flow-control-fill);
+}
+
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-empty-state {
+  background: var(--flow-content-fill);
+}
+
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-capability-band::before,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-capability-band::after {
+  display: none;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  html[data-yachiyo-appearance="flow-glass"] :is(
+    .coding-capability-band,
+    .coding-capability-status .mantine-Badge-root,
+    .coding-environment-action,
+    .coding-home-action,
+    .coding-empty-state,
+    .coding-project-row,
+    .coding-run-row,
+    .coding-change,
+    .coding-project-pane aside,
+    .coding-tabs .mantine-Tabs-list
+  ) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  html[data-yachiyo-appearance="flow-glass"] :is(
+    .coding-capability-band,
+    .coding-environment-action,
+    .coding-home-action
+  ) {
+    background: var(--flow-control-fill);
+  }
+
+  html[data-yachiyo-appearance="flow-glass"] .coding-empty-state {
+    background: var(--flow-content-fill);
+  }
+
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::before,
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-root {
+    transition: color 160ms ease-out, border-color 160ms ease-out, background-color 160ms ease-out;
+  }
+
+  html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-root:active {
+    transform: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  html[data-yachiyo-appearance="flow-glass"] :is(
+    .coding-capability-band,
+    .coding-capability-status .mantine-Badge-root,
+    .coding-environment-action,
+    .coding-home-action,
+    .coding-empty-state,
+    .coding-project-row,
+    .coding-run-row,
+    .coding-change,
+    .coding-project-pane aside,
+    .coding-tabs .mantine-Tabs-list
+  ) {
+    border-width: 2px;
+    border-color: var(--flow-text-secondary);
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .coding-home {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .coding-workspace {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .coding-create-steps .mantine-Stepper-stepLabel,
+  .coding-create-steps .mantine-Stepper-stepDescription {
+    display: none;
+  }
+
+  .coding-create-steps .mantine-Stepper-separator {
+    margin-inline: 3px;
+  }
+
+  .coding-home-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .coding-project-pane {
+    grid-template-columns: 1fr;
+  }
+
+  .coding-project-pane aside {
+    max-height: 170px;
+  }
+
+  .coding-tabs .mantine-Tabs-tab {
+    font-size: 12px;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-yachiyo-appearance="flow-glass"] :is(
+    .coding-capability-band,
+    .coding-capability-status .mantine-Badge-root,
+    .coding-environment-action,
+    .coding-home-action,
+    .coding-empty-state,
+    .coding-project-row,
+    .coding-run-row,
+    .coding-change,
+    .coding-project-pane aside,
+    .coding-tabs .mantine-Tabs-list,
+    .coding-message,
+    .coding-diff,
+    .coding-log
+  ) {
+    border: 1px solid CanvasText;
+    color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+    forced-color-adjust: auto;
+  }
+
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::before,
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::after {
+    display: none;
+  }
+}

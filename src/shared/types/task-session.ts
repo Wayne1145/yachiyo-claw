@@ -12,6 +12,8 @@ export const TaskSessionSchema = z.object({
   createdAt: z.number(),
   updatedAt: z.number().optional(),
   compactionPoints: z.array(CompactionPointSchema).optional(),
+  mode: z.enum(['agent', 'coding']).optional(),
+  codingProjectId: z.string().optional(),
 })
 export type TaskSession = z.infer<typeof TaskSessionSchema>
 

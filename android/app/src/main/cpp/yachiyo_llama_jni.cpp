@@ -1,10 +1,13 @@
 #include <jni.h>
 
 #include "llama.h"
+#include "ggml-backend.h"
+#include "gguf.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -20,7 +23,18 @@ std::atomic<bool> g_cancelled{false};
 std::atomic<float> g_load_progress{0.0F};
 llama_model * g_model = nullptr;
 std::string g_model_path;
+std::string g_active_backend;
+std::string g_fallback_reason;
+std::string g_gpu_device;
 bool g_model_eager = false;
+int32_t g_configured_gpu_layers = 0;
+int32_t g_offloaded_layers = 0;
+int32_t g_cpu_threads = 0;
+double g_first_token_ms = 0.0;
+double g_prefill_tokens_per_second = 0.0;
+double g_decode_tokens_per_second = 0.0;
+size_t g_gpu_free_bytes = 0;
+size_t g_gpu_total_bytes = 0;
 std::string g_request_id;
 std::once_flag g_backend_once;
 
@@ -131,10 +145,51 @@ void ensure_backend() {
     });
 }
 
-void ensure_model(const std::string & path, bool eager) {
+int32_t gguf_layer_count(const std::string & path) {
+    gguf_init_params params{};
+    params.no_alloc = true;
+    gguf_context * metadata = gguf_init_from_file(path.c_str(), params);
+    if (metadata == nullptr) throw std::runtime_error("local_model_metadata_failed");
+    const int64_t architecture_key = gguf_find_key(metadata, "general.architecture");
+    if (architecture_key < 0 || gguf_get_kv_type(metadata, architecture_key) != GGUF_TYPE_STRING) {
+        gguf_free(metadata);
+        throw std::runtime_error("local_model_architecture_missing");
+    }
+    const std::string block_key = std::string(gguf_get_val_str(metadata, architecture_key)) + ".block_count";
+    const int64_t key = gguf_find_key(metadata, block_key.c_str());
+    int32_t result = 0;
+    if (key >= 0) {
+        switch (gguf_get_kv_type(metadata, key)) {
+            case GGUF_TYPE_UINT32: result = static_cast<int32_t>(gguf_get_val_u32(metadata, key)); break;
+            case GGUF_TYPE_INT32: result = gguf_get_val_i32(metadata, key); break;
+            case GGUF_TYPE_UINT64: result = static_cast<int32_t>(gguf_get_val_u64(metadata, key)); break;
+            case GGUF_TYPE_INT64: result = static_cast<int32_t>(gguf_get_val_i64(metadata, key)); break;
+            default: break;
+        }
+    }
+    gguf_free(metadata);
+    if (result <= 0 || result > 1000) throw std::runtime_error("local_model_layer_count_invalid");
+    return result;
+}
+
+void refresh_gpu_info() {
+    g_gpu_device.clear();
+    g_gpu_free_bytes = 0;
+    g_gpu_total_bytes = 0;
+    for (size_t index = 0; index < ggml_backend_dev_count(); ++index) {
+        ggml_backend_dev_t device = ggml_backend_dev_get(index);
+        if (ggml_backend_dev_type(device) != GGML_BACKEND_DEVICE_TYPE_GPU) continue;
+        g_gpu_device = ggml_backend_dev_description(device);
+        ggml_backend_dev_memory(device, &g_gpu_free_bytes, &g_gpu_total_bytes);
+        break;
+    }
+}
+
+void ensure_model(const std::string & path, bool eager, int32_t requested_gpu_layers, int32_t cpu_threads) {
     // An eager instance satisfies ordinary inference too. A mmap instance must be reloaded when
     // the user explicitly requests that all model weights be read into process memory.
-    if (g_model != nullptr && g_model_path == path && (!eager || g_model_eager)) {
+    if (g_model != nullptr && g_model_path == path && g_configured_gpu_layers == requested_gpu_layers
+            && g_cpu_threads == cpu_threads && (!eager || g_model_eager)) {
         g_load_progress.store(1.0F, std::memory_order_relaxed);
         return;
     }
@@ -143,19 +198,40 @@ void ensure_model(const std::string & path, bool eager) {
         llama_model_free(g_model);
         g_model = nullptr;
         g_model_path.clear();
+        g_active_backend.clear();
+        g_fallback_reason.clear();
         g_model_eager = false;
     }
+    refresh_gpu_info();
+    int32_t gpu_layers = requested_gpu_layers;
+    if (gpu_layers > 0 && (!llama_supports_gpu_offload() || g_gpu_device.empty())) {
+        gpu_layers = 0;
+        g_fallback_reason = "gpu_unavailable";
+    }
     llama_model_params params = llama_model_default_params();
-    params.n_gpu_layers = 0;
+    params.n_gpu_layers = gpu_layers;
     params.use_mmap = !eager;
     params.use_mlock = false;
     params.progress_callback = continue_loading;
     g_model = llama_model_load_from_file(path.c_str(), params);
+    if (g_model == nullptr && gpu_layers > 0 && !g_cancelled.load(std::memory_order_relaxed)) {
+        params.n_gpu_layers = 0;
+        g_load_progress.store(0.0F, std::memory_order_relaxed);
+        g_model = llama_model_load_from_file(path.c_str(), params);
+        if (g_model != nullptr) {
+            gpu_layers = 0;
+            g_fallback_reason = "gpu_model_load_failed";
+        }
+    }
     if (g_model == nullptr) {
         if (g_cancelled.load(std::memory_order_relaxed)) throw std::runtime_error("local_inference_cancelled");
         throw std::runtime_error("local_model_load_failed");
     }
     g_model_path = path;
+    g_configured_gpu_layers = requested_gpu_layers;
+    g_offloaded_layers = gpu_layers > 0 ? std::min(gpu_layers, llama_model_n_layer(g_model)) : 0;
+    g_cpu_threads = std::max(1, cpu_threads);
+    g_active_backend = g_offloaded_layers > 0 ? "GPU+CPU" : "CPU";
     g_model_eager = eager;
     g_load_progress.store(1.0F, std::memory_order_relaxed);
 }
@@ -249,11 +325,14 @@ std::string generate(
     const std::string & path,
     const std::vector<std::string> & roles,
     const std::vector<std::string> & contents,
-    int32_t max_tokens
+    int32_t max_tokens,
+    int32_t gpu_layers,
+    int32_t cpu_threads
 ) {
     std::lock_guard<std::mutex> model_lock(g_model_mutex);
     ensure_backend();
-    ensure_model(path, false);
+    ensure_model(path, false, gpu_layers, cpu_threads);
+    const double inference_started_ms = static_cast<double>(llama_time_us()) / 1000.0;
 
     const llama_vocab * vocab = llama_model_get_vocab(g_model);
     std::vector<llama_token> prompt_tokens = tokenize(vocab, apply_chat_template(roles, contents));
@@ -269,12 +348,12 @@ std::string generate(
     context_params.n_batch = std::min<uint32_t>(context_params.n_ctx, 512U);
     context_params.n_ubatch = context_params.n_batch;
     const uint32_t hardware_threads = std::max(1U, std::thread::hardware_concurrency());
-    const int32_t threads = static_cast<int32_t>(std::min(8U, hardware_threads));
+    const int32_t threads = std::max(1, std::min(cpu_threads, static_cast<int32_t>(hardware_threads)));
     context_params.n_threads = threads;
     context_params.n_threads_batch = threads;
     context_params.abort_callback = abort_requested;
     context_params.abort_callback_data = nullptr;
-    context_params.no_perf = true;
+    context_params.no_perf = false;
 
     ContextPtr context(llama_init_from_model(g_model, context_params));
     if (!context) throw std::runtime_error("local_model_context_init_failed");
@@ -299,10 +378,12 @@ std::string generate(
     llama_sampler_chain_add(sampler.get(), llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     std::string response;
+    g_first_token_ms = 0.0;
     for (int32_t generated = 0; generated < max_tokens; ++generated) {
         if (g_cancelled.load(std::memory_order_relaxed)) throw std::runtime_error("local_inference_cancelled");
         llama_token token = llama_sampler_sample(sampler.get(), context.get(), -1);
         if (llama_vocab_is_eog(vocab, token)) break;
+        if (g_first_token_ms == 0.0) g_first_token_ms = static_cast<double>(llama_time_us()) / 1000.0 - inference_started_ms;
         response += token_piece(vocab, token);
         llama_batch batch = llama_batch_get_one(&token, 1);
         if (llama_decode(context.get(), batch) != 0) {
@@ -310,7 +391,35 @@ std::string generate(
             throw std::runtime_error("local_model_decode_failed");
         }
     }
+    const llama_perf_context_data performance = llama_perf_context(context.get());
+    g_prefill_tokens_per_second = performance.t_p_eval_ms > 0
+        ? performance.n_p_eval * 1000.0 / performance.t_p_eval_ms : 0.0;
+    g_decode_tokens_per_second = performance.t_eval_ms > 0
+        ? performance.n_eval * 1000.0 / performance.t_eval_ms : 0.0;
     return response;
+}
+
+std::string json_escape(const std::string & value) {
+    std::string result;
+    result.reserve(value.size());
+    for (char character : value) {
+        if (character == '\\' || character == '"') result.push_back('\\');
+        if (static_cast<unsigned char>(character) >= 0x20) result.push_back(character);
+    }
+    return result;
+}
+
+std::string runtime_metrics_json() {
+    return std::string("{\"activeBackend\":\"") + json_escape(g_active_backend)
+        + "\",\"fallbackReason\":\"" + json_escape(g_fallback_reason)
+        + "\",\"gpuDevice\":\"" + json_escape(g_gpu_device)
+        + "\",\"offloadedLayers\":" + std::to_string(g_offloaded_layers)
+        + ",\"cpuThreads\":" + std::to_string(g_cpu_threads)
+        + ",\"firstTokenMs\":" + std::to_string(g_first_token_ms)
+        + ",\"prefillTokensPerSecond\":" + std::to_string(g_prefill_tokens_per_second)
+        + ",\"decodeTokensPerSecond\":" + std::to_string(g_decode_tokens_per_second)
+        + ",\"gpuFreeBytes\":" + std::to_string(g_gpu_free_bytes)
+        + ",\"gpuTotalBytes\":" + std::to_string(g_gpu_total_bytes) + "}";
 }
 
 }  // namespace
@@ -321,7 +430,9 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoad(
     jclass,
     jstring model_path,
     jstring request_id,
-    jboolean eager
+    jboolean eager,
+    jint gpu_layers,
+    jint cpu_threads
 ) {
     try {
         const std::string path = from_jstring(env, model_path);
@@ -330,7 +441,8 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoad(
         try {
             std::lock_guard<std::mutex> model_lock(g_model_mutex);
             ensure_backend();
-            ensure_model(path, eager == JNI_TRUE);
+            ensure_model(path, eager == JNI_TRUE, std::max(0, static_cast<int32_t>(gpu_layers)),
+                std::max(1, static_cast<int32_t>(cpu_threads)));
             end_request();
         } catch (...) {
             end_request();
@@ -348,6 +460,29 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeLoadProgress(JNIEnv *, jclass)
     return g_load_progress.load(std::memory_order_relaxed);
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_io_github_yachiyoclaw_model_GgufRunner_nativeLayerCount(JNIEnv * env, jclass, jstring model_path) {
+    try {
+        return gguf_layer_count(from_jstring(env, model_path));
+    } catch (const std::exception & error) {
+        throw_java(env, error.what());
+        return 0;
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_io_github_yachiyoclaw_model_GgufRunner_nativeGpuAvailable(JNIEnv *, jclass) {
+    ensure_backend();
+    refresh_gpu_info();
+    return llama_supports_gpu_offload() && !g_gpu_device.empty() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_io_github_yachiyoclaw_model_GgufRunner_nativeRuntimeMetrics(JNIEnv * env, jclass) {
+    std::lock_guard<std::mutex> model_lock(g_model_mutex);
+    return env->NewStringUTF(runtime_metrics_json().c_str());
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_io_github_yachiyoclaw_model_GgufRunner_nativeInfer(
     JNIEnv * env,
@@ -356,7 +491,9 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeInfer(
     jobjectArray roles,
     jobjectArray contents,
     jint max_tokens,
-    jstring request_id
+    jstring request_id,
+    jint gpu_layers,
+    jint cpu_threads
 ) {
     try {
         std::string path = from_jstring(env, model_path);
@@ -368,7 +505,10 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeInfer(
         }
         begin_request(request);
         try {
-            std::string result = generate(path, role_values, content_values, std::max(1, static_cast<int32_t>(max_tokens)));
+            std::string result = generate(path, role_values, content_values,
+                std::max(1, static_cast<int32_t>(max_tokens)),
+                std::max(0, static_cast<int32_t>(gpu_layers)),
+                std::max(1, static_cast<int32_t>(cpu_threads)));
             end_request();
             return to_jstring(env, result);
         } catch (...) {
@@ -401,6 +541,15 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeUnload(JNIEnv *, jclass) {
     if (g_model != nullptr) llama_model_free(g_model);
     g_model = nullptr;
     g_model_path.clear();
+    g_active_backend.clear();
+    g_fallback_reason.clear();
+    g_gpu_device.clear();
     g_model_eager = false;
+    g_configured_gpu_layers = 0;
+    g_offloaded_layers = 0;
+    g_cpu_threads = 0;
+    g_first_token_ms = 0.0;
+    g_prefill_tokens_per_second = 0.0;
+    g_decode_tokens_per_second = 0.0;
     g_load_progress.store(0.0F, std::memory_order_relaxed);
 }

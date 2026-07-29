@@ -34,7 +34,7 @@ const KnowledgeBaseMenu: FC<Props> = (props) => {
       }}
     >
       <Menu.Target>{props.children}</Menu.Target>
-      <Menu.Dropdown className="min-w-40">
+      <Menu.Dropdown className="yachiyo-composer-popover yachiyo-composer-knowledge-menu min-w-40">
         <Flex justify="space-between">
           <Menu.Label fw={600}>{t('Knowledge Base')}</Menu.Label>
           <Menu.Label>

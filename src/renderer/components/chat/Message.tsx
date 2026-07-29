@@ -30,6 +30,7 @@ import { Gallery, Item as GalleryItem } from 'react-photoswipe-gallery'
 import { trackJkClickEvent } from '@/analytics/jk'
 import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
 import Markdown from '@/components/Markdown'
+import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { useFetchBlob } from '@/hooks/useBlob'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { cn } from '@/lib/utils'
@@ -81,6 +82,7 @@ const _Message: FC<Props> = (props) => {
   const { t } = useTranslation()
   const theme = useTheme()
   const isSmallScreen = useIsSmallScreen()
+  const inAndroidAppShell = useInAndroidAppShell()
   const {
     userAvatarKey,
     showMessageTimestamp,
@@ -99,6 +101,7 @@ const _Message: FC<Props> = (props) => {
   } = useSettingsStore((state) => state)
 
   const isBubbleLayout = messageLayout === 'bubble'
+  const usesBubblePresentation = isBubbleLayout || (inAndroidAppShell && msg.role === 'user')
 
   const [previewArtifact, setPreviewArtifact] = useState(autoPreviewArtifacts)
   const [shouldThrowError, setShouldThrowError] = useState(false)
@@ -382,16 +385,16 @@ const _Message: FC<Props> = (props) => {
   )
   const [actionMenuOpened, setActionMenuOpened] = useState(false)
 
-  const isUserBubble = isBubbleLayout && msg.role === 'user'
+  const isUserBubble = usesBubblePresentation && msg.role === 'user'
   const statusElements = <MessageStatuses statuses={msg.status} />
 
   const messageContent = (
     <>
-      {!isBubbleLayout && statusElements}
+      {!usesBubblePresentation && statusElements}
       <div
         className={cn(
-          isBubbleLayout ? 'inline-block max-w-full' : msg.role === 'assistant' ? 'w-full' : 'inline-block',
-          isBubbleLayout
+          usesBubblePresentation ? 'inline-block max-w-full' : msg.role === 'assistant' ? 'w-full' : 'inline-block',
+          usesBubblePresentation
             ? cn(
                 'px-4 py-1 rounded-2xl',
                 msg.role === 'user'
@@ -407,7 +410,7 @@ const _Message: FC<Props> = (props) => {
               : ''
         )}
       >
-        {isBubbleLayout && statusElements}
+        {usesBubblePresentation && statusElements}
         <Box
           className={cn('msg-content', { 'msg-content-small': small })}
           sx={small ? { fontSize: theme.typography.body2.fontSize } : {}}
@@ -523,14 +526,14 @@ const _Message: FC<Props> = (props) => {
         <MessageErrTips
           msg={msg}
           onRetry={msg.role === 'assistant' ? handleRefresh : undefined}
-          isBubbleLayout={isBubbleLayout}
+          isBubbleLayout={usesBubblePresentation}
         />
         {needCollapse && !isCollapsed && CollapseButton}
         {msg.generating && contentParts.length === 0 && (
           <div
             className={cn(
               'inline-flex items-center gap-1.5 py-3',
-              isBubbleLayout ? 'px-1 rounded-2xl bg-chatbox-background-secondary' : 'px-4'
+              usesBubblePresentation ? 'px-1 rounded-2xl bg-chatbox-background-secondary' : 'px-4'
             )}
           >
             <Loading />
@@ -607,8 +610,8 @@ const _Message: FC<Props> = (props) => {
     <Flex
       direction="column"
       gap={2}
-      mt={isBubbleLayout ? 4 : 2}
-      className={cn(isBubbleLayout ? 'px-1' : '')}
+      mt={usesBubblePresentation ? 4 : 2}
+      className={cn(usesBubblePresentation ? 'px-1' : '')}
       align={isUserBubble ? 'flex-end' : 'flex-start'}
     >
       {tipsElements && (
@@ -625,7 +628,7 @@ const _Message: FC<Props> = (props) => {
     </Flex>
   )
 
-  if (isBubbleLayout && msg.role === 'user') {
+  if (isUserBubble) {
     return (
       <Box
         ref={ref}
@@ -635,6 +638,7 @@ const _Message: FC<Props> = (props) => {
           'group/message',
           'msg-block',
           'bubble-user-msg',
+          inAndroidAppShell && 'yachiyo-android-user-message',
           'px-2 py-1.5',
           msg.generating ? 'rendering' : 'render-done',
           'user-msg',
@@ -650,13 +654,17 @@ const _Message: FC<Props> = (props) => {
         }}
       >
         <Flex justify="flex-end" gap="xs" className="w-full">
-          <Flex direction="column" align="flex-end" className={cn('max-w-[85%]', isSmallScreen && 'max-w-[95%]')}>
+          <Flex
+            direction="column"
+            align="flex-end"
+            className={cn('max-w-[85%]', isSmallScreen && !inAndroidAppShell && 'max-w-[95%]')}
+          >
             {messageContent}
             {(msg.files || msg.links) && <MessageAttachmentGrid files={msg.files} links={msg.links} align="end" />}
             {meta}
             {actionButtons}
           </Flex>
-          {(showAvatar ?? true) && (
+          {(showAvatar ?? true) && !inAndroidAppShell && (
             <Box className="mt-1 shrink-0">
               <UserAvatar avatarKey={userAvatarKey} onClick={() => navigateToSettings('/chat')} />
             </Box>
@@ -702,7 +710,7 @@ const _Message: FC<Props> = (props) => {
                       onClick={onClickAssistantAvatar}
                     />
                   ),
-                  user: !isBubbleLayout ? (
+                  user: !usesBubblePresentation ? (
                     <UserAvatar avatarKey={userAvatarKey} onClick={() => navigateToSettings('/chat')} />
                   ) : null,
                   system: <SystemAvatar sessionType={props.sessionType} onClick={onClickAssistantAvatar} />,

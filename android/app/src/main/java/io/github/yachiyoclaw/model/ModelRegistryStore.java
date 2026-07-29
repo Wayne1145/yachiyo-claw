@@ -143,6 +143,25 @@ final class ModelRegistryStore {
         return recovered;
     }
 
+    List<File> resolveRuntimeFiles(JSONObject job) throws Exception {
+        List<File> result = new ArrayList<>();
+        File directory = modelDirectory(job);
+        JSONArray artifacts = job.optJSONArray("artifacts");
+        if (artifacts != null) for (int index = 0; index < artifacts.length(); index++) {
+            JSONObject artifact = artifacts.optJSONObject(index);
+            if (artifact == null) continue;
+            File candidate = ModelDownloadPolicy.resolveArtifact(directory, artifact.optString("path")).getCanonicalFile();
+            String runtime = LocalModelFormat.runtimeForPath(candidate.getPath());
+            if (!candidate.isFile() || runtime == null || "mediapipe-text".equals(runtime)) continue;
+            if (!result.contains(candidate)) result.add(candidate);
+        }
+        if (result.isEmpty()) {
+            File fallback = resolveRuntimeFile(job);
+            if (fallback.isFile()) result.add(fallback);
+        }
+        return result;
+    }
+
     File modelDirectory(JSONObject job) throws Exception {
         String repository = job.optString("repository");
         String revision = job.optString("revision");

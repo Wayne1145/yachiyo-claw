@@ -144,6 +144,7 @@ const english: Record<string, string> = {
   无障碍: 'Accessibility',
   'Agent 已启用': 'Agent enabled',
   'Agent 能力未启用': 'Agent disabled',
+  'Agent 控制': 'Agent controls',
   'Agent 设置': 'Agent settings',
   '当前对话的 Agent 设置': 'Agent settings for this conversation',
   '可选。开启后才允许 Agent 通过 Root、Shizuku 或无障碍观察和操作手机。':

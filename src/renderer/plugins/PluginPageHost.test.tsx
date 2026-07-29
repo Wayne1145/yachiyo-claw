@@ -85,6 +85,162 @@ describe('PluginPageHost actions', () => {
     expect(maxActive).toBe(1)
   })
 
+  it('loads only a verified static view during preview and does not start page actions', async () => {
+    mocks.load.mockResolvedValueOnce({
+      record: {
+        manifest: { id: 'preview-plugin', displayName: 'Preview Plugin' },
+        packageSha256: 'b'.repeat(64),
+      },
+      runtime: {},
+      tools: [{ name: 'render' }],
+      uiGranted: true,
+      view: {
+        schemaVersion: 1,
+        children: [
+          {
+            type: 'button',
+            key: 'preview-run',
+            label: '预览操作',
+            action: { type: 'invoke', handler: 'run' },
+          },
+        ],
+      },
+    })
+    render(
+      <MantineProvider>
+        <PluginPageHost pluginId="preview-plugin" activity="preview" />
+      </MantineProvider>
+    )
+
+    const button = await screen.findByRole('button', { name: '预览操作' })
+    expect(mocks.load).toHaveBeenCalledWith('preview-plugin', { startRuntime: false })
+    fireEvent.click(button)
+    expect(mocks.invoke).not.toHaveBeenCalled()
+  })
+
+  it('aborts the active action and drops queued actions when the page leaves active state', async () => {
+    let activeSignal: AbortSignal | undefined
+    mocks.load.mockResolvedValue({
+      record: {
+        manifest: { id: 'lifecycle-plugin', displayName: 'Lifecycle Plugin' },
+        packageSha256: 'c'.repeat(64),
+      },
+      runtime: {},
+      tools: [],
+      uiGranted: true,
+      view: {
+        schemaVersion: 1,
+        children: [
+          {
+            type: 'button',
+            key: 'lifecycle-run',
+            label: '生命周期操作',
+            action: { type: 'invoke', handler: 'run' },
+          },
+        ],
+      },
+    })
+    mocks.invoke.mockImplementation(
+      async (...args: unknown[]) =>
+        await new Promise((resolve, reject) => {
+          activeSignal = (args[5] as { abortSignal?: AbortSignal }).abortSignal
+          activeSignal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })
+        })
+    )
+    const { rerender } = render(
+      <MantineProvider>
+        <PluginPageHost pluginId="lifecycle-plugin" activity="active" />
+      </MantineProvider>
+    )
+
+    const button = await screen.findByRole('button', { name: '生命周期操作' })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce())
+
+    rerender(
+      <MantineProvider>
+        <PluginPageHost pluginId="lifecycle-plugin" activity="preview" />
+      </MantineProvider>
+    )
+    await waitFor(() => expect(activeSignal?.aborted).toBe(true))
+    await Promise.resolve()
+    expect(mocks.invoke).toHaveBeenCalledOnce()
+  })
+
+  it('renders a cached view without retaining its old runtime', async () => {
+    const oldRuntime = { id: 'old-runtime' }
+    mocks.load.mockResolvedValueOnce({
+      record: {
+        manifest: { id: 'cache-plugin', displayName: 'Cache Plugin' },
+        packageSha256: 'd'.repeat(64),
+      },
+      runtime: oldRuntime,
+      tools: [],
+      uiGranted: true,
+      view: {
+        schemaVersion: 1,
+        children: [
+          {
+            type: 'button',
+            key: 'cached-run',
+            label: '缓存操作',
+            action: { type: 'invoke', handler: 'run' },
+          },
+        ],
+      },
+    })
+    const first = render(
+      <MantineProvider>
+        <PluginPageHost pluginId="cache-plugin" activity="active" />
+      </MantineProvider>
+    )
+    await screen.findByRole('button', { name: '缓存操作' })
+    first.unmount()
+
+    let resolveReload: ((value: unknown) => void) | undefined
+    const newRuntime = { id: 'new-runtime' }
+    mocks.load.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveReload = resolve
+        })
+    )
+    mocks.invoke.mockClear()
+    render(
+      <MantineProvider>
+        <PluginPageHost pluginId="cache-plugin" activity="active" />
+      </MantineProvider>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '缓存操作' }))
+    expect(mocks.invoke).not.toHaveBeenCalled()
+    resolveReload?.({
+      record: {
+        manifest: { id: 'cache-plugin', displayName: 'Cache Plugin' },
+        packageSha256: 'd'.repeat(64),
+      },
+      runtime: newRuntime,
+      tools: [],
+      uiGranted: true,
+      view: {
+        schemaVersion: 1,
+        children: [
+          {
+            type: 'button',
+            key: 'reloaded-run',
+            label: '重新加载操作',
+            action: { type: 'invoke', handler: 'run' },
+          },
+        ],
+      },
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: '重新加载操作' }))
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce())
+    expect(mocks.invoke.mock.calls[0][1]).toBe(newRuntime)
+  })
+
   it('does not load plugin code while the global feature is disabled', async () => {
     const previous = settingsStore.getState().featureOverrides
     settingsStore.setState({ featureOverrides: { ...previous, plugins: false } })

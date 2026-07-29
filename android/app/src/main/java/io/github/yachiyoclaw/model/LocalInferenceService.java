@@ -6,6 +6,9 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.os.IBinder;
 import android.os.Debug;
+import android.os.Build;
+import android.os.PerformanceHintManager;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import androidx.core.app.NotificationCompat;
 import java.io.File;
@@ -38,6 +41,7 @@ public final class LocalInferenceService extends Service {
     private volatile long loadedModelBytes = 0L;
     private volatile long loadedResidentBytes = 0L;
     private volatile long loadedDurationMs = 0L;
+    private volatile JSONObject loadedAcceleration = new JSONObject();
 
     @Override public void onCreate() {
         super.onCreate();
@@ -72,6 +76,7 @@ public final class LocalInferenceService extends Service {
                 loadedModelBytes = 0L;
                 loadedResidentBytes = 0L;
                 loadedDurationMs = 0L;
+                loadedAcceleration = new JSONObject();
                 stopForeground(STOP_FOREGROUND_REMOVE);
                 stopSelf(startId);
             });
@@ -108,6 +113,20 @@ public final class LocalInferenceService extends Service {
     }
 
     private void run(File requestFile, int startId) {
+        PowerManager.WakeLock wakeLock = null;
+        PerformanceHintManager.Session hintSession = null;
+        long workStartedNanos = System.nanoTime();
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getPackageName() + ":local-model");
+            wakeLock.acquire(TimeUnit.MINUTES.toMillis(30));
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            PerformanceHintManager hintManager = getSystemService(PerformanceHintManager.class);
+            if (hintManager != null) {
+                hintSession = hintManager.createHintSession(new int[] { android.os.Process.myTid() }, 16_666_667L);
+            }
+        }
         File resultTemp = new File(requestFile.getPath() + ".result.tmp");
         File resultFile = new File(requestFile.getPath() + ".result");
         File errorFile = new File(requestFile.getPath() + ".error");
@@ -131,8 +150,17 @@ public final class LocalInferenceService extends Service {
             String op = request.optString("op", "chat");
             String modelPath = request.getString("modelPath");
             String requestId = request.optString("requestId");
+            JSONObject configuration = request.optJSONObject("configuration");
+            if (configuration == null) configuration = new JSONObject();
+            String selectedBackend = configuration.optString("selectedBackend", AccelerationPolicy.BACKEND_CPU);
+            int cpuThreads = Math.max(1, configuration.optInt("cpuThreads", Math.min(8, Runtime.getRuntime().availableProcessors())));
+            int gpuLayers = Math.max(0, configuration.optInt("gpuLayers", 0));
+            boolean declaredNpuCompatible = configuration.optBoolean("declaredNpuCompatible", false);
             JSONObject result;
-            if ("embed".equals(op)) {
+            if ("benchmark".equals(op)) {
+                stage.set("benchmarking");
+                result = benchmark(request, modelPath);
+            } else if ("embed".equals(op)) {
                 stage.set("embedding");
                 JSONArray vectors = MediaPipeTextEmbeddingRunner.embed(this, modelPath, request.getJSONArray("texts"));
                 result = new JSONObject().put("embeddings", vectors);
@@ -142,12 +170,12 @@ public final class LocalInferenceService extends Service {
                 boolean eager = request.optBoolean("eager", false);
                 if (modelPath.toLowerCase().endsWith(".litertlm")) {
                     activeRuntime = "litert-lm";
-                    LiteRtLmRunner.load(modelPath);
+                    LiteRtLmRunner.load(this, modelPath, selectedBackend, declaredNpuCompatible, cpuThreads);
                     loadedRuntime = "litert-lm";
                     eager = true;
                 } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
                     activeRuntime = "llama.cpp";
-                    GgufRunner.load(modelPath, request.optString("requestId"), eager);
+                    GgufRunner.load(modelPath, request.optString("requestId"), eager, gpuLayers, cpuThreads);
                     loadedRuntime = "llama.cpp";
                 } else throw new IllegalArgumentException("local_model_not_chat_model");
                 loadedModelPath = modelPath;
@@ -155,11 +183,16 @@ public final class LocalInferenceService extends Service {
                 loadedModelBytes = new File(modelPath).length();
                 loadedDurationMs = Math.max(0L, SystemClock.elapsedRealtime() - loadStartedAt);
                 loadedResidentBytes = processResidentBytes();
+                loadedAcceleration = accelerationResult(configuration);
                 stage.set("ready");
                 updateNotification("本地模型已加载到内存");
                 result = runtimeResult(true);
             } else if ("status".equals(op)) {
                 boolean loaded = !loadedModelPath.isEmpty() && loadedModelPath.equals(modelPath);
+                JSONArray modelPaths = request.optJSONArray("modelPaths");
+                if (!loaded && modelPaths != null) for (int index = 0; index < modelPaths.length(); index++) {
+                    if (loadedModelPath.equals(modelPaths.optString(index))) { loaded = true; break; }
+                }
                 stage.set(loaded ? "ready" : "idle");
                 result = runtimeResult(loaded);
             } else {
@@ -172,13 +205,16 @@ public final class LocalInferenceService extends Service {
                 if (modelPath.toLowerCase().endsWith(".litertlm")) {
                     activeRuntime = "litert-lm";
                     stage.set(loadedModelPath.equals(modelPath) ? "generating" : "loading");
-                    events = LiteRtLmRunner.infer(modelPath, messages, tools, requestId, maxTokens);
+                    events = LiteRtLmRunner.infer(
+                        this, modelPath, messages, tools, requestId, maxTokens,
+                        selectedBackend, declaredNpuCompatible, cpuThreads);
                     loadedRuntime = "litert-lm";
                 } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
                     activeRuntime = "llama.cpp";
                     stage.set(loadedModelPath.equals(modelPath) ? "generating" : "loading");
                     JSONArray preparedMessages = LocalToolProtocol.prepareMessages(messages, tools);
-                    String text = GgufRunner.infer(modelPath, preparedMessages, maxTokens, requestId);
+                    String text = GgufRunner.infer(
+                        modelPath, preparedMessages, maxTokens, requestId, gpuLayers, cpuThreads);
                     events = LocalToolProtocol.parseEvents(text, tools, requestId);
                     loadedRuntime = "llama.cpp";
                 }
@@ -188,9 +224,11 @@ public final class LocalInferenceService extends Service {
                 if (!retainedEagerLoad) loadedDurationMs = 0L;
                 loadedModelBytes = new File(modelPath).length();
                 loadedResidentBytes = processResidentBytes();
+                loadedAcceleration = accelerationResult(configuration);
                 stage.set("ready");
                 updateNotification(loadedEager ? "本地模型已完整加载到内存" : "本地模型已就绪（按需映射）");
-                result = new JSONObject().put("events", events);
+                result = new JSONObject().put("events", events)
+                    .put("acceleration", loadedAcceleration);
             }
             // Write then rename so the UI process never observes a half-written result file.
             Files.write(resultTemp.toPath(), result.toString().getBytes(StandardCharsets.UTF_8));
@@ -199,6 +237,11 @@ public final class LocalInferenceService extends Service {
             // Only Java-level faults land here; a native SIGSEGV kills just this process and is detected by the caller.
             try { Files.write(errorFile.toPath(), safe(error).getBytes(StandardCharsets.US_ASCII)); } catch (Exception ignored) {}
         } finally {
+            if (hintSession != null) {
+                hintSession.reportActualWorkDuration(Math.max(1L, System.nanoTime() - workStartedNanos));
+                hintSession.close();
+            }
+            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
             monitor.cancel(true);
             activeRuntime = "";
             resultTemp.delete();
@@ -221,7 +264,70 @@ public final class LocalInferenceService extends Service {
             .put("eager", loaded && loadedEager)
             .put("modelBytes", loaded ? loadedModelBytes : 0L)
             .put("residentBytes", loaded ? loadedResidentBytes : 0L)
-            .put("loadDurationMs", loaded ? loadedDurationMs : 0L);
+            .put("loadDurationMs", loaded ? loadedDurationMs : 0L)
+            .put("acceleration", loaded ? loadedAcceleration : new JSONObject());
+    }
+
+    private JSONObject benchmark(JSONObject request, String modelPath) throws Exception {
+        String backend = AccelerationPolicy.normalizeBackend(request.optString("backend"));
+        int cpuThreads = Math.max(1, request.optInt("cpuThreads", Math.min(8, Runtime.getRuntime().availableProcessors())));
+        boolean npuCompatible = request.optBoolean("declaredNpuCompatible", false);
+        JSONObject result;
+        if (modelPath.toLowerCase().endsWith(".litertlm")) {
+            activeRuntime = "litert-lm";
+            result = LiteRtLmRunner.benchmarkBackend(this, modelPath, backend, npuCompatible, cpuThreads);
+            result.put("gpuLayers", 0).put("cpuThreads", cpuThreads);
+        } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
+            activeRuntime = "llama.cpp";
+            int layerCount = GgufRunner.layerCount(modelPath);
+            int percent = Math.max(0, Math.min(100, request.optInt("gpuLayerPercent", 0)));
+            int layers = AccelerationPolicy.BACKEND_GPU.equals(backend)
+                ? Math.max(1, (int) Math.floor(layerCount * percent / 100.0d)) : 0;
+            long loadStarted = SystemClock.elapsedRealtime();
+            GgufRunner.load(modelPath, "benchmark-load", false, layers, cpuThreads);
+            long initializationMs = Math.max(0L, SystemClock.elapsedRealtime() - loadStarted);
+            JSONArray messages = new JSONArray().put(new JSONObject()
+                .put("role", "user").put("content", "Reply with a concise factual sentence about Android."));
+            GgufRunner.infer(modelPath, messages, 32, "benchmark-infer", layers, cpuThreads);
+            result = GgufRunner.runtimeMetrics()
+                .put("initializationMs", initializationMs)
+                .put("backend", layers > 0 ? AccelerationPolicy.BACKEND_GPU : AccelerationPolicy.BACKEND_CPU)
+                .put("gpuLayers", layers)
+                .put("cpuThreads", cpuThreads);
+            if (layers > 0 && !result.optString("activeBackend").contains("GPU")) {
+                throw new IllegalStateException("gpu_benchmark_fell_back");
+            }
+        } else {
+            throw new IllegalArgumentException("local_model_not_chat_model");
+        }
+        return result
+            .put("modelPath", modelPath)
+            .put("residentBytes", processResidentBytes())
+            .put("thermalStatus", AccelerationRuntimeSupport.thermalStatus(this));
+    }
+
+    private JSONObject accelerationResult(JSONObject configuration) throws Exception {
+        JSONObject profile = configuration.optJSONObject("profile");
+        JSONObject result = profile == null || profile.optJSONObject("selected") == null
+            ? new JSONObject() : new JSONObject(profile.optJSONObject("selected").toString());
+        result.put("requestedBackend", configuration.optString("requestedBackend", AccelerationPolicy.BACKEND_AUTO));
+        result.put("mode", configuration.optString("mode", AccelerationPolicy.MODE_AUTO));
+        result.put("modelVariant", configuration.optString("modelVariant"));
+        result.put("thermalStatus", AccelerationRuntimeSupport.thermalStatus(this));
+        String policyFallback = configuration.optString("policyFallbackReason");
+        if ("litert-lm".equals(loadedRuntime)) {
+            result.put("activeBackend", LiteRtLmRunner.activeBackend());
+            String runtimeFallback = LiteRtLmRunner.fallbackReason();
+            result.put("fallbackReason", runtimeFallback == null || runtimeFallback.isBlank() ? policyFallback : runtimeFallback);
+        } else if ("llama.cpp".equals(loadedRuntime)) {
+            JSONObject runtime = GgufRunner.runtimeMetrics();
+            for (java.util.Iterator<String> keys = runtime.keys(); keys.hasNext();) {
+                String key = keys.next();
+                result.put(key, runtime.opt(key));
+            }
+            if (result.optString("fallbackReason").isBlank()) result.put("fallbackReason", policyFallback);
+        }
+        return result;
     }
 
     private static long processResidentBytes() {

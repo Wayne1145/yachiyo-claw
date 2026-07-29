@@ -76,6 +76,16 @@ export const BUILTIN_FEATURES: readonly FeatureManifest[] = [
     nativePlugins: ['YachiyoWorkspace'],
   },
   {
+    id: 'mobile-vibe-coding-v1',
+    displayName: 'Mobile Vibe Coding',
+    description: 'Creates, reviews, builds, previews, and delivers projects on Android.',
+    platforms: ['android'],
+    trust: 'sandboxed',
+    requires: ['sandbox', 'workspace'],
+    enabledByDefault: true,
+    nativePlugins: ['YachiyoSandbox', 'YachiyoWorkspace', 'YachiyoArtifact'],
+  },
+  {
     id: 'android-device',
     displayName: 'Phone control',
     description: 'Controls the Android device through the Tool Broker and approved backends.',

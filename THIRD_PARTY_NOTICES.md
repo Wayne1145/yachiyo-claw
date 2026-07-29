@@ -21,9 +21,13 @@ runtime integration follows the public AI Edge Gallery implementation at
 https://github.com/google-ai-edge/gallery.
 
 GGUF language models run through llama.cpp at commit
-`1a064ab0921238c1daa397d6f4a900ef33884de2` under the MIT license. The vendored
+`fad73fc226a47fbecc52c716c88acec90abf444c` under the MIT license. The vendored
 license and source are retained in
 `android/app/src/main/cpp/third_party/llama.cpp`.
+
+The reproducible Android Vulkan build downloads Khronos Vulkan-Headers 1.3.275
+under Apache-2.0 into the workspace toolchain. Its source URL and SHA-256 are
+pinned in `toolchain.lock.json`; no proprietary GPU runtime is bundled.
 
 Local text embeddings use Google MediaPipe Tasks Text under Apache-2.0.
 
