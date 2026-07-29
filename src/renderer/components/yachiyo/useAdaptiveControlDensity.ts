@@ -144,7 +144,7 @@ export function useAdaptiveControlDensity<T extends HTMLElement = HTMLDivElement
 
   useLayoutEffect(() => {
     measure()
-  })
+  }, [density, measure])
 
   useLayoutEffect(() => {
     const container = containerRef.current

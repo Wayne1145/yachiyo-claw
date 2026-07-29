@@ -26,6 +26,12 @@ function DensityHarness({ contentKey }: { contentKey?: string }) {
   return <div ref={containerRef} data-testid="density" data-density={density} {...pointerHandlers} />
 }
 
+function RenderCountingDensityHarness({ onRender }: { onRender: () => void }) {
+  onRender()
+  const { containerRef, density } = useAdaptiveControlDensity<HTMLDivElement>()
+  return <div ref={containerRef} data-testid="volatile-density" data-density={density} />
+}
+
 describe('adaptive control density', () => {
   let widths: Record<string, number>
   let clientWidthDescriptor: PropertyDescriptor | undefined
@@ -141,5 +147,22 @@ describe('adaptive control density', () => {
     widths.comfortable = 88
     rerender(<DensityHarness contentKey="short-labels" />)
     await waitFor(() => expect(cluster.dataset.density).toBe('comfortable'))
+  })
+
+  it('does not remeasure after every measurement-only render', async () => {
+    let scrollWidth = 70
+    let renderCount = 0
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+      configurable: true,
+      get() {
+        scrollWidth += 1
+        return scrollWidth
+      },
+    })
+
+    render(<RenderCountingDensityHarness onRender={() => renderCount++} />)
+
+    await waitFor(() => expect(screen.getByTestId('volatile-density').dataset.density).toBe('comfortable'))
+    expect(renderCount).toBeLessThanOrEqual(2)
   })
 })
