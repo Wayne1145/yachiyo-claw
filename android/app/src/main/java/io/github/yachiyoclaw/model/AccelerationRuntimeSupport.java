@@ -87,6 +87,13 @@ final class AccelerationRuntimeSupport {
         return manager == null || manager.getCurrentThermalStatus() < PowerManager.THERMAL_STATUS_SEVERE;
     }
 
+    static boolean canContinueBenchmark(Context context, String mode) {
+        int stopAt = AccelerationPolicy.MODE_EXTREME.equals(AccelerationPolicy.normalizeMode(mode))
+            ? PowerManager.THERMAL_STATUS_SEVERE
+            : PowerManager.THERMAL_STATUS_MODERATE;
+        return thermalStatus(context) < stopAt;
+    }
+
     static int thermalStatus(Context context) {
         if (Build.VERSION.SDK_INT < 29) return PowerManager.THERMAL_STATUS_NONE;
         PowerManager manager = context.getSystemService(PowerManager.class);
@@ -101,6 +108,10 @@ final class AccelerationRuntimeSupport {
         if (performance == capped) return new int[] {performance, processors};
         if (capped == processors) return new int[] {performance, processors};
         return new int[] {performance, capped, processors};
+    }
+
+    static int preferredCpuThreads() {
+        return cpuThreadCandidates()[0];
     }
 
     static String deviceIdentity() {

@@ -59,6 +59,7 @@ export interface NativeAccelerationBenchmark {
 
 export interface NativeAccelerationProfile {
   schemaVersion: 1
+  calibrationVersion?: string
   cacheKey: string
   mode: NativeAccelerationMode
   selectedBackend: Exclude<NativeAccelerationBackend, 'auto'>
@@ -66,9 +67,12 @@ export interface NativeAccelerationProfile {
   modelVariant?: string
   declaredNpuCompatible?: boolean
   thermalStatus?: number
+  profileKind?: 'safe-baseline' | 'verified-optimized' | 'deep-optimized'
+  benchmarkElapsedMs?: number
   optimizedAt: number
   selected: NativeAccelerationBenchmark
   benchmarks: NativeAccelerationBenchmark[]
+  screeningBenchmarks?: NativeAccelerationBenchmark[]
 }
 
 export interface NativeAccelerationRuntime extends NativeAccelerationBenchmark {

@@ -29,6 +29,27 @@ public final class AccelerationPolicyTest {
         assertEquals("cpu", AccelerationPolicy.selectFastest(List.of(failed, benchmark("cpu", 1, 2, 3, 4, 5))).backend);
     }
 
+    @Test public void refinesGpuOnlyWhenMediumOffloadIsCompetitive() {
+        AccelerationPolicy.Benchmark cpu = benchmark("cpu", 100, 100, 100, 30, 900);
+        AccelerationPolicy.Benchmark competitiveGpu = benchmark("gpu", 140, 110, 130, 29, 1_100);
+        AccelerationPolicy.Benchmark slowGpu = benchmark("gpu", 180, 180, 70, 15, 1_100);
+
+        assertTrue(AccelerationPolicy.shouldRefineGpuOffload(cpu, competitiveGpu));
+        assertFalse(AccelerationPolicy.shouldRefineGpuOffload(cpu, slowGpu));
+    }
+
+    @Test public void finalistsKeepFastestPairCpuSafetyAndManualBackend() {
+        AccelerationPolicy.Benchmark gpuFast = benchmark("gpu", 100, 80, 150, 60, 1_200);
+        AccelerationPolicy.Benchmark gpuSecond = benchmark("gpu", 100, 90, 140, 55, 1_100);
+        AccelerationPolicy.Benchmark cpu = benchmark("cpu", 100, 180, 80, 24, 800);
+        AccelerationPolicy.Benchmark npu = benchmark("npu", 150, 200, 75, 22, 700);
+
+        List<AccelerationPolicy.Benchmark> finalists = AccelerationPolicy.selectFinalists(
+            List.of(cpu, gpuSecond, npu, gpuFast), "npu");
+
+        assertEquals(List.of(gpuFast, gpuSecond, cpu, npu), finalists);
+    }
+
     @Test public void reservesAtLeastOneGibAndFifteenPercent() {
         assertEquals(1024L * 1024L * 1024L, AccelerationPolicy.requiredSystemHeadroom(4L * 1024L * 1024L * 1024L));
         assertEquals(3L * 1024L * 1024L * 1024L, AccelerationPolicy.requiredSystemHeadroom(20L * 1024L * 1024L * 1024L));

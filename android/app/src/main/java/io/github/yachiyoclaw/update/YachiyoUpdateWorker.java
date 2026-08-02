@@ -50,8 +50,8 @@ public final class YachiyoUpdateWorker extends Worker {
                 (start, end) -> open(apkUrl, start, end),
                 (bytes, total, speed) -> {
                     DownloadTaskStore.update(getApplicationContext(), taskId, "update", "Yachiyo Claw " + version, "downloading", bytes, total, speed, null);
-                    DownloadNotifications.show(getApplicationContext(), taskId, "正在下载 Yachiyo Claw 更新", bytes, total);
-                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), taskId, "正在下载 Yachiyo Claw 更新", bytes, total));
+                    DownloadNotifications.show(getApplicationContext(), taskId, "正在下载 Yachiyo Claw 更新", bytes, total, speed);
+                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), taskId, "正在下载 Yachiyo Claw 更新", bytes, total, speed));
                 }, () -> isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), taskId));
             UpdatePackageVerifier.requireTrusted(getApplicationContext(), partial);
             File verified = new File(directory, "update-" + version + ".apk");

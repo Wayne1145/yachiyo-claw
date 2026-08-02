@@ -37,9 +37,6 @@ importers:
 
   .:
     dependencies:
-      '@capacitor/haptics':
-        specifier: 7.0.0
-        version: 7.0.0(@capacitor/core@7.4.5)
       '@libsql/client':
         specifier: ^0.15.6
         version: 0.15.15
@@ -1889,11 +1886,6 @@ packages:
 
   '@capacitor/filesystem@7.1.6':
     resolution: {integrity: sha512-7NGrmp9v/ejR2C2QKr66na5IJMCBH78TEX2AwqQyq2MCR3yM2PsWvFPAnNOYlBHPgBzzxEC+sjPRBk1bDsXJvg==}
-    peerDependencies:
-      '@capacitor/core': '>=7.0.0'
-
-  '@capacitor/haptics@7.0.0':
-    resolution: {integrity: sha512-8uI8rWyAbq8EzkjS+sHZSncyzujHzVbuLKgj8J5H0yUL6+r26F16gVA2iuQuIBvzbSMy7Y0/pUuWlwZr/H8AKg==}
     peerDependencies:
       '@capacitor/core': '>=7.0.0'
 
@@ -15724,10 +15716,6 @@ snapshots:
     dependencies:
       '@capacitor/core': 7.4.5
       '@capacitor/synapse': 1.0.4
-
-  '@capacitor/haptics@7.0.0(@capacitor/core@7.4.5)':
-    dependencies:
-      '@capacitor/core': 7.4.5
 
   '@capacitor/ios@7.4.5(@capacitor/core@7.4.5)':
     dependencies:

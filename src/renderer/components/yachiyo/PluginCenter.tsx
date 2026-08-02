@@ -55,6 +55,11 @@ import {
   resolvePluginPackageSource,
 } from '@/plugins/package-source'
 import { clearPendingPluginInstall, savePendingPluginInstall } from '@/plugins/pending-install'
+import {
+  readPluginMarketplaceUrl,
+  resetPluginMarketplaceUrl,
+  savePluginMarketplaceUrl,
+} from '@/plugins/marketplace-preferences'
 import { describePluginUpdate, findMarketplacePluginUpdates } from '@/plugins/plugin-updates'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
@@ -437,6 +442,7 @@ export function PluginCenter() {
   const [granted, setGranted] = useState<string[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [sourceUrl, setSourceUrl] = useState('')
+  const [marketplaceUrl, setMarketplaceUrl] = useState(readPluginMarketplaceUrl)
   const [marketplace, setMarketplace] = useState<PluginMarketplaceEntry[] | null>(null)
   const [marketLoading, setMarketLoading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -444,6 +450,21 @@ export function PluginCenter() {
   const [pluginStats, setPluginStats] = useState<Record<string, { dataBytes: number; health: PluginHealth | null }>>({})
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [uninstallTarget, setUninstallTarget] = useState<InstalledPluginRecord | null>(null)
+
+  const openMarketplace = async () => {
+    const catalogUrl = marketplaceUrl.trim() || DEFAULT_PLUGIN_MARKETPLACE_URL
+    setMarketLoading(true)
+    setError(null)
+    try {
+      const entries = await loadPluginMarketplace(catalogUrl)
+      setMarketplace(entries)
+      setMarketplaceUrl(savePluginMarketplaceUrl(catalogUrl))
+    } catch (marketError) {
+      setError(pluginCenterErrorMessage(t, marketError, t('插件市场加载失败，请检查市场地址后重试。')))
+    } finally {
+      setMarketLoading(false)
+    }
+  }
 
   useEffect(() => {
     void refresh()
@@ -770,22 +791,33 @@ export function PluginCenter() {
                 </Button>
               )}
             </FileButton>
+          </Group>
+          <Group align="flex-end" gap="xs">
+            <TextInput
+              style={{ flex: '1 1 240px' }}
+              label={t('插件市场地址')}
+              placeholder={DEFAULT_PLUGIN_MARKETPLACE_URL}
+              value={marketplaceUrl}
+              onChange={(event) => setMarketplaceUrl(event.currentTarget.value)}
+            />
             <Button
               variant="default"
               leftSection={<IconRefresh size={15} />}
               loading={marketLoading}
-              onClick={() => {
-                setMarketLoading(true)
-                setError(null)
-                void loadPluginMarketplace()
-                  .then(setMarketplace)
-                  .catch((marketError) =>
-                    setError(pluginCenterErrorMessage(t, marketError, t('插件市场加载失败，请稍后重试。')))
-                  )
-                  .finally(() => setMarketLoading(false))
-              }}
+              disabled={!marketplaceUrl.trim()}
+              onClick={() => void openMarketplace()}
             >
               {t('浏览插件市场')}
+            </Button>
+            <Button
+              variant="subtle"
+              color="gray"
+              onClick={() => {
+                setMarketplaceUrl(resetPluginMarketplaceUrl())
+                setMarketplace(null)
+              }}
+            >
+              {t('恢复默认')}
             </Button>
           </Group>
           {error && (
@@ -830,7 +862,7 @@ export function PluginCenter() {
                   size="compact-sm"
                   leftSection={<IconDownload size={14} />}
                   loading={busy}
-                  onClick={() => void installMarketplaceEntry(entry)}
+                  onClick={() => void installMarketplaceEntry(entry, marketplaceUrl)}
                 >
                   {t('安装')}
                 </Button>

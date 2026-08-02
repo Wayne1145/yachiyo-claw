@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.Locale;
 
 /** One independent low-priority notification per active transfer. */
 public final class DownloadNotifications {
@@ -24,6 +25,10 @@ public final class DownloadNotifications {
     private DownloadNotifications() {}
 
     public static void show(Context context, String id, String title, long bytes, long total) {
+        show(context, id, title, bytes, total, 0);
+    }
+
+    public static void show(Context context, String id, String title, long bytes, long total, long bytesPerSecond) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL, "下载任务", NotificationManager.IMPORTANCE_LOW));
         int percent = total > 0 ? (int) Math.min(100, bytes * 100 / total) : 0;
@@ -33,7 +38,7 @@ public final class DownloadNotifications {
         manager.notify(notificationId, new NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
-            .setContentText(total > 0 ? percent + "%" : "正在连接")
+            .setContentText(progressText(bytes, total, bytesPerSecond))
             .setProgress(100, percent, total <= 0)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
@@ -42,6 +47,10 @@ public final class DownloadNotifications {
     }
 
     public static ForegroundInfo foreground(Context context, String id, String title, long bytes, long total) {
+        return foreground(context, id, title, bytes, total, 0);
+    }
+
+    public static ForegroundInfo foreground(Context context, String id, String title, long bytes, long total, long bytesPerSecond) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL, "下载任务", NotificationManager.IMPORTANCE_LOW));
         int percent = total > 0 ? (int) Math.min(100, bytes * 100 / total) : 0;
@@ -49,7 +58,7 @@ public final class DownloadNotifications {
         int notificationId = notificationId(context, id);
         PendingIntent pending = PendingIntent.getActivity(context, notificationId, launch, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         android.app.Notification notification = new NotificationCompat.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(title).setContentText(percent + "%").setProgress(100, percent, false).setOnlyAlertOnce(true).setOngoing(true).setContentIntent(pending).build();
+            .setContentTitle(title).setContentText(progressText(bytes, total, bytesPerSecond)).setProgress(100, percent, total <= 0).setOnlyAlertOnce(true).setOngoing(true).setContentIntent(pending).build();
         return new ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
     }
 
@@ -123,6 +132,27 @@ public final class DownloadNotifications {
             if (!occupied.contains(candidate)) return candidate;
         }
         throw new IllegalStateException("download_notification_id_exhausted");
+    }
+
+    static String progressText(long bytes, long total, long bytesPerSecond) {
+        if (total <= 0) return "正在连接";
+        int percent = (int) Math.min(100, Math.max(0, bytes) * 100 / total);
+        StringBuilder text = new StringBuilder().append(percent).append('%');
+        if (bytesPerSecond > 0) text.append(" · ").append(formatBytes(bytesPerSecond)).append("/s");
+        text.append(" · ").append(formatBytes(Math.max(0, bytes))).append(" / ").append(formatBytes(total));
+        return text.toString();
+    }
+
+    private static String formatBytes(long value) {
+        if (value < 1024) return value + " B";
+        String[] units = { "KB", "MB", "GB", "TB" };
+        double amount = value;
+        int unit = -1;
+        do {
+            amount /= 1024.0;
+            unit++;
+        } while (amount >= 1024.0 && unit < units.length - 1);
+        return String.format(Locale.ROOT, amount >= 100 ? "%.0f %s" : amount >= 10 ? "%.1f %s" : "%.2f %s", amount, units[unit]);
     }
 
     private static SharedPreferences idPreferences(Context context) {

@@ -21,4 +21,17 @@ public final class DownloadNotificationsTest {
         assertEquals(aa, DownloadNotifications.allocateId("Aa", assigned));
         assertEquals(bb, DownloadNotifications.allocateId("BB", assigned));
     }
+
+    @Test
+    public void progressTextIncludesSpeedAndTransferredBytes() {
+        assertEquals(
+            "50% · 8.00 MB/s · 1.00 GB / 2.00 GB",
+            DownloadNotifications.progressText(1024L * 1024L * 1024L, 2L * 1024L * 1024L * 1024L, 8L * 1024L * 1024L)
+        );
+    }
+
+    @Test
+    public void progressTextOmitsZeroSpeed() {
+        assertEquals("25% · 256 MB / 1.00 GB", DownloadNotifications.progressText(256L * 1024L * 1024L, 1024L * 1024L * 1024L, 0));
+    }
 }

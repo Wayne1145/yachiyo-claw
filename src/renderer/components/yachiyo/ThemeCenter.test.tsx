@@ -54,7 +54,7 @@ describe('ThemeCenter', () => {
     renderCenter()
     fireEvent.click(screen.getByRole('button', { name: '使用' }))
 
-    expect(screen.getByText('Yachiyo 液态玻璃')).toBeTruthy()
+    expect(screen.getByText('Yachiyo 流光玻璃')).toBeTruthy()
     expect(document.documentElement.dataset.yachiyoAppearance).toBe('flow-glass')
     expect(useThemeStore.getState().installed).toHaveLength(0)
   })

@@ -99,8 +99,8 @@ public final class GenericDownloadWorker extends Worker {
                 (start, end) -> open(getApplicationContext(), initial, "GET", start, end),
                 (bytes, expected, speed) -> {
                     DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", bytes, expected, speed, null);
-                    DownloadNotifications.show(getApplicationContext(), id, title, bytes, expected);
-                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), id, title, bytes, expected));
+                    DownloadNotifications.show(getApplicationContext(), id, title, bytes, expected, speed);
+                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), id, title, bytes, expected, speed));
                 },
                 () -> isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), id)
             );

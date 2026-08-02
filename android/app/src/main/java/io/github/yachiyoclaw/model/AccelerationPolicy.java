@@ -93,24 +93,37 @@ final class AccelerationPolicy {
     }
 
     static Benchmark selectFastest(List<Benchmark> input) {
-        List<Benchmark> candidates = new ArrayList<>();
-        for (Benchmark benchmark : input) if (benchmark != null && benchmark.succeeded()) candidates.add(benchmark);
+        List<Benchmark> candidates = rankCandidates(input);
         if (candidates.isEmpty()) return null;
-
-        double bestFirstToken = candidates.stream().mapToDouble(value -> value.firstTokenMs).min().orElse(1.0);
-        double bestPrefill = candidates.stream().mapToDouble(value -> value.prefillTokensPerSecond).max().orElse(1.0);
-        double bestDecode = candidates.stream().mapToDouble(value -> value.decodeTokensPerSecond).max().orElse(1.0);
-        for (Benchmark candidate : candidates) {
-            candidate.score = 0.40 * bestFirstToken / candidate.firstTokenMs
-                + 0.20 * candidate.prefillTokensPerSecond / bestPrefill
-                + 0.40 * candidate.decodeTokensPerSecond / bestDecode;
-        }
-        candidates.sort(Comparator.comparingDouble((Benchmark value) -> value.score).reversed());
         Benchmark fastest = candidates.get(0);
         for (Benchmark candidate : candidates) {
             if (candidate.score >= fastest.score * 0.95 && candidate.residentBytes < fastest.residentBytes) fastest = candidate;
         }
         return fastest;
+    }
+
+    static List<Benchmark> selectFinalists(List<Benchmark> input, String requestedBackend) {
+        List<Benchmark> ranked = rankCandidates(input);
+        List<Benchmark> finalists = new ArrayList<>();
+        for (Benchmark candidate : ranked) {
+            if (finalists.size() >= 2) break;
+            finalists.add(candidate);
+        }
+        addBestBackend(finalists, ranked, BACKEND_CPU);
+        String requested = normalizeBackend(requestedBackend);
+        if (!BACKEND_AUTO.equals(requested)) addBestBackend(finalists, ranked, requested);
+        return finalists;
+    }
+
+    static boolean shouldRefineGpuOffload(Benchmark cpu, Benchmark gpu) {
+        if (cpu == null || gpu == null || !cpu.succeeded() || !gpu.succeeded()) return false;
+        double bestFirstToken = Math.min(cpu.firstTokenMs, gpu.firstTokenMs);
+        double bestPrefill = Math.max(cpu.prefillTokensPerSecond, gpu.prefillTokensPerSecond);
+        double bestDecode = Math.max(cpu.decodeTokensPerSecond, gpu.decodeTokensPerSecond);
+        double cpuScore = compositeScore(cpu, bestFirstToken, bestPrefill, bestDecode);
+        double gpuScore = compositeScore(gpu, bestFirstToken, bestPrefill, bestDecode);
+        // A medium offload that is already close to CPU may improve materially at a higher layer count.
+        return gpuScore >= cpuScore * 0.90d;
     }
 
     static long requiredSystemHeadroom(long totalRamBytes) {
@@ -168,5 +181,38 @@ final class AccelerationPolicy {
 
     private static double finitePositive(double value) {
         return Double.isFinite(value) && value > 0 ? value : 0.0;
+    }
+
+    private static double compositeScore(
+        Benchmark candidate,
+        double bestFirstToken,
+        double bestPrefill,
+        double bestDecode
+    ) {
+        return 0.40 * bestFirstToken / candidate.firstTokenMs
+            + 0.20 * candidate.prefillTokensPerSecond / bestPrefill
+            + 0.40 * candidate.decodeTokensPerSecond / bestDecode;
+    }
+
+    private static List<Benchmark> rankCandidates(List<Benchmark> input) {
+        List<Benchmark> candidates = new ArrayList<>();
+        for (Benchmark benchmark : input) if (benchmark != null && benchmark.succeeded()) candidates.add(benchmark);
+        if (candidates.isEmpty()) return candidates;
+        double bestFirstToken = candidates.stream().mapToDouble(value -> value.firstTokenMs).min().orElse(1.0);
+        double bestPrefill = candidates.stream().mapToDouble(value -> value.prefillTokensPerSecond).max().orElse(1.0);
+        double bestDecode = candidates.stream().mapToDouble(value -> value.decodeTokensPerSecond).max().orElse(1.0);
+        for (Benchmark candidate : candidates) {
+            candidate.score = compositeScore(candidate, bestFirstToken, bestPrefill, bestDecode);
+        }
+        candidates.sort(Comparator.comparingDouble((Benchmark value) -> value.score).reversed());
+        return candidates;
+    }
+
+    private static void addBestBackend(List<Benchmark> finalists, List<Benchmark> ranked, String backend) {
+        for (Benchmark candidate : ranked) {
+            if (!backend.equals(candidate.backend) || finalists.contains(candidate)) continue;
+            finalists.add(candidate);
+            return;
+        }
     }
 }

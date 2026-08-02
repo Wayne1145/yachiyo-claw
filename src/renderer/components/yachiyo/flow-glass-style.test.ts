@@ -6,6 +6,7 @@ const flowStyles = fs.readFileSync(path.join(__dirname, 'flow-glass.css'), 'utf8
 const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'), 'utf8')
 const workspaceSource = fs.readFileSync(path.join(__dirname, 'AndroidWorkspaceHome.tsx'), 'utf8')
 const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
+const viteConfigSource = fs.readFileSync(path.join(__dirname, '../../../../electron.vite.config.ts'), 'utf8')
 const assetRoot = path.join(__dirname, '../../public/liquid-glass')
 
 function readHexToken(styles: string, selector: string, property: string): string {
@@ -42,6 +43,7 @@ const materialSelectors = [
   '.yachiyo-connection-status',
   '.yachiyo-bottom-nav-grid',
   '.yachiyo-bottom-nav-lens',
+  '.yachiyo-bottom-nav-lens-inner',
   '.yachiyo-chat-composer-surface',
   '.yachiyo-task-composer-panel',
   '.bubble-user-msg .inline-block.max-w-full',
@@ -96,13 +98,18 @@ function sectionBetween(start: string, end: string) {
 
 describe('Flow Glass visual contracts', () => {
   it('keeps the continuous corner scale and concentric navigation geometry', () => {
-    expect(flowStyles).toContain('--flow-r-nav: 32px')
-    expect(flowStyles).toContain('--flow-r-lens: 27px')
-    expect(flowStyles).toContain('--flow-r-composer: 30px')
-    expect(flowStyles).toContain('--flow-r-sheet: 32px')
-    expect(flowStyles).toContain('--flow-r-popover: 24px')
-    expect(flowStyles).toContain('--flow-r-panel: 22px')
-    expect(flowStyles).toContain('--flow-r-content: 16px')
+    expect(flowStyles).toContain('--flow-r-nav: 24px')
+    expect(flowStyles).toContain('--flow-r-lens: 18px')
+    expect(flowStyles).toContain('--flow-r-composer: 24px')
+    expect(flowStyles).toContain('--flow-r-sheet: 24px')
+    expect(flowStyles).toContain('--flow-r-popover: 18px')
+    expect(flowStyles).toContain('--flow-r-panel: 18px')
+    expect(flowStyles).toContain('--flow-r-content: 14px')
+    expect(flowStyles).toContain('--flow-r-control: 14px')
+    expect(shellStyles).toContain('--yachiyo-r-shell: 24px')
+    expect(shellStyles).toContain('--yachiyo-r-surface: 18px')
+    expect(shellStyles).toContain('--yachiyo-r-control: 14px')
+    expect(shellStyles).not.toMatch(/border-radius:\s*999px/)
     expect(shellStyles).not.toMatch(/\.yachiyo-bottom-nav-item:active\s*\{[^}]*transform:\s*scale/s)
     expect(flowStyles).not.toMatch(/\.yachiyo-bottom-nav-item:active[^\{]*\{[^}]*transform:\s*scale/s)
     expect(flowStyles).toMatch(/\.yachiyo-bottom-nav-grid\s*{[^}]*height:\s*64px;[^}]*padding:\s*5px;/s)
@@ -110,6 +117,14 @@ describe('Flow Glass visual contracts', () => {
     expect(flowStyles).toMatch(
       /\.yachiyo-mobile-conversation-tools \.mantine-ActionIcon-root\s*{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s
     )
+    expect(flowStyles).toMatch(
+      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-control\);[^}]*corner-shape:\s*squircle;/s,
+    )
+    expect(flowStyles).toMatch(
+      /\.yachiyo-chat-composer-surface \.mantine-ActionIcon-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control\);/s,
+    )
+    expect(flowStyles).not.toContain('clip-path: circle(50% at 50% 50%)')
+    expect(flowStyles).not.toMatch(/\.yachiyo-mobile-conversation-tools\s*\{[^}]*border-radius:\s*20px;/s)
   })
 
   it('keeps small active navigation labels above WCAG AA contrast in both color schemes', () => {
@@ -177,6 +192,20 @@ describe('Flow Glass visual contracts', () => {
     )
   })
 
+  it('keeps critical absolute layout compatible with Android 11 WebView', () => {
+    expect(viteConfigSource).toContain("cssTarget: isMobile ? 'chrome83' : undefined")
+    const mobileContentRule = flowStyles.match(/\.yachiyo-mobile-content\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const mainTabPageRule = shellStyles.match(/\.yachiyo-main-tab-page\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const bottomNavRule = flowStyles.match(/\.yachiyo-bottom-nav\s*\{([^}]*)\}/s)?.[1] ?? ''
+
+    expect(mobileContentRule).toMatch(/top:\s*0;[^]*right:\s*0;[^]*bottom:\s*0;[^]*left:\s*0;/)
+    expect(mainTabPageRule).toMatch(/top:\s*0;[^]*right:\s*0;[^]*bottom:\s*0;[^]*left:\s*0;/)
+    expect(bottomNavRule).toMatch(/top:\s*auto;[^]*right:\s*0;[^]*bottom:\s*0;[^]*left:\s*0;/)
+    expect(mobileContentRule).not.toMatch(/(?:^|\s)inset\s*:/)
+    expect(mainTabPageRule).not.toMatch(/(?:^|\s)inset\s*:/)
+    expect(bottomNavRule).not.toMatch(/(?:^|\s)inset\s*:/)
+  })
+
   it('keeps the Releases action as a low-emphasis inline action instead of stacked glass', () => {
     const classIndex = workspaceSource.indexOf('className="yachiyo-about-release-action"')
     const actionStart = workspaceSource.lastIndexOf('<UnstyledButton', classIndex)
@@ -224,6 +253,12 @@ describe('Flow Glass visual contracts', () => {
     expect(reducedStyles).toMatch(/backdrop-filter:\s*none !important;/)
     expect(reducedStyles).toMatch(/-webkit-backdrop-filter:\s*none !important;/)
     expect(reducedStyles).toMatch(/filter:\s*none !important;/)
+    expect(reducedStyles).toMatch(
+      /\[data-yachiyo-liquid-glass-quality=['"]reduced['"]\]\s+body \*\s*\{[^}]*backdrop-filter:\s*none !important;[^}]*-webkit-backdrop-filter:\s*none !important;/s
+    )
+    expect(reducedStyles).toMatch(
+      /\[data-yachiyo-liquid-glass-quality=['"]reduced['"]\]\s*\.yachiyo-bottom-nav-lens-inner\s*\{[^}]*background:\s*var\(--flow-control-fill\) !important;/s
+    )
     expect(reducedStyles).not.toMatch(/url\(["']#yachiyo-flow-/)
   })
 

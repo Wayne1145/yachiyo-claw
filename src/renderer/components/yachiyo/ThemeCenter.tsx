@@ -313,9 +313,9 @@ export function ThemeCenter() {
             </div>
             <div className="yachiyo-theme-card-heading">
               <div>
-                <Text fw={650}>{t('Yachiyo 液态玻璃')}</Text>
+                <Text fw={650}>{t('Yachiyo 流光玻璃')}</Text>
                 <Text size="xs" c="dimmed">
-                  {t('内置 · ChatGPT 简约布局与半透明玻璃控件')}
+                  {t('内置 · Apple 式连续圆角、共享透镜与分层玻璃材质')}
                 </Text>
               </div>
               {activeThemeId === BUILT_IN_LIQUID_GLASS_THEME_ID && !previewingTheme && (

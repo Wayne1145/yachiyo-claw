@@ -10,6 +10,9 @@ body:has(.yachiyo-mobile-shell),
   --yachiyo-border: var(--chatbox-border-primary, #dbe4e7);
   --yachiyo-text: var(--chatbox-tint-primary, #182126);
   --yachiyo-text-muted: var(--chatbox-tint-tertiary, #66747b);
+  --yachiyo-r-shell: 24px;
+  --yachiyo-r-surface: 18px;
+  --yachiyo-r-control: 14px;
 }
 
 .yachiyo-mobile-shell {
@@ -24,6 +27,12 @@ body:has(.yachiyo-mobile-shell),
   color: var(--yachiyo-text);
   background: var(--yachiyo-surface-muted);
   overflow: hidden;
+}
+
+.yachiyo-mobile-shell
+  :where(button, [role='button'], .mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
+  border-radius: var(--yachiyo-r-control);
+  corner-shape: squircle;
 }
 
 .App:has(.yachiyo-mobile-shell) {
@@ -74,7 +83,10 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-shared-interactive-chrome-host > .yachiyo-interactive-header {
   position: relative;
-  inset: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
   box-sizing: border-box;
   width: 100%;
   min-height: 44px;
@@ -197,7 +209,10 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-pager-header-title-layer[data-target='true'] {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .yachiyo-mobile-title strong {
@@ -253,7 +268,7 @@ body:has(.yachiyo-mobile-shell),
   font-size: 12px;
   white-space: nowrap;
   padding: 7px 11px;
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
   background: var(--yachiyo-surface-muted);
   transition:
     color 180ms ease,
@@ -294,12 +309,41 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-main-tab-page {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   min-width: 0;
   overflow: hidden;
   padding-right: var(--mobile-safe-area-inset-right, 0px);
   padding-left: var(--mobile-safe-area-inset-left, 0px);
   backface-visibility: hidden;
+}
+
+/* Nested route scroll roots must not let WebView cancel a horizontal PointerEvent stream before the pager locks it. */
+.yachiyo-main-tab-page,
+.yachiyo-main-tab-page :where(*) {
+  touch-action: pan-y pinch-zoom;
+}
+
+.yachiyo-main-tab-page
+  :where(
+    button,
+    input,
+    textarea,
+    select,
+    [role='button'],
+    [role='slider'],
+    [data-yachiyo-tab-swipe='block'],
+    [data-yachiyo-tab-swipe='block'] *,
+    .shiki-code-wrapper,
+    .shiki-code-wrapper *,
+    pre,
+    pre *,
+    table,
+    table *
+  ) {
+  touch-action: auto;
 }
 
 .yachiyo-retained-tab-surface {
@@ -398,10 +442,23 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-settings-stack-page {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   overflow: hidden;
   backface-visibility: hidden;
   contain: layout paint;
+  background: #f2f2f7;
+}
+
+.yachiyo-settings-stack-page[data-settings-active='false'] {
+  pointer-events: none;
+  user-select: none;
+}
+
+html[data-theme='dark'] .yachiyo-settings-stack-page {
+  background: #121316;
 }
 
 .yachiyo-settings-chrome-leading,
@@ -422,7 +479,10 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-settings-chrome-layer {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -454,7 +514,10 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-main-tab-seam {
   position: absolute;
-  inset: 6% auto 10% 0;
+  top: 6%;
+  right: auto;
+  bottom: 10%;
+  left: 0;
   z-index: 3;
   width: 1px;
   pointer-events: none;
@@ -488,7 +551,7 @@ body:has(.yachiyo-mobile-shell),
   grid-auto-columns: minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--yachiyo-border);
-  border-radius: 24px;
+  border-radius: var(--yachiyo-r-shell);
   background: rgba(255, 255, 255, 0.96);
   background: color-mix(in srgb, var(--yachiyo-surface) 96%, transparent);
   box-shadow: 0 8px 28px rgba(29, 50, 57, 0.1);
@@ -551,7 +614,17 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-interactive-header-actions .yachiyo-interactive-mode-control {
-  min-width: 106px;
+  width: 144px;
+  min-width: 132px;
+}
+
+.yachiyo-interactive-mode-control .mantine-SegmentedControl-controls,
+.yachiyo-interactive-mode-control .mantine-SegmentedControl-control {
+  min-width: 0;
+}
+
+.yachiyo-interactive-mode-control .mantine-SegmentedControl-control {
+  flex: 1 1 50%;
 }
 
 .yachiyo-interactive-header-actions .mantine-SegmentedControl-control,
@@ -652,7 +725,10 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-interactive-backdrop {
   position: absolute;
   z-index: -2;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: var(--yachiyo-surface-soft);
   background-position: center;
   background-size: cover;
@@ -673,13 +749,19 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-live2d-stage {
   position: absolute;
   z-index: 1;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   overflow: hidden;
 }
 
 .yachiyo-live2d-canvas-host {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .coding-tab-preview {
@@ -753,7 +835,6 @@ body:has(.yachiyo-mobile-shell),
   }
 }
 
-.yachiyo-live2d-error,
 .yachiyo-interactive-loading {
   display: flex;
   align-items: center;
@@ -763,6 +844,98 @@ body:has(.yachiyo-mobile-shell),
   padding: 24px;
   color: var(--yachiyo-text-muted);
   text-align: center;
+}
+
+.yachiyo-live2d-error-panel {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 480px);
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--yachiyo-border) 82%, transparent);
+  border-radius: 16px;
+  color: var(--yachiyo-text);
+  background: color-mix(in srgb, var(--yachiyo-surface) 94%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 58%, transparent),
+    0 12px 32px rgba(20, 27, 36, 0.12);
+  text-align: start;
+  backdrop-filter: blur(20px) saturate(1.12);
+  -webkit-backdrop-filter: blur(20px) saturate(1.12);
+}
+
+.yachiyo-live2d-stage > .yachiyo-live2d-error-panel {
+  position: absolute;
+  z-index: 10;
+  top: 50%;
+  left: 50%;
+  width: min(calc(100% - 24px), 480px);
+  transform: translate(-50%, -50%);
+}
+
+.yachiyo-live2d-error-panel strong {
+  font-size: 15px;
+}
+
+.yachiyo-live2d-error-panel p {
+  margin: 0;
+  color: var(--yachiyo-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.yachiyo-live2d-error-panel .yachiyo-live2d-error-resolution {
+  color: var(--yachiyo-text);
+}
+
+.yachiyo-live2d-error-panel > code {
+  width: fit-content;
+  padding: 3px 7px;
+  border-radius: 7px;
+  color: var(--yachiyo-accent);
+  background: color-mix(in srgb, var(--yachiyo-accent) 9%, transparent);
+  font-size: 12px;
+}
+
+.yachiyo-live2d-error-actions,
+.yachiyo-live2d-error-actions details {
+  display: grid;
+  gap: 8px;
+}
+
+.yachiyo-live2d-error-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 44px;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid var(--yachiyo-border);
+  border-radius: 22px;
+  color: var(--yachiyo-text);
+  background: var(--yachiyo-surface-soft);
+}
+
+.yachiyo-live2d-error-actions summary {
+  min-height: 44px;
+  padding-block: 12px;
+  color: var(--yachiyo-text-muted);
+  cursor: pointer;
+}
+
+.yachiyo-live2d-error-actions pre {
+  max-height: 160px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 10px;
+  color: var(--yachiyo-text);
+  background: color-mix(in srgb, var(--yachiyo-surface) 92%, black 8%);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
 }
 
 .yachiyo-live-bubble {
@@ -791,7 +964,10 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-live-bubble::before {
   position: absolute;
   z-index: -1;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   content: '';
   background: rgba(255, 255, 255, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
@@ -830,7 +1006,7 @@ body:has(.yachiyo-mobile-shell),
   padding: 10px 16px;
   overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
   color: rgba(30, 27, 32, 0.84);
   background: rgba(255, 250, 253, 0.56);
   box-shadow: 0 8px 24px rgba(76, 42, 58, 0.12);
@@ -875,7 +1051,7 @@ body:has(.yachiyo-mobile-shell),
   max-width: calc(100% - 28px);
   padding: 8px 12px;
   border: 1px solid var(--chatbox-border-brand);
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--yachiyo-accent-strong);
   background: var(--yachiyo-surface);
   box-shadow: 0 7px 22px rgba(76, 42, 58, 0.1);
@@ -903,7 +1079,7 @@ body:has(.yachiyo-mobile-shell),
   height: 52px;
   padding: 0 15px;
   border: 1px solid var(--yachiyo-border);
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--yachiyo-text);
   background: var(--yachiyo-surface);
   box-shadow: 0 5px 16px rgba(44, 35, 40, 0.08);
@@ -992,7 +1168,7 @@ body:has(.yachiyo-mobile-shell),
   width: 48px;
   height: 48px;
   flex: 0 0 48px;
-  border-radius: 50%;
+  border-radius: var(--yachiyo-r-control);
   object-fit: cover;
   background: var(--yachiyo-surface-soft);
 }
@@ -1018,7 +1194,7 @@ body:has(.yachiyo-mobile-shell),
   max-width: 122px;
   min-height: 44px;
   padding: 3px 7px 3px 4px;
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--yachiyo-text-muted);
   background: var(--yachiyo-surface-muted);
 }
@@ -1026,7 +1202,7 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-character-menu-avatar {
   width: 25px;
   height: 25px;
-  border-radius: 50%;
+  border-radius: 8px;
   object-fit: cover;
 }
 .yachiyo-character-selector span {
@@ -1077,7 +1253,7 @@ body:has(.yachiyo-mobile-shell),
   width: 48px;
   height: 48px;
   flex: 0 0 48px;
-  border-radius: 50%;
+  border-radius: var(--yachiyo-r-control);
   object-fit: cover;
 }
 .yachiyo-character-cards span {
@@ -1106,7 +1282,16 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-mobile-composer-row {
   width: 100%;
   min-width: 0;
-  min-height: 48px;
+  min-height: 114px;
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) 44px 0 48px;
+  grid-template-rows: minmax(64px, auto) 44px;
+  grid-template-areas:
+    'input input input input input'
+    'add model reasoning spacer primary';
+  column-gap: 6px !important;
+  row-gap: 6px !important;
+  align-items: center !important;
 }
 
 .yachiyo-mobile-chat-composer .yachiyo-composer-attachments {
@@ -1115,14 +1300,33 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-mobile-composer-row .mantine-Textarea-root,
 .yachiyo-mobile-composer-row .mantine-Textarea-wrapper {
+  grid-area: input;
+  width: 100%;
   min-width: 0;
 }
 
 .yachiyo-mobile-composer-row .mantine-Textarea-input {
-  min-height: 44px;
-  padding-block: 10px;
+  width: 100%;
+  min-height: 64px;
+  max-height: min(144px, 30dvh);
+  padding: 14px 6px 10px;
   font-size: 16px !important;
   line-height: 24px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.yachiyo-mobile-composer-row .mantine-Textarea-input::placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yachiyo-mobile-composer-row .mantine-Textarea-input:focus,
+.yachiyo-mobile-composer-row .mantine-Textarea-input:focus-visible {
+  outline: none;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .yachiyo-mobile-composer-row .yachiyo-composer-add,
@@ -1136,19 +1340,21 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-composer-model {
-  width: min(112px, 25vw);
-  min-width: 58px;
+  grid-area: model;
+  width: 100%;
+  max-width: none;
+  min-width: 44px;
   height: 44px;
   min-height: 44px;
-  flex: 0 1 min(112px, 25vw);
+  flex: none;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 5px;
   overflow: hidden;
   padding: 0 8px;
   border: 0;
-  border-radius: 22px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--chatbox-tint-secondary);
   background: color-mix(in srgb, var(--chatbox-background-tertiary) 72%, transparent);
   font-size: 13px;
@@ -1180,13 +1386,14 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-composer-reasoning {
+  grid-area: reasoning;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
   padding: 0 6px;
   border: 0;
-  border-radius: 22px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--chatbox-tint-secondary);
   background: transparent;
   font-size: 14px;
@@ -1199,6 +1406,7 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-mobile-composer-row .yachiyo-composer-primary {
+  grid-area: primary;
   color: #fff;
   background: #202123;
 }
@@ -1209,6 +1417,7 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-mobile-composer-row .yachiyo-composer-add {
+  grid-area: add;
   color: var(--chatbox-tint-primary);
   background: transparent;
 }
@@ -1237,10 +1446,13 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-chat-voice-button[data-recording='true']::after {
   position: absolute;
-  inset: -4px;
+  top: -4px;
+  right: -4px;
+  bottom: -4px;
+  left: -4px;
   content: '';
   border: 2px solid var(--chatbox-border-brand);
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-surface);
   animation: yachiyo-voice-recording-pulse 1.15s ease-out infinite;
   pointer-events: none;
 }
@@ -1255,7 +1467,7 @@ body:has(.yachiyo-mobile-shell),
   width: 100%;
   height: 4px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--yachiyo-surface-muted);
 }
 .yachiyo-context-progress > span {
@@ -1344,7 +1556,7 @@ body:has(.yachiyo-mobile-shell),
   top: 0;
   width: 22px;
   height: 2px;
-  border-radius: 999px;
+  border-radius: 1px;
   background: transparent;
 }
 
@@ -1459,7 +1671,7 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-primary-button {
   background: var(--yachiyo-accent) !important;
-  border-radius: 999px !important;
+  border-radius: var(--yachiyo-r-control) !important;
   box-shadow: 0 8px 18px rgba(216, 117, 151, 0.2);
   transition:
     transform 160ms ease,
@@ -1647,7 +1859,7 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-status-value .mantine-Button-root {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
 }
 
 .yachiyo-status-value .yachiyo-about-release-action {
@@ -1715,7 +1927,7 @@ body:has(.yachiyo-mobile-shell),
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 8px;
   color: #9aa4a9;
   background: #eef1f3;
 }
@@ -1741,7 +1953,7 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-permission-row button {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
 }
 
 .yachiyo-history-dialog {
@@ -1756,7 +1968,7 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-history-search input {
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
   background: var(--yachiyo-surface-muted);
 }
 
@@ -1773,12 +1985,15 @@ body:has(.yachiyo-mobile-shell),
   flex: 0 0 auto;
   overflow: hidden;
   border-radius: 16px;
-  background: var(--yachiyo-surface-muted);
+  background: rgb(238, 241, 245);
 }
 
 .yachiyo-history-actions {
   position: absolute;
-  inset: 0 0 0 auto;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
   width: var(--yachiyo-history-action-width);
   display: grid;
   grid-template-columns: repeat(var(--yachiyo-history-action-count), 44px);
@@ -1814,19 +2029,19 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-history-actions button[data-action='favorite'] {
-  background: #d89a32;
+  background: #b88732;
 }
 
 .yachiyo-history-actions button[data-action='fork'] {
-  background: #71858d;
+  background: #657981;
 }
 
 .yachiyo-history-actions button[data-action='rename'] {
-  background: #9674a2;
+  background: #81668c;
 }
 
 .yachiyo-history-actions button[data-action='delete'] {
-  background: #d45f68;
+  background: #c34f5a;
 }
 
 .yachiyo-history-item {
@@ -1841,7 +2056,7 @@ body:has(.yachiyo-mobile-shell),
   border: 0;
   border-radius: 16px;
   color: var(--yachiyo-text);
-  background: var(--yachiyo-surface);
+  background: rgb(250, 251, 253);
   text-align: left;
   touch-action: pan-y;
   overscroll-behavior-x: contain;
@@ -1894,7 +2109,7 @@ body:has(.yachiyo-mobile-shell),
   min-width: 0;
   max-width: 100%;
   min-height: 44px;
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
 }
 
 .yachiyo-agent-header-controls[data-enabled='false'] .yachiyo-agent-toggle {
@@ -1929,7 +2144,22 @@ body:has(.yachiyo-mobile-shell),
 }
 
 .yachiyo-history-item[data-active='true'] {
-  background: #fcebf1;
+  color: #075fb8;
+  background: rgb(231, 242, 253);
+  box-shadow: inset 0 0 0 1px rgba(0, 103, 204, 0.16);
+}
+
+[data-mantine-color-scheme='dark'] .yachiyo-history-swipe {
+  background: rgb(17, 21, 27);
+}
+
+[data-mantine-color-scheme='dark'] .yachiyo-history-item {
+  background: rgb(29, 34, 42);
+}
+
+[data-mantine-color-scheme='dark'] .yachiyo-history-item[data-active='true'] {
+  color: #8dc7ff;
+  background: rgb(27, 48, 68);
 }
 
 @media (max-width: 680px) {
@@ -1951,7 +2181,7 @@ body:has(.yachiyo-mobile-shell),
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 12px;
   color: var(--yachiyo-accent-strong);
   background: var(--yachiyo-surface-soft);
 }
@@ -2577,7 +2807,7 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-agent-feature-actions .mantine-Button-root,
 .yachiyo-workspace-delivery-actions .mantine-Button-root,
 .yachiyo-workspace-delivery-actions .mantine-ActionIcon-root {
-  border-radius: 999px;
+  border-radius: var(--yachiyo-r-control);
 }
 
 .yachiyo-agent-user-message {
@@ -2593,144 +2823,6 @@ body:has(.yachiyo-mobile-shell),
 
 .yachiyo-mobile-shell button:active:not(:disabled) {
   transform: scale(0.975);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-content,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-task-chat,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-task-composer,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-settings-detail {
-  background: #ffffff;
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header {
-  position: relative;
-  border-color: rgba(205, 210, 218, 0.62);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 245, 250, 0.5));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    inset 0 -1px 0 rgba(225, 172, 190, 0.18),
-    0 9px 30px rgba(63, 42, 52, 0.09);
-  backdrop-filter: blur(26px) saturate(1.45);
-  -webkit-backdrop-filter: blur(26px) saturate(1.45);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header-collapsible {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  opacity: 1;
-  transition:
-    grid-template-rows 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 220ms ease;
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header-collapsible-inner {
-  min-height: 0;
-  overflow: hidden;
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header-collapsible[data-collapsed='true'] {
-  grid-template-rows: minmax(0, 0fr);
-  opacity: 0;
-  pointer-events: none;
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header-collapse {
-  display: grid;
-  flex: 0 0 auto;
-  border: 1px solid rgba(202, 207, 215, 0.66);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(255, 241, 247, 0.48));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 5px 16px rgba(76, 42, 58, 0.08);
-  backdrop-filter: blur(18px) saturate(1.35);
-  -webkit-backdrop-filter: blur(18px) saturate(1.35);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header-collapse:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-bottom-nav-grid,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-chat-composer-surface,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-task-composer-panel,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-connection-status,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-settings-list,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-status-panel,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-agent-config-panel,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .local-model-queue-row,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .local-model-installed-row,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-theme-card,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .mantine-Menu-dropdown,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .mantine-Modal-content {
-  border-color: rgba(215, 188, 199, 0.58) !important;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 244, 249, 0.5)) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    inset 0 -1px 0 rgba(225, 172, 190, 0.14),
-    0 10px 32px rgba(76, 42, 58, 0.09) !important;
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass']
-  .yachiyo-mobile-shell
-  .mantine-ActionIcon-root:not([data-variant='filled']),
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Button-root[data-variant='default'],
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Button-root[data-variant='subtle'],
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Button-root[data-variant='light'],
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Button-root[data-variant='outline'] {
-  border-color: rgba(214, 190, 201, 0.62);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 241, 247, 0.46));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 4px 14px rgba(76, 42, 58, 0.06);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Input-input,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Textarea-input,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-Select-input,
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-shell .mantine-SegmentedControl-root {
-  border-color: rgba(214, 190, 201, 0.62);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(255, 244, 249, 0.5));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 4px 14px rgba(76, 42, 58, 0.05);
-  backdrop-filter: blur(18px) saturate(1.35);
-  -webkit-backdrop-filter: blur(18px) saturate(1.35);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-bottom-nav-item[data-active='true'] {
-  background: rgba(230, 142, 170, 0.16);
-}
-
-html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-agent-user-message {
-  border: 1px solid rgba(225, 172, 190, 0.5);
-  background: rgba(249, 229, 236, 0.64);
-  backdrop-filter: blur(16px) saturate(1.25);
-  -webkit-backdrop-filter: blur(16px) saturate(1.25);
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-bottom-nav-grid,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-chat-composer-surface,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-task-composer-panel,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-settings-list,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-status-panel,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .local-model-queue-row,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .mantine-Menu-dropdown,
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .mantine-Modal-content {
-    background: rgba(255, 255, 255, 0.94) !important;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-mobile-header-collapsible {
-    transition: none;
-  }
 }
 
 @media (max-width: 680px) {
@@ -2964,7 +3056,7 @@ html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-agent-user-message 
 
   .yachiyo-interactive-mode-control {
     width: 100%;
-    min-width: 106px;
+    min-width: 120px;
   }
 
   .yachiyo-interactive-llm-selector {
@@ -2981,7 +3073,7 @@ html[data-yachiyo-appearance='legacy-liquid-glass'] .yachiyo-agent-user-message 
 
 @media (orientation: portrait) and (max-width: 360px) {
   .yachiyo-interactive-mode-control {
-    min-width: 90px;
+    min-width: 112px;
   }
 }
 

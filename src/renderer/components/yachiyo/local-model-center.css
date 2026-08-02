@@ -27,7 +27,7 @@
   display: grid;
   place-items: center;
   border: 2px solid var(--yachiyo-surface, #fff);
-  border-radius: 999px;
+  border-radius: 6px;
   color: #fff;
   background: var(--yachiyo-accent, #d8648e);
   font-size: 9px;
@@ -309,7 +309,7 @@
 }
 .local-model-installed-meta span {
   padding: 4px 9px;
-  border-radius: 999px;
+  border-radius: 8px;
   color: var(--yachiyo-text-muted, #626d73);
   background: var(--yachiyo-surface-muted, #f2f4f5);
   font-size: 12px;
@@ -362,6 +362,18 @@
 .local-model-queue-stats strong {
   margin-left: auto;
   color: var(--yachiyo-text, #3d484e);
+}
+.yachiyo-download-parts {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--yachiyo-surface-muted, rgba(242, 244, 245, 0.88));
+}
+.yachiyo-download-part {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 @media (max-width: 600px) {
   .local-model-center {

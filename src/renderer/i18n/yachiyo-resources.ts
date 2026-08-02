@@ -161,8 +161,9 @@ const english: Record<string, string> = {
   保存设置: 'Save settings',
   收起顶部: 'Hide top controls',
   展开顶部: 'Show top controls',
-  'Yachiyo 液态玻璃': 'Yachiyo Liquid Glass',
-  '内置 · ChatGPT 简约布局与半透明玻璃控件': 'Built in · Minimal ChatGPT layout with translucent glass controls',
+  'Yachiyo 流光玻璃': 'Yachiyo Flow Glass',
+  '内置 · Apple 式连续圆角、共享透镜与分层玻璃材质':
+    'Built in · Apple-style continuous corners, shared lens, and layered glass materials',
   手机控制权限: 'Phone-control permissions',
   此权限仅用于操作手机: 'These permissions are only for phone control',
   '内部 Linux 沙箱、Skills、MCP 和文件工具不需要 Root、Shizuku 或无障碍权限。':

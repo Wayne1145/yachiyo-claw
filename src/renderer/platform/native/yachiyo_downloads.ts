@@ -11,6 +11,12 @@ export interface DownloadSettings {
   detectedCountry?: string
 }
 
+export interface DownloadNetworkStatus {
+  connected: boolean
+  wifi: boolean
+  metered: boolean
+}
+
 interface YachiyoDownloadsPlugin {
   list(): Promise<{ tasks: NativeDownloadTask[] }>
   probe(options: { url: string; maximumBytes: number }): Promise<{ url: string; size: number }>
@@ -27,6 +33,7 @@ interface YachiyoDownloadsPlugin {
   }>
   removeArtifact(options: { id: string; keepRecord?: boolean }): Promise<void>
   getSettings(): Promise<DownloadSettings>
+  networkStatus(): Promise<DownloadNetworkStatus>
   initializeRegionalDefaults(): Promise<DownloadSettings>
   saveSettings(options: DownloadSettings): Promise<DownloadSettings>
   /** Remove a terminal task row from the unified index (does not touch in-flight work). */

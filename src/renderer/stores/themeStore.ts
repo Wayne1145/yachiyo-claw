@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { parseThemeManifest, resolveThemeVariables, ThemeManifestError, type ThemeManifest } from '@shared/themes/theme'
+import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { uiStore } from './uiStore'
 
 /**
@@ -12,35 +13,76 @@ import { uiStore } from './uiStore'
 
 const STORAGE_INSTALLED = 'yachiyo:themes:installed:v1'
 const STORAGE_ACTIVE = 'yachiyo:themes:active:v1'
+const STORAGE_ANDROID_FLOW_GLASS_MIGRATION = 'yachiyo:appearance:flow-glass:migration:v2'
 export const BUILT_IN_LIQUID_GLASS_THEME_ID = 'yachiyo-liquid-glass'
 
 export const BUILT_IN_LIQUID_GLASS_THEME: ThemeManifest = parseThemeManifest({
   schemaVersion: 1,
   id: BUILT_IN_LIQUID_GLASS_THEME_ID,
-  name: 'Yachiyo Liquid Glass',
-  version: '1.0.0',
+  name: 'Yachiyo Flow Glass',
+  version: '2.0.0',
   author: { name: 'NewDreamStudio' },
   mode: 'both',
   tokens: {
     'tint-primary': '#17181b',
     'tint-secondary': '#4f555c',
     'tint-tertiary': '#747b84',
-    'tint-brand': '#d87597',
+    'tint-brand': '#007aff',
     'border-primary': '#dfe3e8',
     'border-secondary': '#ebedf0',
-    'border-brand': '#e68eaa',
+    'border-brand': '#007aff',
     'background-primary': '#ffffff',
     'background-primary-hover': '#f8f9fb',
     'background-secondary': 'rgba(246, 247, 249, 0.78)',
     'background-secondary-hover': 'rgba(238, 240, 244, 0.86)',
     'background-tertiary': 'rgba(232, 235, 240, 0.68)',
     'background-tertiary-hover': 'rgba(225, 229, 235, 0.78)',
-    'background-brand-primary': '#e68eaa',
-    'background-brand-primary-hover': '#d87597',
-    'background-brand-secondary': 'rgba(230, 142, 170, 0.14)',
-    'background-brand-secondary-hover': 'rgba(230, 142, 170, 0.22)',
+    'background-brand-primary': '#007aff',
+    'background-brand-primary-hover': '#006ee6',
+    'background-brand-secondary': 'rgba(0, 122, 255, 0.12)',
+    'background-brand-secondary-hover': 'rgba(0, 122, 255, 0.2)',
   },
 })
+
+const BUILT_IN_FLOW_GLASS_LIGHT_VARIABLES: Record<string, string> = {
+  '--chatbox-tint-primary': '#17212b',
+  '--chatbox-tint-secondary': '#455463',
+  '--chatbox-tint-tertiary': '#687786',
+  '--chatbox-tint-brand': '#007aff',
+  '--chatbox-border-primary': 'rgba(69, 87, 104, 0.16)',
+  '--chatbox-border-secondary': 'rgba(69, 87, 104, 0.1)',
+  '--chatbox-border-brand': '#007aff',
+  '--chatbox-background-primary': '#ffffff',
+  '--chatbox-background-primary-hover': '#f5f9fc',
+  '--chatbox-background-secondary': 'rgba(250, 252, 255, 0.68)',
+  '--chatbox-background-secondary-hover': 'rgba(240, 247, 253, 0.82)',
+  '--chatbox-background-tertiary': 'rgba(232, 241, 249, 0.7)',
+  '--chatbox-background-tertiary-hover': 'rgba(222, 235, 247, 0.82)',
+  '--chatbox-background-brand-primary': '#007aff',
+  '--chatbox-background-brand-primary-hover': '#006ee6',
+  '--chatbox-background-brand-secondary': 'rgba(0, 122, 255, 0.12)',
+  '--chatbox-background-brand-secondary-hover': 'rgba(0, 122, 255, 0.2)',
+}
+
+const BUILT_IN_FLOW_GLASS_DARK_VARIABLES: Record<string, string> = {
+  '--chatbox-tint-primary': '#f4f7fa',
+  '--chatbox-tint-secondary': '#b9c2cc',
+  '--chatbox-tint-tertiary': '#8d99a5',
+  '--chatbox-tint-brand': '#0a84ff',
+  '--chatbox-border-primary': 'rgba(230, 237, 244, 0.14)',
+  '--chatbox-border-secondary': 'rgba(230, 237, 244, 0.09)',
+  '--chatbox-border-brand': '#0a84ff',
+  '--chatbox-background-primary': '#181d24',
+  '--chatbox-background-primary-hover': '#20262e',
+  '--chatbox-background-secondary': 'rgba(27, 33, 41, 0.72)',
+  '--chatbox-background-secondary-hover': 'rgba(38, 45, 54, 0.82)',
+  '--chatbox-background-tertiary': 'rgba(43, 50, 60, 0.76)',
+  '--chatbox-background-tertiary-hover': 'rgba(52, 61, 72, 0.86)',
+  '--chatbox-background-brand-primary': '#0a84ff',
+  '--chatbox-background-brand-primary-hover': '#409cff',
+  '--chatbox-background-brand-secondary': 'rgba(10, 132, 255, 0.16)',
+  '--chatbox-background-brand-secondary-hover': 'rgba(10, 132, 255, 0.24)',
+}
 
 function isBuiltInThemeId(id: string | null | undefined): id is typeof BUILT_IN_LIQUID_GLASS_THEME_ID {
   return id === BUILT_IN_LIQUID_GLASS_THEME_ID
@@ -86,9 +128,18 @@ function loadInstalled(): ThemeManifest[] {
   }
 }
 
-function loadActive(): string | null {
+export function migrateAndroidFlowGlassAppearance(
+  buildPlatform: string = CHATBOX_BUILD_PLATFORM,
+  storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage
+): string | null {
   try {
-    return localStorage.getItem(STORAGE_ACTIVE) || null
+    const storedActive = storage.getItem(STORAGE_ACTIVE) || null
+    if (buildPlatform !== 'android') return storedActive
+    if (storage.getItem(STORAGE_ANDROID_FLOW_GLASS_MIGRATION) === '2.0.0') return storedActive
+
+    storage.setItem(STORAGE_ACTIVE, BUILT_IN_LIQUID_GLASS_THEME_ID)
+    storage.setItem(STORAGE_ANDROID_FLOW_GLASS_MIGRATION, '2.0.0')
+    return BUILT_IN_LIQUID_GLASS_THEME_ID
   } catch {
     return null
   }
@@ -133,7 +184,7 @@ interface ThemeStoreState {
 }
 
 const initialInstalled = loadInstalled()
-const storedActiveThemeId = loadActive()
+const storedActiveThemeId = migrateAndroidFlowGlassAppearance()
 const initialActiveThemeId =
   isBuiltInThemeId(storedActiveThemeId) || initialInstalled.some((theme) => theme.id === storedActiveThemeId)
     ? storedActiveThemeId
@@ -227,6 +278,13 @@ export function applyActiveTheme(): void {
   const selectedTheme = previewingTheme ?? theme
   const scheme = currentScheme()
   const themeSupportsScheme = selectedTheme?.mode === 'both' || selectedTheme?.mode === scheme
+  const selectedVariables = isBuiltInThemeId(selectedTheme?.id)
+    ? scheme === 'dark'
+      ? BUILT_IN_FLOW_GLASS_DARK_VARIABLES
+      : BUILT_IN_FLOW_GLASS_LIGHT_VARIABLES
+    : selectedTheme && themeSupportsScheme
+      ? resolveAndroidThemeVariables(selectedTheme)
+      : {}
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.yachiyoAppearance =
       selectedTheme?.id === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'flow-glass' : 'default'
@@ -234,7 +292,7 @@ export function applyActiveTheme(): void {
   applyVariables({
     ...BUILT_IN_ANDROID_BRAND_VARIABLES,
     ...(scheme === 'light' ? BUILT_IN_ANDROID_LIGHT_VARIABLES : {}),
-    ...(selectedTheme && themeSupportsScheme ? resolveAndroidThemeVariables(selectedTheme) : {}),
+    ...selectedVariables,
   })
 }
 

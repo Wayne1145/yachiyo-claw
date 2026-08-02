@@ -146,8 +146,8 @@ public final class YachiyoModelDownloadWorker extends Worker {
                 if (!store.saveIfWorkerActive(job)) throw new InterruptedException("model_download_inactive");
                 int percentage = progress(downloaded, total);
                 setProgressAsync(new Data.Builder().putLong("bytesDownloaded", downloaded).putLong("bytesTotal", total).putLong("bytesPerSecond", speed).putInt("progress", percentage).build());
-                DownloadNotifications.show(getApplicationContext(), jobId, "正在下载本地模型", downloaded, total);
-                setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), jobId, "正在下载本地模型", downloaded, total));
+                DownloadNotifications.show(getApplicationContext(), jobId, "正在下载本地模型", downloaded, total, speed);
+                setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), jobId, "正在下载本地模型", downloaded, total, speed));
             }, this::isStopped);
     }
 

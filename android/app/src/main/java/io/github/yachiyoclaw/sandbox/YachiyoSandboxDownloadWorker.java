@@ -121,8 +121,8 @@ public final class YachiyoSandboxDownloadWorker extends Worker {
                 (start, end) -> open(spec, start, end),
                 (bytes, total, speed) -> {
                     DownloadTaskStore.update(getApplicationContext(), taskId, "sandbox", "Linux 沙箱基础环境", "downloading", bytes, total, speed, null);
-                    DownloadNotifications.show(getApplicationContext(), taskId, "正在下载 Linux 沙箱基础环境", bytes, total);
-                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), taskId, "正在下载 Linux 沙箱基础环境", bytes, total));
+                    DownloadNotifications.show(getApplicationContext(), taskId, "正在下载 Linux 沙箱基础环境", bytes, total, speed);
+                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), taskId, "正在下载 Linux 沙箱基础环境", bytes, total, speed));
                 },
                 () -> isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), taskId)
             );

@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import localforage from 'localforage'
+import { createLive2DError, normalizeLive2DError } from './live2d-errors'
 
 export type Live2DActionKind = 'expression' | 'motion'
 
@@ -30,6 +31,10 @@ interface StoredLive2DModel {
 
 interface Model3Json {
   FileReferences?: {
+    Moc?: string
+    Textures?: string[]
+    Physics?: string
+    DisplayInfo?: string
     Expressions?: Array<{ Name?: string; File?: string }>
     Motions?: Record<string, Array<{ File?: string }>>
   }
@@ -46,9 +51,15 @@ const MAX_ARCHIVE_FILES = 2_000
 const MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
 
 export function validateLive2DArchiveLimits(fileSize: number, fileCount: number, uncompressedBytes: number): void {
-  if (fileSize > MAX_ARCHIVE_BYTES) throw new Error('live2d_archive_too_large')
-  if (fileCount > MAX_ARCHIVE_FILES) throw new Error('live2d_archive_too_many_files')
-  if (uncompressedBytes > MAX_UNCOMPRESSED_BYTES) throw new Error('live2d_archive_uncompressed_too_large')
+  if (fileSize > MAX_ARCHIVE_BYTES) {
+    throw createLive2DError('L2D-IMP-002', { technicalDetail: `archiveBytes=${fileSize}` })
+  }
+  if (fileCount > MAX_ARCHIVE_FILES) {
+    throw createLive2DError('L2D-IMP-003', { technicalDetail: `fileCount=${fileCount}` })
+  }
+  if (uncompressedBytes > MAX_UNCOMPRESSED_BYTES) {
+    throw createLive2DError('L2D-IMP-004', { technicalDetail: `uncompressedBytes=${uncompressedBytes}` })
+  }
 }
 
 export const BUILT_IN_LIVE2D_MODEL_ID = 'yachiyo-built-in'
@@ -179,13 +190,76 @@ export async function listLive2DModels(): Promise<Live2DModelDescriptor[]> {
 
 function findModelSettingsPath(paths: string[]): string | undefined {
   return paths.find(
-    (path) => !path.toLocaleLowerCase().endsWith('items_pinned_to_model.json') && path.endsWith('.model3.json')
+    (path) =>
+      !path.toLocaleLowerCase().endsWith('items_pinned_to_model.json') &&
+      path.toLocaleLowerCase().endsWith('.model3.json')
   )
+}
+
+function normalizeArchivePath(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '')
+  const segments = normalized.split('/')
+  if (
+    normalized.startsWith('/') ||
+    /^[a-z]:\//i.test(normalized) ||
+    segments.some((segment) => segment === '..')
+  ) {
+    throw createLive2DError('L2D-CFG-003', { resource: path, technicalDetail: `unsafePath=${path}` })
+  }
+  return segments.filter((segment) => segment && segment !== '.').join('/')
+}
+
+function resolveModelReference(settingsPath: string, reference: string): string {
+  const base = settingsPath.split('/').slice(0, -1)
+  return normalizeArchivePath([...base, reference].join('/'))
+}
+
+function validateModelReferences(settingsPath: string, settings: Model3Json, paths: string[]): void {
+  const refs = settings.FileReferences
+  if (!refs?.Moc || !Array.isArray(refs.Textures) || refs.Textures.length === 0) {
+    throw createLive2DError('L2D-CFG-002', { resource: settingsPath, technicalDetail: 'Missing Moc or Textures' })
+  }
+  const normalizedPaths = new Map<string, string>()
+  for (const path of paths) {
+    const normalized = normalizeArchivePath(path)
+    const comparisonKey = normalized.toLocaleLowerCase()
+    if (normalizedPaths.has(comparisonKey)) {
+      throw createLive2DError('L2D-CFG-003', {
+        resource: path,
+        technicalDetail: `Conflicting paths: ${normalizedPaths.get(comparisonKey)} and ${path}`,
+      })
+    }
+    normalizedPaths.set(comparisonKey, normalized)
+  }
+
+  const referenced = [
+    refs.Moc,
+    ...refs.Textures,
+    refs.Physics,
+    refs.DisplayInfo,
+    ...(refs.Expressions || []).map((expression) => expression.File),
+    ...Object.values(refs.Motions || {}).flatMap((motions) => motions.map((motion) => motion.File)),
+  ].filter((path): path is string => Boolean(path))
+
+  for (const reference of referenced) {
+    const resolved = resolveModelReference(settingsPath, reference)
+    if (!normalizedPaths.has(resolved.toLocaleLowerCase())) {
+      throw createLive2DError('L2D-CFG-004', {
+        resource: resolved,
+        technicalDetail: `Missing referenced asset: ${resolved}`,
+      })
+    }
+  }
 }
 
 export async function importLive2DModel(file: File): Promise<Live2DModelDescriptor> {
   validateLive2DArchiveLimits(file.size, 0, 0)
-  const zip = await JSZip.loadAsync(file)
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(file)
+  } catch (reason) {
+    throw createLive2DError('L2D-IMP-001', { technicalDetail: normalizeLive2DError(reason, { phase: 'import' }).technicalDetail })
+  }
   const paths = Object.keys(zip.files).filter((path) => !zip.files[path].dir)
   const uncompressedBytes = paths.reduce((total, path) => {
     const entry = zip.files[path] as JSZip.JSZipObject & { _data?: { uncompressedSize?: number } }
@@ -193,20 +267,42 @@ export async function importLive2DModel(file: File): Promise<Live2DModelDescript
   }, 0)
   validateLive2DArchiveLimits(file.size, paths.length, uncompressedBytes)
   const settingsPath = findModelSettingsPath(paths)
-  if (!settingsPath) throw new Error('ZIP 中没有找到 .model3.json')
+  if (!settingsPath) throw createLive2DError('L2D-CFG-001')
 
   const settingsText = await zip.file(settingsPath)?.async('text')
-  if (!settingsText) throw new Error('无法读取 Live2D 模型配置')
-  const settings = JSON.parse(settingsText) as Model3Json
+  if (!settingsText) throw createLive2DError('L2D-CFG-002', { resource: settingsPath })
+  let settings: Model3Json
+  try {
+    settings = JSON.parse(settingsText) as Model3Json
+  } catch (reason) {
+    throw createLive2DError('L2D-CFG-002', {
+      resource: settingsPath,
+      technicalDetail: normalizeLive2DError(reason, { phase: 'settings' }).technicalDetail,
+    })
+  }
+  validateModelReferences(normalizeArchivePath(settingsPath), settings, paths)
   const actions = extractLive2DActions(settings)
   const id = `live2d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const name = file.name.replace(/\.zip$/i, '') || '导入模型'
   const blobKey = `model:${id}`
   const blob = new Blob([await file.arrayBuffer()], { type: 'application/zip' })
 
-  await modelStorage.setItem(blobKey, blob)
+  try {
+    await modelStorage.setItem(blobKey, blob)
+  } catch (reason) {
+    throw createLive2DError('L2D-STORE-001', {
+      technicalDetail: normalizeLive2DError(reason, { phase: 'storage' }).technicalDetail,
+    })
+  }
   const stored: StoredLive2DModel = { id, name, blobKey, actions, importedAt: Date.now() }
-  writeStoredRegistry([...readStoredRegistry(), stored])
+  try {
+    writeStoredRegistry([...readStoredRegistry(), stored])
+  } catch (reason) {
+    await modelStorage.removeItem(blobKey).catch(() => undefined)
+    throw createLive2DError('L2D-STORE-001', {
+      technicalDetail: normalizeLive2DError(reason, { phase: 'storage' }).technicalDetail,
+    })
+  }
   const source = URL.createObjectURL(blob)
   objectUrls.set(id, source)
   return { id, name, source: `zip://${source}`, builtIn: false, actions }

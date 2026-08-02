@@ -8,14 +8,6 @@ import type { AndroidShellTab } from '@/mobile/android-app-shell'
 import { AndroidMainTabPager } from './AndroidMainTabPager'
 import { AndroidPagerGestureLockProvider } from './android-pager-gesture-lock'
 
-const haptics = vi.hoisted(() => ({ selection: vi.fn(async () => true) }))
-
-vi.mock('@/utils/mobile-haptics', () => ({
-  flowGlassHaptics: {
-    selection: haptics.selection,
-  },
-}))
-
 function TestIcon() {
   return <svg aria-hidden />
 }
@@ -91,7 +83,6 @@ describe('AndroidMainTabPager', () => {
 
   beforeEach(async () => {
     await i18n.changeLanguage('zh-Hans')
-    haptics.selection.mockClear()
     vi.stubGlobal('PointerEvent', PointerEventMock)
     clientWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
     pointerCaptureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'setPointerCapture')
@@ -134,7 +125,7 @@ describe('AndroidMainTabPager', () => {
     restore('hasPointerCapture', hasPointerCaptureDescriptor)
   })
 
-  it('renders one lens, previews only the requested distant tab, and commits aria-current with one haptic', async () => {
+  it('renders one lens, previews only the requested distant tab, and commits aria-current', async () => {
     const onChange = vi.fn()
     const { container } = render(<PagerHarness onChange={onChange} />)
 
@@ -147,7 +138,6 @@ describe('AndroidMainTabPager', () => {
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('settings'), { timeout: 2500 })
     await waitFor(() => expect(screen.getByRole('button', { name: '设置' }).getAttribute('aria-current')).toBe('page'))
-    expect(haptics.selection).toHaveBeenCalledOnce()
   })
 
   it('tracks a one-page drag, marks the source preview, and commits the adjacent page', async () => {
@@ -162,7 +152,51 @@ describe('AndroidMainTabPager', () => {
     fireEvent.pointerUp(track, { pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: 90, clientY: 304 })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('tasks'), { timeout: 2500 })
-    expect(haptics.selection).toHaveBeenCalledOnce()
+  })
+
+  it('ignores bubbled capture loss when Chromium transfers implicit capture from a child', async () => {
+    const onChange = vi.fn()
+    const { container } = render(<PagerHarness onChange={onChange} />)
+    const track = container.querySelector('.yachiyo-main-tab-pager') as HTMLElement
+    const source = screen.getByTestId('source-chat')
+
+    fireEvent.pointerDown(source, {
+      pointerId: 8,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 240,
+      clientY: 300,
+    })
+    fireEvent.pointerMove(track, {
+      pointerId: 8,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 180,
+      clientY: 302,
+    })
+    fireEvent.lostPointerCapture(source, {
+      pointerId: 8,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 180,
+      clientY: 302,
+    })
+    fireEvent.pointerMove(track, {
+      pointerId: 8,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 80,
+      clientY: 302,
+    })
+    fireEvent.pointerUp(track, {
+      pointerId: 8,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 80,
+      clientY: 302,
+    })
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('tasks'), { timeout: 2500 })
   })
 
   it('cancels an active page gesture as soon as a second touch begins', async () => {
@@ -203,7 +237,6 @@ describe('AndroidMainTabPager', () => {
     })
 
     expect(onChange).not.toHaveBeenCalled()
-    expect(haptics.selection).not.toHaveBeenCalled()
   })
 
   it('does not capture gestures from inputs or while touch exploration is active', () => {
@@ -287,7 +320,6 @@ describe('AndroidMainTabPager', () => {
     })
 
     expect(onChange).not.toHaveBeenCalled()
-    expect(haptics.selection).not.toHaveBeenCalled()
     portal.remove()
   })
 
@@ -299,7 +331,6 @@ describe('AndroidMainTabPager', () => {
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('tasks'), { timeout: 2500 })
     expect(onChange).not.toHaveBeenCalledWith('settings')
-    expect(haptics.selection).toHaveBeenCalledOnce()
   })
 
   it('uses the pointerup sample so pausing after a fast move cancels a short drag', async () => {
@@ -328,7 +359,6 @@ describe('AndroidMainTabPager', () => {
 
     await waitFor(() => expect(screen.queryByTestId('preview-tasks')).toBeNull(), { timeout: 2500 })
     expect(onChange).not.toHaveBeenCalled()
-    expect(haptics.selection).not.toHaveBeenCalled()
   })
 
   it('cancels an in-flight transition when the committed source tab is tapped', async () => {
@@ -341,7 +371,6 @@ describe('AndroidMainTabPager', () => {
 
     await waitFor(() => expect(screen.queryByTestId('preview-settings')).toBeNull(), { timeout: 2500 })
     expect(onChange).not.toHaveBeenCalled()
-    expect(haptics.selection).not.toHaveBeenCalled()
   })
 
   it('does not coerce a non-navigation plugin page to the Chat index', () => {

@@ -2,6 +2,9 @@ package io.github.yachiyoclaw.download;
 
 import android.content.SharedPreferences;
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import androidx.work.Constraints;
 import androidx.work.NetworkType;
 import androidx.work.WorkManager;
@@ -154,6 +157,19 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     @PluginMethod
     public void list(PluginCall call) {
         call.resolve(new JSObject().put("tasks", DownloadTaskStore.list(getContext())));
+    }
+
+    @PluginMethod
+    public void networkStatus(PluginCall call) {
+        ConnectivityManager manager = getContext().getSystemService(ConnectivityManager.class);
+        Network network = manager == null ? null : manager.getActiveNetwork();
+        NetworkCapabilities capabilities = network == null || manager == null ? null : manager.getNetworkCapabilities(network);
+        boolean connected = capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        boolean wifi = connected && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+        call.resolve(new JSObject()
+            .put("connected", connected)
+            .put("wifi", wifi)
+            .put("metered", connected && manager.isActiveNetworkMetered()));
     }
 
     /** Probes public HTTPS metadata natively so CORS and content encoding cannot alter its size. */

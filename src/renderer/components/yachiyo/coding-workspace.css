@@ -280,6 +280,10 @@ html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::before {
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::after {
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
   inset: 1px;
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 38%, transparent);
   border-radius: calc(var(--flow-r-panel) - 1px);
@@ -301,7 +305,8 @@ html[data-yachiyo-appearance="flow-glass"] .coding-refresh-control.mantine-Butto
   min-height: 44px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 50%;
+  border-radius: var(--flow-r-control, 14px);
+  corner-shape: squircle;
   color: var(--flow-blue);
   background: transparent;
   box-shadow: none;

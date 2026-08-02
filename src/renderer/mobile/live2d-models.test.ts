@@ -34,10 +34,10 @@ describe('Live2D action protocol', () => {
   })
 
   it('rejects archives that exceed resource limits', () => {
-    expect(() => validateLive2DArchiveLimits(257 * 1024 * 1024, 1, 1)).toThrow('live2d_archive_too_large')
-    expect(() => validateLive2DArchiveLimits(1, 2_001, 1)).toThrow('live2d_archive_too_many_files')
+    expect(() => validateLive2DArchiveLimits(257 * 1024 * 1024, 1, 1)).toThrow('L2D-IMP-002')
+    expect(() => validateLive2DArchiveLimits(1, 2_001, 1)).toThrow('L2D-IMP-003')
     expect(() => validateLive2DArchiveLimits(1, 1, 1024 * 1024 * 1024 + 1)).toThrow(
-      'live2d_archive_uncompressed_too_large'
+      'L2D-IMP-004'
     )
   })
 })

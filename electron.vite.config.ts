@@ -251,6 +251,7 @@ export default defineConfig(({ mode }) => {
       build: {
         outDir: isProduction ? 'release/app/dist/renderer' : undefined,
         target: 'es2020', // Avoid static initialization blocks for browser compatibility
+        cssTarget: isMobile ? 'chrome83' : undefined,
         sourcemap: isProduction ? 'hidden' : true,
         minify: isProduction ? 'esbuild' : false, // Use esbuild for faster, less memory-intensive minification
         rollupOptions: {

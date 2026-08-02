@@ -19,7 +19,6 @@ import {
   useState,
 } from 'react'
 import type { AndroidShellTab } from '@/mobile/android-app-shell'
-import { flowGlassHaptics } from '@/utils/mobile-haptics'
 import { AndroidBottomNavigation } from './AndroidBottomNavigation'
 import {
   appendAndroidPagerSample,
@@ -403,7 +402,6 @@ export function AndroidMainTabPager({
       }
       if (transaction !== transactionRef.current) return
       clearTransition(targetIndex)
-      void flowGlassHaptics.selection()
     },
     [
       clearTransition,
@@ -425,9 +423,7 @@ export function AndroidMainTabPager({
       if (sourceIndexRef.current < 0) {
         const transaction = ++transactionRef.current
         void Promise.resolve(onChange(tab))
-          .then(() => {
-            if (transaction === transactionRef.current) void flowGlassHaptics.selection()
-          })
+          .then(() => transaction === transactionRef.current)
           .catch(() => undefined)
         return
       }
@@ -634,7 +630,10 @@ export function AndroidMainTabPager({
         onPointerMove={onPointerMove}
         onPointerUp={(event) => finishPointerGesture(event)}
         onPointerCancel={(event) => finishPointerGesture(event, true)}
-        onLostPointerCapture={(event) => finishPointerGesture(event, true)}
+        onLostPointerCapture={(event) => {
+          // Chromium bubbles the descendant's implicit-capture loss when capture moves to this track.
+          if (event.target === event.currentTarget) finishPointerGesture(event, true)
+        }}
       >
         <motion.div
           className="yachiyo-main-tab-page yachiyo-main-tab-page-source"

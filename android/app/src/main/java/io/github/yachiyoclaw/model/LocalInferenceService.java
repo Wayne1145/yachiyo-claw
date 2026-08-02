@@ -272,10 +272,13 @@ public final class LocalInferenceService extends Service {
         String backend = AccelerationPolicy.normalizeBackend(request.optString("backend"));
         int cpuThreads = Math.max(1, request.optInt("cpuThreads", Math.min(8, Runtime.getRuntime().availableProcessors())));
         boolean npuCompatible = request.optBoolean("declaredNpuCompatible", false);
+        String benchmarkMode = AccelerationPolicy.normalizeMode(request.optString("benchmarkMode"));
+        String benchmarkPhase = request.optString("benchmarkPhase", "verify");
         JSONObject result;
         if (modelPath.toLowerCase().endsWith(".litertlm")) {
             activeRuntime = "litert-lm";
-            result = LiteRtLmRunner.benchmarkBackend(this, modelPath, backend, npuCompatible, cpuThreads);
+            result = LiteRtLmRunner.benchmarkBackend(
+                this, modelPath, backend, npuCompatible, cpuThreads, benchmarkMode, benchmarkPhase);
             result.put("gpuLayers", 0).put("cpuThreads", cpuThreads);
         } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
             activeRuntime = "llama.cpp";
@@ -288,7 +291,9 @@ public final class LocalInferenceService extends Service {
             long initializationMs = Math.max(0L, SystemClock.elapsedRealtime() - loadStarted);
             JSONArray messages = new JSONArray().put(new JSONObject()
                 .put("role", "user").put("content", "Reply with a concise factual sentence about Android."));
-            GgufRunner.infer(modelPath, messages, 32, "benchmark-infer", layers, cpuThreads);
+            int benchmarkTokens = "verify".equals(benchmarkPhase)
+                || AccelerationPolicy.MODE_EXTREME.equals(benchmarkMode) ? 32 : 12;
+            GgufRunner.infer(modelPath, messages, benchmarkTokens, "benchmark-infer", layers, cpuThreads);
             result = GgufRunner.runtimeMetrics()
                 .put("initializationMs", initializationMs)
                 .put("backend", layers > 0 ? AccelerationPolicy.BACKEND_GPU : AccelerationPolicy.BACKEND_CPU)

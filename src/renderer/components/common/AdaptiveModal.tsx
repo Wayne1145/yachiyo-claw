@@ -1,14 +1,13 @@
 import type { ModalProps as MantineModalProps } from '@mantine/core'
 import { Button, type ButtonProps, Flex, Stack, Text } from '@mantine/core'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Children, type HTMLAttributes, isValidElement, type ReactNode, useEffect, useRef } from 'react'
+import { Children, type HTMLAttributes, isValidElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Drawer } from 'vaul'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { useAdaptiveControlDensity } from '@/components/yachiyo/useAdaptiveControlDensity'
 import { useAndroidPagerGestureLock } from '@/components/yachiyo/android-pager-gesture-lock'
-import { flowGlassHaptics } from '@/utils/mobile-haptics'
 import { Modal } from '../layout/Overlay'
 import '../yachiyo/adaptive-action-cluster.css'
 
@@ -19,26 +18,13 @@ export interface AdaptiveModalProps extends Omit<MantineModalProps, 'opened' | '
 
 export function AdaptiveModal({ opened, onClose, children, title, className, ...props }: AdaptiveModalProps) {
   const isSmallScreen = useIsSmallScreen()
-  const inAndroidAppShell = useInAndroidAppShell()
-  const didPlayOpenImpactRef = useRef(false)
   useAndroidPagerGestureLock(opened)
-
-  useEffect(() => {
-    if (!opened) didPlayOpenImpactRef.current = false
-  }, [opened])
-
-  const handleDrawerAnimationEnd = (open: boolean) => {
-    if (!open || !opened || !isSmallScreen || !inAndroidAppShell || didPlayOpenImpactRef.current) return
-    didPlayOpenImpactRef.current = true
-    void flowGlassHaptics.lightImpact()
-  }
 
   if (isSmallScreen) {
     return (
       <Drawer.Root
         open={opened}
         onOpenChange={(open) => !open && onClose()}
-        onAnimationEnd={handleDrawerAnimationEnd}
         noBodyStyles
         repositionInputs={false}
       >

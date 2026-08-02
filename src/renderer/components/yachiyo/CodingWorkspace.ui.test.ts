@@ -18,6 +18,9 @@ describe('Coding home Flow Glass contracts', () => {
   it('keeps the refresh control accessible and large enough to touch', () => {
     expect(source).toContain('aria-label="刷新本地工具链状态"')
     expect(styles).toMatch(/\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s)
+    expect(styles).toMatch(
+      /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control, 14px\);[^}]*corner-shape:\s*squircle;/s,
+    )
   })
 
   it('removes material effects for accessibility fallbacks', () => {

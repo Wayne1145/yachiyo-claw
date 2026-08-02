@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { applyActiveTheme, BUILT_IN_LIQUID_GLASS_THEME_ID, useThemeStore } from './themeStore'
+import {
+  applyActiveTheme,
+  BUILT_IN_LIQUID_GLASS_THEME,
+  BUILT_IN_LIQUID_GLASS_THEME_ID,
+  migrateAndroidFlowGlassAppearance,
+  useThemeStore,
+} from './themeStore'
 import { uiStore } from './uiStore'
 
 function theme(id: string, color: string) {
@@ -72,6 +78,29 @@ describe('themeStore', () => {
 
     useThemeStore.getState().remove(BUILT_IN_LIQUID_GLASS_THEME_ID)
     expect(useThemeStore.getState().activeThemeId).toBe(BUILT_IN_LIQUID_GLASS_THEME_ID)
+  })
+
+  it('migrates Android to flow glass once and then respects later theme choices', () => {
+    localStorage.setItem('yachiyo:themes:active:v1', 'rose')
+
+    expect(migrateAndroidFlowGlassAppearance('android')).toBe(BUILT_IN_LIQUID_GLASS_THEME_ID)
+    expect(localStorage.getItem('yachiyo:themes:active:v1')).toBe(BUILT_IN_LIQUID_GLASS_THEME_ID)
+    expect(localStorage.getItem('yachiyo:appearance:flow-glass:migration:v2')).toBe('2.0.0')
+
+    localStorage.setItem('yachiyo:themes:active:v1', 'rose')
+    expect(migrateAndroidFlowGlassAppearance('android')).toBe('rose')
+    expect(localStorage.getItem('yachiyo:themes:active:v1')).toBe('rose')
+  })
+
+  it('does not apply the Android appearance migration to web builds', () => {
+    localStorage.setItem('yachiyo:themes:active:v1', 'rose')
+    expect(migrateAndroidFlowGlassAppearance('web')).toBe('rose')
+    expect(localStorage.getItem('yachiyo:appearance:flow-glass:migration:v2')).toBeNull()
+  })
+
+  it('ships the upgraded flow-glass manifest metadata', () => {
+    expect(BUILT_IN_LIQUID_GLASS_THEME.name).toBe('Yachiyo Flow Glass')
+    expect(BUILT_IN_LIQUID_GLASS_THEME.version).toBe('2.0.0')
   })
 
   it('prevents third-party manifests from replacing a built-in theme', () => {

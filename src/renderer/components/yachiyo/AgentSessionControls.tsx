@@ -117,10 +117,12 @@ export function AgentSessionControls({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsOpened, phonePermissionOpened, backend])
 
-  const status = useMemo(
-    () => describeAgentMode(sessionId, enabled, (key) => String(t(key))),
-    [sessionId, enabled, config, t],
-  )
+  const status = useMemo(() => {
+    const stateLabel = String(enabled ? t('Agent 已启用') : t('Agent 能力未启用'))
+    if (!enabled) return stateLabel
+    const mode = describeAgentMode(sessionId, enabled, (key) => String(t(key))).replace(/^Agent\s*·\s*/, '')
+    return `${stateLabel} · ${mode}`
+  }, [sessionId, enabled, config, t])
 
   const openSettings = (enableAfterSave = false) => {
     setPendingEnable(enableAfterSave)
@@ -242,7 +244,8 @@ export function AgentSessionControls({
       label: settingsLabel,
       icon: IconAdjustments,
       priority: 70,
-      collapseStrategy: 'keep',
+      collapseStrategy: 'icon-then-overflow',
+      menuAction: { onSelect: () => openSettings(false) },
       renderControl: () => (
         <Tooltip label={settingsLabel}>
           <ActionIcon
@@ -250,6 +253,7 @@ export function AgentSessionControls({
             size={44}
             variant="default"
             aria-label={settingsLabel}
+            aria-expanded={settingsOpened}
             onClick={() => openSettings(false)}
           >
             <IconAdjustments size={19} />

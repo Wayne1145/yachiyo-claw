@@ -60,7 +60,9 @@ describe('Android conversation chrome UI contract', () => {
     expect(shellStyles).toMatch(
       /\.yachiyo-history-actions\[aria-hidden=["']true["']\]\s*{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s,
     )
-    expect(shellStyles).toMatch(/\.yachiyo-history-item\[data-active=["']true["']\]\s*{[^}]*#fcebf1/s)
+    expect(shellStyles).toMatch(
+      /\.yachiyo-history-item\[data-active=["']true["']\]\s*{[^}]*background:\s*rgb\(231, 242, 253\)/s,
+    )
     expect(historySource).toContain('opened={opened}')
     expect(historySource).toContain('getAndroidHistoryActionWidth(actions.length)')
     expect(historySource).toContain('data-yachiyo-tab-swipe="block"')
@@ -108,6 +110,10 @@ describe('Android conversation chrome UI contract', () => {
       /\.yachiyo-mobile-composer-row \.yachiyo-composer-primary\s*\{[^}]*background:\s*#202124;[^}]*backdrop-filter:\s*none;/s,
     )
     expect(flowStyles).toMatch(/--flow-composer-height:\s*116px;/)
+    expect(shellStyles).toMatch(
+      /\.yachiyo-mobile-composer-row\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\) 44px 0 48px;/s,
+    )
+    expect(shellStyles).toMatch(/\.yachiyo-composer-model\s*\{[^}]*max-width:\s*none;[^}]*justify-content:\s*flex-start;/s)
   })
 
   it('keeps the composer above navigation in short landscape viewports', () => {

@@ -13,7 +13,7 @@ import {
 } from '@tabler/icons-react'
 import { useLocation } from '@tanstack/react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { copyAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import {
@@ -65,7 +65,11 @@ import { AndroidRetainedTabSurface } from './android-retained-state'
 import { AndroidPagerGestureLockProvider } from './android-pager-gesture-lock'
 import { AndroidSharedChromeHostProvider, AndroidStandardChromeLayer } from './AndroidSharedChrome'
 import { AndroidSettingsHome } from './AndroidSettingsHome'
-import { AndroidSettingsChromeTransition, AndroidSettingsStackSurface } from './AndroidSettingsStackSurface'
+import {
+  AndroidSettingsChromeTransition,
+  type AndroidSettingsStackHandle,
+  AndroidSettingsStackSurface,
+} from './AndroidSettingsStackSurface'
 import { AndroidTabPagePreview } from './AndroidTabPagePreview'
 import { AndroidAboutWorkspace, AndroidTasksWorkspace } from './AndroidWorkspaceHome'
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
@@ -115,7 +119,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       : '/',
   )
   const lastTabLocation = useRef(new Map<AndroidShellTab, { pathname: string; search: Record<string, unknown> }>())
+  const conversationSettingsReturnRef = useRef<{ pathname: string; search: Record<string, unknown> }>()
   const tabNavigationTransactionRef = useRef(0)
+  const settingsStackRef = useRef<AndroidSettingsStackHandle>(null)
   const [historyOpened, setHistoryOpened] = useState(false)
   const [conversationHeaderCollapsed, setConversationHeaderCollapsed] = useState(false)
   const reduceMotion = useReducedMotion()
@@ -183,6 +189,15 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const isSettingsDetail = activeTab === 'settings' && location.pathname !== '/settings'
   const isInteractive = activeTab === 'interactive'
   const settingsHeaderTitle = resolveSettingsHeaderTitle(location.pathname, (key) => String(t(key)))
+
+  const returnToConversationSettingsSource = useCallback(async () => {
+    const source = conversationSettingsReturnRef.current
+    if (!source) return false
+    conversationSettingsReturnRef.current = undefined
+    lastTabLocation.current.set('settings', { pathname: '/settings', search: {} })
+    await router.navigate({ to: source.pathname as '/', search: source.search, replace: true })
+    return true
+  }, [])
 
   useLayoutEffect(() => {
     // Apply persisted theme tokens before the shell is painted to avoid a default-color flash.
@@ -315,6 +330,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         return
       }
 
+      if (location.pathname === '/settings/chat' && (await returnToConversationSettingsSource())) return
+      if (activeTab === 'settings' && (await settingsStackRef.current?.pop())) return
+
       const parentPath = resolveAndroidShellParentPath(location.pathname)
       if (parentPath) {
         await router.navigate({ to: parentPath as '/', search: {}, replace: true })
@@ -358,7 +376,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [historyOpened, location.pathname])
+  }, [activeTab, historyOpened, location.pathname, returnToConversationSettingsSource])
 
   useEffect(() => {
     void removeBuiltInDemoSessions()
@@ -548,7 +566,13 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
             <Menu.Dropdown className="yachiyo-header-more-menu">
               <Menu.Item
                 leftSection={<IconSettings size={18} />}
-                onClick={() => void router.navigate({ to: '/settings/chat', search: {} })}
+                onClick={() => {
+                  conversationSettingsReturnRef.current = {
+                    pathname: location.pathname,
+                    search: location.search as Record<string, unknown>,
+                  }
+                  void router.navigate({ to: '/settings/chat', search: {} })
+                }}
               >
                 {t('Chat Settings')}
               </Menu.Item>
@@ -557,7 +581,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         ),
       },
     ]
-  }, [setOpenSearchDialog, showConversationTools, t, toolbarSessionId])
+  }, [location.pathname, location.search, setOpenSearchDialog, showConversationTools, t, toolbarSessionId])
 
   const handleAgentToggle = async (enabled: boolean) => {
     if (enabled) {
@@ -619,7 +643,15 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         ) : (
           <div className="yachiyo-settings-detail">{children}</div>
         )
-      return <AndroidSettingsStackSurface pathname={location.pathname}>{settingsPage}</AndroidSettingsStackSurface>
+      return (
+        <AndroidSettingsStackSurface
+          ref={settingsStackRef}
+          pathname={location.pathname}
+          search={location.search as Record<string, unknown>}
+        >
+          {settingsPage}
+        </AndroidSettingsStackSurface>
+      )
     }
     if (isAgentTaskPath) return children
     if (activeTab === 'chat' && (!hasProvider || location.pathname === '/guide')) {
@@ -692,12 +724,23 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
                               color="gray"
                               size={44}
                               aria-label={String(t('返回设置'))}
-                              onClick={() =>
-                                router.navigate({
-                                  to: (resolveAndroidShellParentPath(location.pathname) || '/settings') as '/',
-                                  search: {},
+                              onClick={() => {
+                                if (location.pathname === '/settings/chat') {
+                                  void returnToConversationSettingsSource().then((returned) => {
+                                    if (returned) return
+                                    return router.navigate({ to: '/settings', search: {}, replace: true })
+                                  })
+                                  return
+                                }
+                                void settingsStackRef.current?.pop().then((handled) => {
+                                  if (handled) return
+                                  return router.navigate({
+                                    to: (resolveAndroidShellParentPath(location.pathname) || '/settings') as '/',
+                                    search: {},
+                                    replace: true,
+                                  })
                                 })
-                              }
+                              }}
                             >
                               <IconChevronLeft size={22} />
                             </ActionIcon>

@@ -143,6 +143,8 @@ object LiteRtLmRunner {
     backendName: String,
     declaredNpuCompatible: Boolean,
     cpuThreads: Int,
+    mode: String,
+    phase: String,
   ): JSONObject {
     require(File(modelPath).isFile) { "local_model_file_missing" }
     val backend = createBackend(context, modelPath, backendName, declaredNpuCompatible, cpuThreads)
@@ -150,10 +152,19 @@ object LiteRtLmRunner {
       AccelerationRuntimeSupport.npuLibraryDir(context, modelPath, declaredNpuCompatible).orEmpty()
     } else ""
     val measured = mutableListOf<BenchmarkInfo>()
-    repeat(4) { iteration ->
-      val result = runBenchmark(modelPath, backend, 128, 32, npuLibraryDir)
+    val deep = phase == "verify" || AccelerationPolicy.MODE_EXTREME == AccelerationPolicy.normalizeMode(mode)
+    val measuredRuns = if (deep) 3 else 1
+    val prefillTokens = if (deep) 128 else 64
+    val decodeTokens = if (deep) 32 else 12
+    for (iteration in 0..measuredRuns) {
+      if (!AccelerationRuntimeSupport.canContinueBenchmark(context, mode)) {
+        if (measured.isEmpty()) throw IllegalStateException("local_acceleration_thermal_pause")
+        break
+      }
+      val result = runBenchmark(modelPath, backend, prefillTokens, decodeTokens, npuLibraryDir)
       if (iteration > 0) measured += result
     }
+    if (measured.isEmpty()) throw IllegalStateException("local_acceleration_thermal_pause")
     fun median(values: List<Double>): Double = values.sorted()[values.size / 2]
     return JSONObject()
       .put("backend", backendName)

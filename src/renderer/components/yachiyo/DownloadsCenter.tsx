@@ -21,6 +21,7 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import type { TFunction } from 'i18next'
+import type { DownloadJob, ModelArtifact } from '@shared/models/model-catalog'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { router } from '@/router'
@@ -76,11 +77,13 @@ const kindLabelKeys: Record<string, string> = {
   resource: '应用资源',
 }
 const isTerminal = (status: string) => status === 'completed' || status === 'failed' || status === 'cancelled'
+type DownloadedModelArtifact = ModelArtifact & { completedBytes?: number }
 
 export function DownloadsCenter() {
   const { t } = useTranslation()
   const inAndroidAppShell = useInAndroidAppShell()
   const [nativeTasks, setNativeTasks] = useState<NativeDownloadTask[]>([])
+  const [modelJobs, setModelJobs] = useState(new Map<string, DownloadJob>())
   const [loading, setLoading] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [proxy, setProxy] = useState('')
@@ -95,8 +98,12 @@ export function DownloadsCenter() {
     async (clearExistingError = false) => {
       setLoading(true)
       try {
-        const downloads = await yachiyoDownloadsNative.list()
+        const [downloads, models] = await Promise.all([
+          yachiyoDownloadsNative.list(),
+          yachiyoModelManagerNative.list().catch(() => ({ schemaVersion: 1 as const, jobs: [] })),
+        ])
         setNativeTasks(Array.isArray(downloads.tasks) ? downloads.tasks : [])
+        setModelJobs(new Map(models.jobs.map((job) => [job.id, job])))
         if (clearExistingError) setError(null)
       } catch (cause) {
         setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载任务读取失败'))
@@ -377,6 +384,7 @@ export function DownloadsCenter() {
               ? etaLabel(task.bytesTotal - task.bytesDownloaded, task.bytesPerSecond, t)
               : ''
           const canControl = true
+          const modelArtifacts = (modelJobs.get(task.id)?.artifacts || []) as DownloadedModelArtifact[]
           const control = (type: 'pause' | 'resume' | 'cancel') =>
             task.kind === 'sandbox'
               ? controlSandbox(type)
@@ -461,6 +469,30 @@ export function DownloadsCenter() {
                   {t(labelKeys[task.status])}
                 </Badge>
               </Group>
+              {task.kind === 'model' && modelArtifacts.length > 1 && (
+                <div className="yachiyo-download-parts" aria-label={String(t('模型分片进度'))}>
+                  {modelArtifacts.map((artifact, index) => {
+                    const completed = Math.min(artifact.completedBytes || 0, artifact.sizeBytes || 0)
+                    const partProgress = downloadProgress(completed, artifact.sizeBytes || 0)
+                    return (
+                      <div className="yachiyo-download-part" key={artifact.id || artifact.path}>
+                        <Group justify="space-between" gap="xs" wrap="nowrap">
+                          <Text size="xs" truncate title={artifact.filename || artifact.path}>
+                            {t('分片 {{index}}', { index: index + 1 })} · {artifact.filename || artifact.path}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {partProgress.toFixed(0)}%
+                          </Text>
+                        </Group>
+                        <Progress value={partProgress} radius="xl" size="xs" />
+                        <Text size="xs" c="dimmed">
+                          {bytes(completed)} / {bytes(artifact.sizeBytes || 0)}
+                        </Text>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
               <Progress value={progress} animated={task.status === 'downloading'} color="chatbox-brand" radius="xl" />
               <Group justify="space-between">
                 <Text size="xs">

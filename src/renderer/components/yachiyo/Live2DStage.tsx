@@ -8,9 +8,17 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
+import {
+  createLive2DError,
+  type Live2DErrorPhase,
+  type Live2DUserError,
+  normalizeLive2DError,
+  YachiyoLive2DError,
+} from '@/mobile/live2d-errors'
 import { getLive2DResolution, type Live2DRenderQuality, resolveLive2DAssetUrl } from '@/mobile/live2d-performance'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
+import { Live2DErrorPanel } from './Live2DErrorPanel'
 
 type Cubism4Module = typeof import('pixi-live2d-display/cubism4')
 type ModelInstance = Awaited<ReturnType<Cubism4Module['Live2DModel']['from']>>
@@ -45,7 +53,7 @@ function hasCubismCore(): boolean {
   return Boolean((window as Window & { Live2DCubismCore?: unknown }).Live2DCubismCore)
 }
 
-async function loadCubismCore(t: TFunction): Promise<void> {
+async function loadCubismCore(): Promise<void> {
   if (hasCubismCore()) return
 
   const script = document.createElement('script')
@@ -56,9 +64,9 @@ async function loadCubismCore(t: TFunction): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     script.onload = () => {
       if (hasCubismCore()) resolve()
-      else reject(new Error(String(t('Live2D Cubism Core 初始化失败'))))
+      else reject(createLive2DError('L2D-CORE-002'))
     }
-    script.onerror = () => reject(new Error(String(t('Live2D Cubism Core 加载失败'))))
+    script.onerror = () => reject(createLive2DError('L2D-CORE-001', { resource: 'live2d/core/live2dcubismcore.min.js' }))
     document.head.appendChild(script)
   }).catch((reason) => {
     script.remove()
@@ -69,7 +77,7 @@ async function loadCubismCore(t: TFunction): Promise<void> {
 async function ensureCubismRuntime(t: TFunction): Promise<Cubism4Module> {
   if (runtimePromise) return runtimePromise
   const pending = (async () => {
-    await loadCubismCore(t)
+    await loadCubismCore()
     const runtime = await import('pixi-live2d-display/cubism4')
     runtime.ZipLoader.zipReader = (data: Blob) => JSZip.loadAsync(data)
     runtime.ZipLoader.getFilePaths = async (zip: JSZip) =>
@@ -105,13 +113,13 @@ type WebGLLimits = {
   maxRenderbufferSize: number
 }
 
-function getWebGLLimits(t: TFunction): WebGLLimits {
+function getWebGLLimits(): WebGLLimits {
   if (cachedWebGLLimits) return cachedWebGLLimits
   const canvas = document.createElement('canvas')
   const context =
     canvas.getContext('webgl2', { alpha: false, antialias: false }) ||
     canvas.getContext('webgl', { alpha: false, antialias: false })
-  if (!context) throw new Error(String(t('当前 WebView 不支持 WebGL，Live2D 无法显示')))
+  if (!context) throw createLive2DError('L2D-WEBGL-001')
 
   const maxRenderbufferSize = context.getParameter(context.MAX_RENDERBUFFER_SIZE)
   context.getExtension('WEBGL_lose_context')?.loseContext()
@@ -167,7 +175,7 @@ export const Live2DStage = forwardRef<
   const recoveryModeRef = useRef(false)
   const recoveryIdentityRef = useRef({ source: descriptor.source, quality })
   const [retryKey, setRetryKey] = useState(0)
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<Live2DUserError>()
   const [ready, setReady] = useState(false)
 
   activityRef.current = activity
@@ -248,12 +256,12 @@ export const Live2DStage = forwardRef<
       ensurePixiUnsafeEval()
       const runtime = await ensureCubismRuntime(t)
       if (disposed) return
-      const limits = getWebGLLimits(t)
+      const limits = getWebGLLimits()
       const android = isAndroidRuntime()
       const width = Math.max(1, host.clientWidth)
       const height = Math.max(1, host.clientHeight)
       const requestedQuality: Live2DRenderQuality = recoveryModeRef.current ? 'performance' : quality
-      let lastReason: unknown
+      let lastFailure: { reason: unknown; phase: Live2DErrorPhase } | undefined
 
       for (const candidate of getQualityCandidates(requestedQuality)) {
         if (disposed) return
@@ -261,6 +269,7 @@ export const Live2DStage = forwardRef<
         let instance: ModelInstance | undefined
         let instanceAdded = false
         let attemptCleanup: (() => void) | undefined
+        let phase: Live2DErrorPhase = 'render'
 
         try {
           const resolution = getLive2DResolution(candidate, window.devicePixelRatio, {
@@ -290,7 +299,7 @@ export const Live2DStage = forwardRef<
             event.preventDefault()
             if (disposed) return
             if (recoveryModeRef.current || contextRecoveryCountRef.current > 0) {
-              setError(String(t('Live2D 渲染上下文丢失')))
+              setError(createLive2DError('L2D-CTX-001').diagnostic)
               return
             }
             contextRecoveryCountRef.current += 1
@@ -306,9 +315,11 @@ export const Live2DStage = forwardRef<
           }
           rendererCleanup = attemptCleanup
 
+          phase = 'settings'
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,
           })
+          phase = 'render'
           instance = loadedInstance
           if (disposed) {
             loadedInstance.destroy()
@@ -358,7 +369,7 @@ export const Live2DStage = forwardRef<
           onReady?.()
           return
         } catch (reason) {
-          lastReason = reason
+          lastFailure = { reason, phase }
           attemptCleanup?.()
           if (rendererCleanup === attemptCleanup) rendererCleanup = undefined
           observer?.disconnect()
@@ -392,13 +403,17 @@ export const Live2DStage = forwardRef<
         }
       }
 
-      throw lastReason instanceof Error ? lastReason : new Error(String(t('Live2D 模型加载失败')))
+      const diagnostic = normalizeLive2DError(lastFailure?.reason, {
+        phase: lastFailure?.phase || 'render',
+        resource: descriptor.builtIn ? descriptor.source : descriptor.name,
+      })
+      throw new YachiyoLive2DError(diagnostic)
     }
 
     void initialize().catch((reason) => {
       if (!disposed) {
         setReady(false)
-        setError(reason instanceof Error ? reason.message : String(t('Live2D 模型加载失败')))
+        setError(normalizeLive2DError(reason, { phase: 'render' }))
       }
     })
 
@@ -421,7 +436,7 @@ export const Live2DStage = forwardRef<
       data-speaking={speaking && !muted && activity === 'active' ? 'true' : 'false'}
     >
       <div ref={hostRef} className="yachiyo-live2d-canvas-host" aria-hidden="true" />
-      {error && <div className="yachiyo-live2d-error">{error}</div>}
+      {error && <Live2DErrorPanel error={error} onRetry={() => setRetryKey((value) => value + 1)} />}
     </div>
   )
 })

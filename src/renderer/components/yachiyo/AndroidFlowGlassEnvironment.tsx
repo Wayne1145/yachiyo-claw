@@ -5,10 +5,9 @@ import { useSession } from '@/stores/chatStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { blobToDataUrl } from '@/routes/image-creator/-components/constants'
-import { resolveApprovedCharacterTint, resolveFlowGlassEnvironment } from './flow-glass-environment'
+import { resolveFlowGlassEnvironment } from './flow-glass-environment'
 
 type FlowGlassStyle = CSSProperties & {
-  '--flow-character-tint'?: string
   '--flow-custom-background-image'?: string
 }
 
@@ -42,9 +41,7 @@ export function AndroidFlowGlassEnvironment({
       : storedKey && storedBackground
         ? blobToDataUrl(storedBackground)
         : undefined
-  const tintKey = session?.assistantAvatarKey || session?.picUrl || session?.id
   const style: FlowGlassStyle = {
-    '--flow-character-tint': resolveApprovedCharacterTint(tintKey),
     ...(customImageUrl
       ? {
           backgroundImage: `url(${JSON.stringify(customImageUrl)})`,
@@ -62,7 +59,6 @@ export function AndroidFlowGlassEnvironment({
       aria-hidden="true"
     >
       <div className="yachiyo-flow-environment-image" />
-      <div className="yachiyo-flow-environment-character-tint" />
       <div className="yachiyo-flow-environment-scrim" />
     </motion.div>
   )

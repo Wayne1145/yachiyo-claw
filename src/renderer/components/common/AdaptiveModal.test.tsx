@@ -7,19 +7,11 @@ import { AndroidAppShellContext } from '@/components/yachiyo/AndroidAppShellCont
 import { AdaptiveModal } from './AdaptiveModal'
 
 const adaptiveModalTestState = vi.hoisted(() => ({
-  drawerAnimationEnd: undefined as ((open: boolean) => void) | undefined,
   isSmallScreen: false,
-  lightImpact: vi.fn(),
 }))
 
 vi.mock('@/hooks/useScreenChange', () => ({
   useIsSmallScreen: () => adaptiveModalTestState.isSmallScreen,
-}))
-
-vi.mock('@/utils/mobile-haptics', () => ({
-  flowGlassHaptics: {
-    lightImpact: adaptiveModalTestState.lightImpact,
-  },
 }))
 
 vi.mock('vaul', async () => {
@@ -32,16 +24,7 @@ vi.mock('vaul', async () => {
       Handle: () => null,
       Overlay: () => null,
       Portal: PassThrough,
-      Root: ({
-        children,
-        onAnimationEnd,
-      }: {
-        children?: ReactNode
-        onAnimationEnd?: (open: boolean) => void
-      }) => {
-        adaptiveModalTestState.drawerAnimationEnd = onAnimationEnd
-        return createElement(Fragment, null, children)
-      },
+      Root: PassThrough,
     },
   }
 })
@@ -67,9 +50,7 @@ describe('AdaptiveModal.Actions', () => {
 
   beforeEach(() => {
     resizeCallbacks.clear()
-    adaptiveModalTestState.drawerAnimationEnd = undefined
     adaptiveModalTestState.isSmallScreen = false
-    adaptiveModalTestState.lightImpact.mockReset().mockResolvedValue(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverMock)
     vi.stubGlobal(
       'matchMedia',
@@ -169,116 +150,5 @@ describe('AdaptiveModal.Actions', () => {
       for (const callback of resizeCallbacks) callback([], {} as ResizeObserver)
     })
     await waitFor(() => expect(actions?.dataset.density).toBe('comfortable'))
-  })
-})
-
-describe('AdaptiveModal sheet haptics', () => {
-  beforeEach(() => {
-    adaptiveModalTestState.drawerAnimationEnd = undefined
-    adaptiveModalTestState.isSmallScreen = true
-    adaptiveModalTestState.lightImpact.mockReset().mockResolvedValue(true)
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn().mockReturnValue({
-        matches: false,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-      })
-    )
-  })
-
-  afterEach(() => {
-    cleanup()
-    vi.unstubAllGlobals()
-  })
-
-  function renderSheet(opened: boolean, inAndroidAppShell = true) {
-    return render(
-      <MantineProvider>
-        <AndroidAppShellContext.Provider value={inAndroidAppShell}>
-          <AdaptiveModal opened={opened} onClose={vi.fn()} title="Confirm">
-            Content
-          </AdaptiveModal>
-        </AndroidAppShellContext.Provider>
-      </MantineProvider>
-    )
-  }
-
-  it('plays one light impact when an Android sheet reaches its open resting position', () => {
-    renderSheet(true)
-
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(true))
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(true))
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(false))
-
-    expect(adaptiveModalTestState.lightImpact).toHaveBeenCalledOnce()
-  })
-
-  it('allows one new impact after the sheet closes and opens again', () => {
-    const view = renderSheet(true)
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(true))
-
-    view.rerender(
-      <MantineProvider>
-        <AndroidAppShellContext.Provider value={true}>
-          <AdaptiveModal opened={false} onClose={vi.fn()} title="Confirm">
-            Content
-          </AdaptiveModal>
-        </AndroidAppShellContext.Provider>
-      </MantineProvider>
-    )
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(false))
-    view.rerender(
-      <MantineProvider>
-        <AndroidAppShellContext.Provider value={true}>
-          <AdaptiveModal opened onClose={vi.fn()} title="Confirm">
-            Content
-          </AdaptiveModal>
-        </AndroidAppShellContext.Provider>
-      </MantineProvider>
-    )
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(true))
-
-    expect(adaptiveModalTestState.lightImpact).toHaveBeenCalledTimes(2)
-  })
-
-  it('does not play an impact for closing animation or outside the Android shell', () => {
-    const view = renderSheet(true, false)
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(true))
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(false))
-
-    expect(adaptiveModalTestState.lightImpact).not.toHaveBeenCalled()
-
-    view.rerender(
-      <MantineProvider>
-        <AndroidAppShellContext.Provider value={true}>
-          <AdaptiveModal opened={false} onClose={vi.fn()} title="Confirm">
-            Content
-          </AdaptiveModal>
-        </AndroidAppShellContext.Provider>
-      </MantineProvider>
-    )
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(false))
-    expect(adaptiveModalTestState.lightImpact).not.toHaveBeenCalled()
-  })
-
-  it('keeps resting-position haptics when reduced motion is requested', () => {
-    vi.mocked(matchMedia).mockReturnValue({
-      matches: true,
-      media: '(prefers-reduced-motion: reduce)',
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })
-
-    renderSheet(true)
-    act(() => adaptiveModalTestState.drawerAnimationEnd?.(true))
-
-    expect(adaptiveModalTestState.lightImpact).toHaveBeenCalledOnce()
   })
 })

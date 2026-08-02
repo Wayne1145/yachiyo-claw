@@ -20,6 +20,9 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   模型正在生成: 'The model is generating',
   正在初始化嵌入模型: 'Initializing the embedding model',
   '正在实测 CPU、GPU 与 NPU 后端': 'Benchmarking CPU, GPU, and NPU backends',
+  '正在逐项测试 CPU、GPU 与 NPU 后端，可能需要数分钟':
+    'Testing CPU, GPU, and NPU backends one by one. This may take several minutes.',
+  正在筛选候选并完整复测最快配置: 'Screening candidates and fully verifying the fastest configurations',
   模型已加载到内存: 'Model loaded into memory',
   正在准备本地推理运行时: 'Preparing the local inference runtime',
   自动: 'Auto',
@@ -28,7 +31,10 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   较高: 'Elevated',
   无法保存加速设置: 'Could not save acceleration settings',
   模型优化失败: 'Model optimization failed',
+  '设备温度较高，校准已暂停；冷却后重试（local_acceleration_thermal_pause）':
+    'The device is too warm, so calibration was paused. Let it cool and retry (local_acceleration_thermal_pause).',
   极速: 'Extreme',
+  深度校准: 'Deep calibration',
   后端覆盖: 'Backend override',
   自动择优: 'Automatic selection',
   重新优化: 'Optimize again',
@@ -41,6 +47,16 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   模型变体: 'Model variant',
   可用显存: 'Available GPU memory',
   回退原因: 'Fallback reason',
+  '当前未连接 Wi-Fi': 'Wi-Fi is not connected',
+  '已启用“仅在 Wi-Fi 下下载”。任务可以加入队列，并会在连接 Wi-Fi 后自动开始。':
+    'Wi-Fi-only downloads are enabled. You can queue the task and it will start automatically after Wi-Fi connects.',
+  '当前网络不是 Wi-Fi，下载模型可能消耗大量移动数据。':
+    'The current network is not Wi-Fi. Downloading this model may use a large amount of mobile data.',
+  '当前没有可用网络，任务会先加入队列并等待网络恢复。':
+    'No network is currently available. The task will be queued until connectivity returns.',
+  '本次下载大小：{{size}}': 'Download size: {{size}}',
+  加入等待队列: 'Queue until Wi-Fi',
+  继续下载: 'Continue download',
   模型操作: 'Model actions',
   无法刷新下载队列: 'Could not refresh the download queue',
   下载操作失败: 'Download action failed',
@@ -245,6 +261,10 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   下载并检查: 'Download and inspect',
   '从 ZIP 侧载': 'Sideload ZIP',
   '插件市场加载失败，请稍后重试。': 'Could not load the plugin marketplace. Please try again later.',
+  '插件市场加载失败，请检查市场地址后重试。':
+    'Could not load the plugin marketplace. Check the marketplace URL and try again.',
+  插件市场地址: 'Plugin marketplace URL',
+  恢复默认: 'Restore default',
   浏览插件市场: 'Browse plugin marketplace',
   插件市场: 'Plugin marketplace',
   '市场暂时没有已验签的插件。': 'The marketplace has no verified plugins yet.',

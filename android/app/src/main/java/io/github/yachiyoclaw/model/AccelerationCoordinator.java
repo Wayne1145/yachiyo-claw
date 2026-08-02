@@ -2,6 +2,7 @@ package io.github.yachiyoclaw.model;
 
 import android.content.Context;
 import android.content.pm.PackageInfo;
+import android.os.SystemClock;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,8 +11,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Builds isolated benchmark requests and persists the fastest verified configuration. */
+/** Builds safe runtime profiles and isolated benchmark requests for explicit optimization. */
 final class AccelerationCoordinator {
+    private static final String CALIBRATION_VERSION = "two-stage-v2";
     interface BenchmarkRunner { JSONObject run(JSONObject request) throws Exception; }
 
     private final Context context;
@@ -38,13 +40,65 @@ final class AccelerationCoordinator {
         JSONObject settings = settings(modelId);
         String key = cacheKey(job, models, settings.optString("mode"));
         JSONObject cached = store.profile(modelId, key);
-        return cached != null ? cached : optimize(modelId, job, models, settings, key, runner);
+        return cached != null ? cached : createSafeBaseline(modelId, job, models, settings, key);
     }
 
     JSONObject optimize(String modelId, JSONObject job, List<File> models, BenchmarkRunner runner) throws Exception {
         JSONObject settings = settings(modelId);
         String key = cacheKey(job, models, settings.optString("mode"));
         return optimize(modelId, job, models, settings, key, runner);
+    }
+
+    private JSONObject createSafeBaseline(
+        String modelId,
+        JSONObject job,
+        List<File> models,
+        JSONObject settings,
+        String key
+    ) throws Exception {
+        if (models == null || models.isEmpty()) throw new IllegalArgumentException("local_model_not_chat_model");
+        File selectedModel = null;
+        for (File model : models) {
+            if (LocalModelFormat.isRunnableGgufPath(model.getPath())) {
+                selectedModel = model;
+                break;
+            }
+            if (selectedModel == null && model.getName().toLowerCase(Locale.ROOT).endsWith(".litertlm")) {
+                selectedModel = model;
+            }
+        }
+        if (selectedModel == null) throw new IllegalArgumentException("local_model_not_chat_model");
+
+        int cpuThreads = AccelerationRuntimeSupport.preferredCpuThreads();
+        JSONObject selected = new JSONObject()
+            .put("backend", AccelerationPolicy.BACKEND_CPU)
+            .put("activeBackend", AccelerationPolicy.BACKEND_CPU)
+            .put("modelPath", selectedModel.getPath())
+            .put("gpuLayers", 0)
+            .put("offloadedLayers", 0)
+            .put("cpuThreads", cpuThreads)
+            .put("initializationMs", 0)
+            .put("firstTokenMs", 0)
+            .put("prefillTokensPerSecond", 0)
+            .put("decodeTokensPerSecond", 0)
+            .put("residentBytes", 0)
+            .put("score", 0);
+        JSONObject profile = new JSONObject()
+            .put("schemaVersion", 1)
+            .put("calibrationVersion", CALIBRATION_VERSION)
+            .put("cacheKey", key)
+            .put("mode", settings.optString("mode", AccelerationPolicy.MODE_AUTO))
+            .put("selectedBackend", AccelerationPolicy.BACKEND_CPU)
+            .put("selectedModelPath", selectedModel.getPath())
+            .put("selected", new JSONObject(selected.toString()))
+            .put("benchmarks", new JSONArray().put(selected))
+            .put("declaredNpuCompatible", declaredNpuCompatible(job, selectedModel))
+            .put("modelVariant", selectedModel.getName())
+            .put("thermalStatus", AccelerationRuntimeSupport.thermalStatus(context))
+            .put("profileKind", "safe-baseline")
+            .put("optimizedAt", 0);
+        store.saveProfile(modelId, profile);
+        return profile;
     }
 
     JSONObject runtimeConfiguration(String modelId, JSONObject profile) throws JSONException {
@@ -149,6 +203,7 @@ final class AccelerationCoordinator {
     ) throws Exception {
         if (models == null || models.isEmpty()) throw new IllegalArgumentException("local_model_not_chat_model");
         String mode = settings.optString("mode", AccelerationPolicy.MODE_AUTO);
+        boolean quick = !AccelerationPolicy.MODE_EXTREME.equals(AccelerationPolicy.normalizeMode(mode));
         List<JSONObject> requests = new ArrayList<>();
         boolean anyNpuCompatible = false;
         for (File model : models) {
@@ -156,35 +211,39 @@ final class AccelerationCoordinator {
             anyNpuCompatible |= npuCompatible;
             List<JSONObject> variantRequests;
             if (model.getName().toLowerCase(Locale.ROOT).endsWith(".litertlm")) {
-                variantRequests = liteRtRequests(model, npuCompatible);
+                variantRequests = liteRtRequests(model, npuCompatible, mode);
             } else if (LocalModelFormat.isRunnableGgufPath(model.getPath())) {
                 variantRequests = ggufRequests(model, mode);
             } else continue;
             for (JSONObject request : variantRequests) requests.add(request
                 .put("modelPath", model.getPath())
-                .put("declaredNpuCompatible", npuCompatible));
+                .put("declaredNpuCompatible", npuCompatible)
+                .put("benchmarkMode", mode));
         }
 
-        if (!AccelerationRuntimeSupport.thermallySafe(context)) {
-            requests.removeIf(request -> !AccelerationPolicy.BACKEND_CPU.equals(request.optString("backend")));
+        if (!AccelerationRuntimeSupport.canContinueBenchmark(context, mode)) {
+            throw new IllegalStateException("local_acceleration_thermal_pause");
         }
-        JSONArray results = new JSONArray();
-        List<AccelerationPolicy.Benchmark> scored = new ArrayList<>();
-        List<JSONObject> successfulResults = new ArrayList<>();
-        for (JSONObject request : requests) {
-            request.put("op", "benchmark");
-            try {
-                JSONObject result = runner.run(request);
-                result.put("residentBytes", Math.max(0L, result.optLong("residentBytes")));
-                results.put(result);
-                AccelerationPolicy.Benchmark benchmark = benchmark(result, null);
-                scored.add(benchmark);
-                successfulResults.add(result);
-            } catch (Throwable error) {
-                results.put(new JSONObject(request.toString())
-                    .put("failureReason", safeFailure(error)));
+        long startedAt = SystemClock.elapsedRealtime();
+        JSONArray screeningResults = new JSONArray();
+        JSONArray verifiedResults = new JSONArray();
+        List<JSONObject> successfulResults = executeBenchmarks(
+            requests, mode, quick ? "screen" : "verify", runner,
+            quick ? screeningResults : verifiedResults, quick);
+        if (quick) {
+            List<AccelerationPolicy.Benchmark> screened = benchmarks(successfulResults);
+            List<AccelerationPolicy.Benchmark> finalists = AccelerationPolicy.selectFinalists(
+                screened, settings.optString("requestedBackend", AccelerationPolicy.BACKEND_AUTO));
+            if (finalists.isEmpty()) throw new IllegalStateException("local_acceleration_benchmark_failed");
+            List<JSONObject> verificationRequests = new ArrayList<>();
+            for (AccelerationPolicy.Benchmark finalist : finalists) {
+                int index = screened.indexOf(finalist);
+                if (index >= 0) verificationRequests.add(verificationRequest(successfulResults.get(index), mode));
             }
+            successfulResults = executeBenchmarks(
+                verificationRequests, mode, "verify", runner, verifiedResults, false);
         }
+        List<AccelerationPolicy.Benchmark> scored = benchmarks(successfulResults);
         AccelerationPolicy.Benchmark fastest = AccelerationPolicy.selectFastest(scored);
         if (fastest == null) throw new IllegalStateException("local_acceleration_benchmark_failed");
         for (int index = 0; index < scored.size(); index++) successfulResults.get(index).put("score", scored.get(index).score);
@@ -193,29 +252,37 @@ final class AccelerationCoordinator {
         JSONObject selected = new JSONObject(successfulResults.get(selectedIndex).toString()).put("score", fastest.score);
         JSONObject profile = new JSONObject()
             .put("schemaVersion", 1)
+            .put("calibrationVersion", CALIBRATION_VERSION)
             .put("cacheKey", key)
             .put("mode", mode)
             .put("selectedBackend", selected.optString("backend", AccelerationPolicy.BACKEND_CPU))
             .put("selectedModelPath", selected.optString("modelPath"))
             .put("selected", selected)
-            .put("benchmarks", results)
+            .put("benchmarks", verifiedResults)
+            .put("screeningBenchmarks", screeningResults)
             .put("declaredNpuCompatible", anyNpuCompatible)
             .put("modelVariant", new File(selected.optString("modelPath")).getName())
             .put("thermalStatus", AccelerationRuntimeSupport.thermalStatus(context))
+            .put("profileKind", quick ? "verified-optimized" : "deep-optimized")
+            .put("benchmarkElapsedMs", Math.max(0L, SystemClock.elapsedRealtime() - startedAt))
             .put("optimizedAt", System.currentTimeMillis());
         store.saveProfile(modelId, profile);
         return profile;
     }
 
-    private List<JSONObject> liteRtRequests(File model, boolean npuCompatible) throws JSONException {
+    private List<JSONObject> liteRtRequests(File model, boolean npuCompatible, String mode) throws JSONException {
         List<JSONObject> requests = new ArrayList<>();
-        int defaultThreads = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
+        int defaultThreads = AccelerationRuntimeSupport.preferredCpuThreads();
+        boolean deep = AccelerationPolicy.MODE_EXTREME.equals(AccelerationPolicy.normalizeMode(mode));
         List<String> backends = npuCompatible
             ? List.of(AccelerationPolicy.BACKEND_NPU)
-            : List.of(AccelerationPolicy.BACKEND_GPU, AccelerationPolicy.BACKEND_CPU);
+            : List.of(AccelerationPolicy.BACKEND_CPU, AccelerationPolicy.BACKEND_GPU);
         for (String backend : backends) {
             if (AccelerationPolicy.BACKEND_CPU.equals(backend)) {
-                for (int threads : AccelerationRuntimeSupport.cpuThreadCandidates()) {
+                int[] candidates = AccelerationRuntimeSupport.cpuThreadCandidates();
+                int count = deep ? candidates.length : 1;
+                for (int index = 0; index < count; index++) {
+                    int threads = candidates[index];
                     requests.add(new JSONObject().put("backend", backend).put("cpuThreads", threads));
                 }
             } else {
@@ -227,7 +294,20 @@ final class AccelerationCoordinator {
 
     private List<JSONObject> ggufRequests(File model, String mode) throws JSONException {
         List<JSONObject> requests = new ArrayList<>();
-        int defaultThreads = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
+        int defaultThreads = AccelerationRuntimeSupport.preferredCpuThreads();
+        if (!AccelerationPolicy.MODE_EXTREME.equals(AccelerationPolicy.normalizeMode(mode))) {
+            requests.add(new JSONObject().put("backend", AccelerationPolicy.BACKEND_CPU)
+                .put("gpuLayerPercent", 0).put("cpuThreads", defaultThreads));
+            requests.add(new JSONObject().put("backend", AccelerationPolicy.BACKEND_GPU)
+                .put("gpuLayerPercent", 50).put("cpuThreads", defaultThreads));
+            requests.add(new JSONObject().put("backend", AccelerationPolicy.BACKEND_GPU)
+                .put("gpuLayerPercent", 25).put("cpuThreads", defaultThreads)
+                .put("candidateRole", "gpu-fallback"));
+            requests.add(new JSONObject().put("backend", AccelerationPolicy.BACKEND_GPU)
+                .put("gpuLayerPercent", 75).put("cpuThreads", defaultThreads)
+                .put("candidateRole", "gpu-refinement"));
+            return requests;
+        }
         int[] percentages = AccelerationPolicy.MODE_EXTREME.equals(AccelerationPolicy.normalizeMode(mode))
             ? new int[] {100, 75, 50, 25} : new int[] {75, 50, 25};
         for (int percentage : percentages) {
@@ -239,6 +319,83 @@ final class AccelerationCoordinator {
                 .put("gpuLayerPercent", 0).put("cpuThreads", threads));
         }
         return requests;
+    }
+
+    private static boolean shouldRunCandidate(JSONObject request, List<JSONObject> successfulResults) {
+        String role = request.optString("candidateRole");
+        if (role.isBlank()) return true;
+        String modelPath = request.optString("modelPath");
+        JSONObject cpu = null;
+        JSONObject gpu = null;
+        for (JSONObject result : successfulResults) {
+            if (!modelPath.equals(result.optString("modelPath"))) continue;
+            String backend = AccelerationPolicy.normalizeBackend(result.optString("backend"));
+            if (AccelerationPolicy.BACKEND_CPU.equals(backend)) cpu = result;
+            if (AccelerationPolicy.BACKEND_GPU.equals(backend)) gpu = result;
+        }
+        if ("gpu-fallback".equals(role)) return gpu == null;
+        return "gpu-refinement".equals(role) && AccelerationPolicy.shouldRefineGpuOffload(
+            cpu == null ? null : benchmark(cpu, null),
+            gpu == null ? null : benchmark(gpu, null));
+    }
+
+    private List<JSONObject> executeBenchmarks(
+        List<JSONObject> requests,
+        String mode,
+        String phase,
+        BenchmarkRunner runner,
+        JSONArray audit,
+        boolean adaptive
+    ) throws Exception {
+        List<JSONObject> successful = new ArrayList<>();
+        for (JSONObject request : requests) {
+            if (adaptive && !shouldRunCandidate(request, successful)) continue;
+            if (!AccelerationRuntimeSupport.canContinueBenchmark(context, mode)) {
+                throw new IllegalStateException("local_acceleration_thermal_pause");
+            }
+            request.put("op", "benchmark").put("benchmarkPhase", phase);
+            try {
+                JSONObject result = runner.run(request);
+                copyBenchmarkIdentity(request, result);
+                result.put("residentBytes", Math.max(0L, result.optLong("residentBytes")));
+                audit.put(result);
+                successful.add(result);
+            } catch (Throwable error) {
+                String failure = safeFailure(error);
+                audit.put(new JSONObject(request.toString()).put("failureReason", failure));
+                if ("local_acceleration_thermal_pause".equals(failure)) {
+                    throw new IllegalStateException(failure);
+                }
+            }
+            if (!AccelerationRuntimeSupport.canContinueBenchmark(context, mode)) {
+                throw new IllegalStateException("local_acceleration_thermal_pause");
+            }
+        }
+        return successful;
+    }
+
+    private static List<AccelerationPolicy.Benchmark> benchmarks(List<JSONObject> results) {
+        List<AccelerationPolicy.Benchmark> values = new ArrayList<>();
+        for (JSONObject result : results) values.add(benchmark(result, null));
+        return values;
+    }
+
+    private static JSONObject verificationRequest(JSONObject screened, String mode) throws JSONException {
+        JSONObject request = new JSONObject()
+            .put("backend", screened.optString("backend"))
+            .put("modelPath", screened.optString("modelPath"))
+            .put("declaredNpuCompatible", screened.optBoolean("declaredNpuCompatible"))
+            .put("cpuThreads", screened.optInt("cpuThreads"))
+            .put("benchmarkMode", mode);
+        if (screened.has("gpuLayerPercent")) request.put("gpuLayerPercent", screened.optInt("gpuLayerPercent"));
+        return request;
+    }
+
+    private static void copyBenchmarkIdentity(JSONObject request, JSONObject result) throws JSONException {
+        result.put("benchmarkPhase", request.optString("benchmarkPhase"))
+            .put("declaredNpuCompatible", request.optBoolean("declaredNpuCompatible"));
+        if (request.has("gpuLayerPercent")) result.put("gpuLayerPercent", request.optInt("gpuLayerPercent"));
+        if (!result.has("cpuThreads")) result.put("cpuThreads", request.optInt("cpuThreads"));
     }
 
     private static AccelerationPolicy.Benchmark benchmark(JSONObject value, String failure) {
@@ -258,6 +415,7 @@ final class AccelerationCoordinator {
             modelDigest(job, models),
             AccelerationRuntimeSupport.deviceIdentity(),
             appVersion(),
+            CALIBRATION_VERSION,
             models.stream().map(File::getName).sorted().reduce("", (left, right) -> left + "|" + right),
             mode
         );

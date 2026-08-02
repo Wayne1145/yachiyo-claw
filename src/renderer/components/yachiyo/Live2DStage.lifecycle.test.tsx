@@ -170,12 +170,14 @@ describe('Live2DStage lifecycle', () => {
     mocks.modelFrom.mockRejectedValue(new Error('model_load_failed'))
     const { container, rerender } = render(<Live2DStage model={descriptor} activity="active" />)
 
-    await waitFor(() => expect(container.querySelector('.yachiyo-live2d-error')).not.toBeNull(), { timeout: 5000 })
+    await waitFor(() => expect(container.querySelector('.yachiyo-live2d-error-panel')).not.toBeNull(), {
+      timeout: 5000,
+    })
     const canvasHost = container.querySelector('.yachiyo-live2d-canvas-host')
     expect(canvasHost).not.toBeNull()
-    expect(canvasHost?.querySelector('.yachiyo-live2d-error')).toBeNull()
+    expect(canvasHost?.querySelector('.yachiyo-live2d-error-panel')).toBeNull()
 
     expect(() => rerender(<Live2DStage model={descriptor} activity="inactive" />)).not.toThrow()
-    await waitFor(() => expect(container.querySelector('.yachiyo-live2d-error')).toBeNull())
+    await waitFor(() => expect(container.querySelector('.yachiyo-live2d-error-panel')).toBeNull())
   })
 })

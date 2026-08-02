@@ -55,6 +55,7 @@ import {
   parseLive2DActionMarkers,
   setSelectedLive2DModelId,
 } from '@/mobile/live2d-models'
+import { type Live2DUserError, normalizeLive2DError } from '@/mobile/live2d-errors'
 import { getLive2DRenderQuality, type Live2DRenderQuality, setLive2DRenderQuality } from '@/mobile/live2d-performance'
 import {
   getSpeechRecognitionErrorMessage,
@@ -70,13 +71,13 @@ import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { submitTaskMessage } from '@/stores/taskSessionActions'
-import { flowGlassHaptics } from '@/utils/mobile-haptics'
 import { updateTaskSession, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { AndroidInteractiveChrome } from './AndroidSharedChrome'
 import { CharacterSelector } from './CharacterSelector'
 import { Live2DStage, type Live2DStageHandle } from './Live2DStage'
+import { Live2DErrorPanel } from './Live2DErrorPanel'
 import { useAndroidRetainedState } from './android-retained-state'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
 
@@ -111,6 +112,7 @@ export function AndroidInteractive({
   const [recording, setRecording] = useState(false)
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [notice, setNotice] = useState<string>()
+  const [live2dImportError, setLive2dImportError] = useState<Live2DUserError>()
   const [cameraEnabled, setCameraEnabled] = useState(false)
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user')
   const [cameraPosition, setCameraPosition] = useState({ x: 0, y: 0 })
@@ -422,6 +424,7 @@ export function AndroidInteractive({
 
   const importModel = async (file: File | null) => {
     if (!file) return
+    setLive2dImportError(undefined)
     setNotice(String(t('正在导入 Live2D 模型…')))
     try {
       const imported = await importLive2DModel(file)
@@ -429,7 +432,9 @@ export function AndroidInteractive({
       chooseModel(imported)
       setNotice(String(t('模型已导入')))
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(t('模型导入失败')))
+      const diagnostic = normalizeLive2DError(error, { phase: 'import', resource: file.name })
+      setLive2dImportError(diagnostic)
+      setNotice(`${String(t(diagnostic.title))} (${diagnostic.code})`)
     }
   }
 
@@ -495,7 +500,6 @@ export function AndroidInteractive({
           needGenerating: true,
         })
       }
-      void flowGlassHaptics.lightImpact()
     } finally {
       setSubmitting(false)
     }
@@ -694,8 +698,10 @@ export function AndroidInteractive({
           >
             {conversationModel?.provider === ModelProviderEnum.Local ? (
               <IconCpu size={18} aria-hidden="true" />
+            ) : conversationModel ? (
+              <ProviderImageIcon size={18} provider={conversationModel.provider} />
             ) : (
-              conversationModel && <ProviderImageIcon size={18} provider={conversationModel.provider} />
+              <IconBrain size={18} aria-hidden="true" />
             )}
             <span>{conversationModelName}</span>
             <IconChevronDown size={14} />
@@ -919,6 +925,7 @@ export function AndroidInteractive({
           <Text size="sm" c="dimmed" className="yachiyo-live2d-picker-description">
             {t('选择内置模型，或导入包含 .model3.json 的 ZIP 模型包。')}
           </Text>
+          {live2dImportError && <Live2DErrorPanel error={live2dImportError} />}
           <Select
             className="yachiyo-live2d-quality-control"
             label={t('显示质量')}

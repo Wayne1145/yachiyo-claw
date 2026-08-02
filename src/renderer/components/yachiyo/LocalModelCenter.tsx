@@ -65,6 +65,8 @@ import {
 } from '@/platform/native/yachiyo_model_manager'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
 import { router } from '@/router'
+import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
+import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
 import './local-model-center.css'
@@ -77,6 +79,7 @@ type ModelRuntimeState = {
   loading: boolean
   stage?: string
   percent: number
+  indeterminate?: boolean
   runtime?: string
   eager?: boolean
   modelBytes?: number
@@ -137,7 +140,7 @@ function runtimeStageLabel(t: Translate, stage?: string): string {
   if (stage === 'loading') return t('正在将模型加载到内存')
   if (stage === 'generating') return t('模型正在生成')
   if (stage === 'embedding') return t('正在初始化嵌入模型')
-  if (stage === 'benchmarking') return t('正在实测 CPU、GPU 与 NPU 后端')
+  if (stage === 'benchmarking') return t('正在筛选候选并完整复测最快配置')
   if (stage === 'ready') return t('模型已加载到内存')
   return t('正在准备本地推理运行时')
 }
@@ -194,10 +197,12 @@ export function LocalModelCenter() {
     Record<string, NativeAccelerationProfile>
   >({})
   const [optimizingModelId, setOptimizingModelId] = useState<string>()
+  const [networkWarning, setNetworkWarning] = useState<{ wifiOnly: boolean; connected: boolean }>()
   const [selectedArtifactId, setSelectedArtifactId] = useState<string>()
   const searchAbortRef = useRef<AbortController>()
   const downloadSamplesRef = useRef<Record<string, DownloadSample>>({})
   const refreshRunIdRef = useRef(0)
+  const detailRequestIdRef = useRef(0)
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
 
   const modelSizeKey = useCallback((model: RemoteModel) => `${model.source}:${model.id}`, [])
@@ -308,7 +313,8 @@ export function LocalModelCenter() {
           loading: event.stage !== 'ready' && event.stage !== 'idle',
           loaded: event.stage === 'ready' || current[event.modelId]?.loaded === true,
           stage: event.stage,
-          percent: Math.max(0, Math.min(100, event.percent)),
+          percent: event.stage === 'benchmarking' ? 0 : Math.max(0, Math.min(100, event.percent)),
+          indeterminate: event.stage === 'benchmarking',
           error: undefined,
         },
       }))
@@ -366,6 +372,7 @@ export function LocalModelCenter() {
   }, [])
 
   const openDetail = async (model: RemoteModel) => {
+    const requestId = ++detailRequestIdRef.current
     setSelected(model)
     setDetail(undefined)
     setDetailLoading(true)
@@ -375,14 +382,25 @@ export function LocalModelCenter() {
         revision: model.revision,
         includeArtifacts: true,
       })
+      if (requestId !== detailRequestIdRef.current) return
       setDetail(complete)
       setSelectedArtifactId(undefined)
     } catch (cause) {
+      if (requestId !== detailRequestIdRef.current) return
       setError(cause instanceof Error ? cause.message : t('模型详情加载失败'))
     } finally {
-      setDetailLoading(false)
+      if (requestId === detailRequestIdRef.current) setDetailLoading(false)
     }
   }
+
+  const closeDetail = useCallback(() => {
+    detailRequestIdRef.current += 1
+    setSelected(undefined)
+    setDetail(undefined)
+    setSelectedArtifactId(undefined)
+    setDetailLoading(false)
+    setError('')
+  }, [])
 
   const activeModel = detail || selected
   const activeJob = activeModel
@@ -489,7 +507,7 @@ export function LocalModelCenter() {
     }
   }, [installedJobs, t, view])
 
-  const startDownload = async () => {
+  const enqueueDownload = async () => {
     if (!selectedLocalModel || !profile || !artifact || artifactGroup.length === 0) return
     setError('')
     try {
@@ -505,6 +523,26 @@ export function LocalModelCenter() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('无法创建下载任务'))
     }
+  }
+
+  const startDownload = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      await enqueueDownload()
+      return
+    }
+    try {
+      const [settings, network] = await Promise.all([
+        yachiyoDownloadsNative.getSettings(),
+        yachiyoDownloadsNative.networkStatus(),
+      ])
+      if (!network.wifi) {
+        setNetworkWarning({ wifiOnly: settings.wifiOnly, connected: network.connected })
+        return
+      }
+    } catch {
+      // A failed status probe must not silently block a user-initiated download.
+    }
+    await enqueueDownload()
   }
 
   const setAsDefault = async () => {
@@ -600,7 +638,13 @@ export function LocalModelCenter() {
     setOptimizingModelId(modelId)
     setRuntimeByModelId((values) => ({
       ...values,
-      [modelId]: { ...(values[modelId] || { loaded: false }), loading: true, stage: 'benchmarking', percent: 10 },
+      [modelId]: {
+        ...(values[modelId] || { loaded: false }),
+        loading: true,
+        stage: 'benchmarking',
+        percent: 0,
+        indeterminate: true,
+      },
     }))
     try {
       const profile = await optimizeNativeModel(modelId)
@@ -610,7 +654,10 @@ export function LocalModelCenter() {
         [modelId]: { ...(values[modelId] || { loaded: false }), loading: false, stage: 'idle', percent: 0 },
       }))
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : t('模型优化失败')
+      const rawMessage = cause instanceof Error ? cause.message : ''
+      const message = rawMessage === 'local_acceleration_thermal_pause'
+        ? t('设备温度较高，校准已暂停；冷却后重试（local_acceleration_thermal_pause）')
+        : rawMessage || t('模型优化失败')
       setQueueError(message)
       setRuntimeByModelId((values) => ({
         ...values,
@@ -870,7 +917,7 @@ export function LocalModelCenter() {
                           }
                           data={[
                             { label: t('自动'), value: 'auto' },
-                            { label: t('极速'), value: 'extreme' },
+                            { label: t('深度校准'), value: 'extreme' },
                           ]}
                         />
                         <Select
@@ -988,13 +1035,14 @@ export function LocalModelCenter() {
                         <Text size="xs" fw={650} c={runtimeState.error ? 'red' : undefined}>
                           {runtimeState.error || runtimeStageLabel(t, runtimeState.stage)}
                         </Text>
-                        {!runtimeState.error && (
+                        {!runtimeState.error && !runtimeState.indeterminate && (
                           <Text size="xs" c="dimmed">
                             {runtimeState.percent}%
                           </Text>
                         )}
                       </Group>
-                      {!runtimeState.error && (
+                      {!runtimeState.error && runtimeState.indeterminate && <Loader size={18} />}
+                      {!runtimeState.error && !runtimeState.indeterminate && (
                         <Progress
                           value={runtimeState.percent}
                           animated={runtimeState.percent < 100}
@@ -1381,7 +1429,7 @@ export function LocalModelCenter() {
             color="gray"
             size={inAndroidAppShell ? 44 : 38}
             aria-label={t('返回模型列表')}
-            onClick={() => setSelected(undefined)}
+            onClick={closeDetail}
           >
             <IconArrowLeft size={22} />
           </ActionIcon>
@@ -1583,6 +1631,37 @@ export function LocalModelCenter() {
                 {error || queueError}
               </Text>
             )}
+            <AdaptiveModal
+              opened={Boolean(networkWarning)}
+              onClose={() => setNetworkWarning(undefined)}
+              title={t('当前未连接 Wi-Fi')}
+              centered
+              size="sm"
+            >
+              <Stack gap="md">
+                <Text size="sm">
+                  {networkWarning?.wifiOnly
+                    ? t('已启用“仅在 Wi-Fi 下下载”。任务可以加入队列，并会在连接 Wi-Fi 后自动开始。')
+                    : networkWarning?.connected
+                      ? t('当前网络不是 Wi-Fi，下载模型可能消耗大量移动数据。')
+                      : t('当前没有可用网络，任务会先加入队列并等待网络恢复。')}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {t('本次下载大小：{{size}}', { size: formatBytes(t, artifactGroupBytes || artifact?.sizeBytes) })}
+                </Text>
+                <AdaptiveModal.Actions>
+                  <AdaptiveModal.CloseButton onClick={() => setNetworkWarning(undefined)} />
+                  <Button
+                    onClick={() => {
+                      setNetworkWarning(undefined)
+                      void enqueueDownload()
+                    }}
+                  >
+                    {networkWarning?.wifiOnly ? t('加入等待队列') : t('继续下载')}
+                  </Button>
+                </AdaptiveModal.Actions>
+              </Stack>
+            </AdaptiveModal>
           </Stack>
         )}
       </main>

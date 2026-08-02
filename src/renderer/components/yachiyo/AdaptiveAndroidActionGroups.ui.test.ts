@@ -7,6 +7,7 @@ const read = (file: string) => fs.readFileSync(path.join(__dirname, file), 'utf8
 const approvalSource = read('AgentApprovalDialog.tsx')
 const agentConfigurationSource = read('AgentConfigurationPanel.tsx')
 const agentSessionSource = read('AgentSessionControls.tsx')
+const interactiveSource = read('AndroidInteractive.tsx')
 const permissionSource = read('AndroidPermissionWizard.tsx')
 const scheduledSource = read('AndroidScheduledTasks.tsx')
 const localModelSource = read('LocalModelCenter.tsx')
@@ -30,7 +31,7 @@ describe('Android adaptive action group contracts', () => {
     expect(agentConfigurationSource).toContain("collapseStrategy: 'icon-then-overflow'")
     expect(agentSessionSource).toContain('className="yachiyo-agent-header-actions"')
     expect(agentSessionSource).toContain("collapseStrategy: 'icon'")
-    expect(agentSessionSource).toContain("collapseStrategy: 'keep'")
+    expect(agentSessionSource).toContain("collapseStrategy: 'icon-then-overflow'")
     expect(workspaceDeliverySource).toContain('<AdaptiveActionCluster')
     expect(workspaceDeliverySource).toContain("collapseStrategy: 'keep'")
     expect(workspaceDeliverySource).toContain("collapseStrategy: 'overflow'")
@@ -70,6 +71,25 @@ describe('Android adaptive action group contracts', () => {
     )
     expect(shellStyles).toMatch(
       /\.yachiyo-pager-header-actions > \.yachiyo-mobile-conversation-tools\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*none;/s
+    )
+  })
+
+  it('does not rely on flex gap for Android 11 action spacing', () => {
+    expect(adaptiveStyles).toMatch(
+      /\.yachiyo-adaptive-action-cluster > \* \+ \*\s*\{[^}]*margin-inline-start:\s*8px;/s
+    )
+    expect(adaptiveStyles).toMatch(
+      /\.yachiyo-adaptive-modal-actions > \* \+ \*\s*\{[^}]*margin-inline-start:\s*8px;/s
+    )
+    expect(adaptiveStyles).toMatch(
+      /\.yachiyo-adaptive-modal-actions\[data-density=['"]overflow['"]\] > \* \+ \*\s*\{[^}]*margin-block-end:\s*8px;[^}]*margin-inline-start:\s*0;/s
+    )
+  })
+
+  it('keeps a visible model icon when no interactive conversation model is selected', () => {
+    expect(interactiveSource).toContain('<IconBrain size={18} aria-hidden="true" />')
+    expect(shellStyles).toMatch(
+      /\.yachiyo-interactive-llm-selector span,\s*\.yachiyo-interactive-llm-selector > svg:last-child\s*\{[^}]*display:\s*none;/s
     )
   })
 })

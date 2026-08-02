@@ -1,11 +1,12 @@
 html[data-yachiyo-appearance='flow-glass'] {
-  --flow-r-nav: 32px;
-  --flow-r-lens: 27px;
-  --flow-r-composer: 30px;
-  --flow-r-sheet: 32px;
-  --flow-r-popover: 24px;
-  --flow-r-panel: 22px;
-  --flow-r-content: 16px;
+  --flow-r-nav: 24px;
+  --flow-r-lens: 18px;
+  --flow-r-composer: 24px;
+  --flow-r-sheet: 24px;
+  --flow-r-popover: 18px;
+  --flow-r-panel: 18px;
+  --flow-r-content: 14px;
+  --flow-r-control: 14px;
   --flow-blue: #007aff;
   --flow-nav-active-label: #0064c8;
   --flow-green: #248a3d;
@@ -80,15 +81,27 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-shell {
   --yachiyo-text-muted: var(--flow-text-secondary);
 }
 
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-mobile-shell
+  :where(button, [role='button'], .mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
+  border-radius: var(--flow-r-control);
+  corner-shape: squircle;
+}
+
 .yachiyo-flow-environment {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: -2;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
   background-position: center;
   background-size: cover;
+  background-color: #f1f4f7;
+  background-image: linear-gradient(145deg, rgba(112, 166, 207, 0.035), transparent 46%, rgba(132, 145, 162, 0.025));
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-flow-environment {
@@ -97,88 +110,62 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-flow-environment {
 
 .yachiyo-flow-environment-target {
   z-index: -1;
-  background-image: none !important;
 }
 
-.yachiyo-flow-environment-target .yachiyo-flow-environment-image,
-.yachiyo-flow-environment-target .yachiyo-flow-environment-character-tint {
-  display: none;
+.yachiyo-flow-environment[data-context='interactive'] {
+  background-color: #f2f4f7;
 }
 
-.yachiyo-flow-environment-target[data-context='chat'] .yachiyo-flow-environment-scrim {
-  background: rgba(72, 163, 255, 0.16);
+.yachiyo-flow-environment[data-context='tasks'] {
+  background-color: #f1f4f4;
 }
 
-.yachiyo-flow-environment-target[data-context='interactive'] .yachiyo-flow-environment-scrim {
-  background: rgba(255, 89, 138, 0.14);
+.yachiyo-flow-environment[data-context='settings'] {
+  background-color: #f2f2f7;
+  background-image: none;
 }
 
-.yachiyo-flow-environment-target[data-context='tasks'] .yachiyo-flow-environment-scrim {
-  background: rgba(52, 199, 89, 0.13);
+html[data-theme='dark'] .yachiyo-flow-environment {
+  background-color: #11151a;
+  background-image: linear-gradient(145deg, rgba(95, 139, 174, 0.035), transparent 46%, rgba(132, 145, 162, 0.018));
 }
 
-.yachiyo-flow-environment-target[data-context='settings'] .yachiyo-flow-environment-scrim {
-  background: rgba(255, 159, 10, 0.12);
+html[data-theme='dark'] .yachiyo-flow-environment[data-context='interactive'] {
+  background-color: #121419;
 }
 
-html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='full'] .yachiyo-flow-environment-target {
-  background-image: var(--flow-custom-background-image, none) !important;
+html[data-theme='dark'] .yachiyo-flow-environment[data-context='tasks'] {
+  background-color: #111615;
 }
 
-html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='full']
-  .yachiyo-flow-environment-target
-  :is(.yachiyo-flow-environment-image, .yachiyo-flow-environment-character-tint) {
-  display: block;
+html[data-theme='dark'] .yachiyo-flow-environment[data-context='settings'] {
+  background-color: #121316;
+  background-image: none;
 }
 
 .yachiyo-flow-environment-image,
-.yachiyo-flow-environment-character-tint,
 .yachiyo-flow-environment-scrim {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .yachiyo-flow-environment-image {
+  display: none;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
 }
 
-.yachiyo-flow-environment[data-context='chat'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/chat-light.webp');
-}
-
-.yachiyo-flow-environment[data-context='interactive'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/interactive-light.webp');
-}
-
-.yachiyo-flow-environment[data-context='tasks'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/tasks-light.webp');
-}
-
-.yachiyo-flow-environment[data-context='settings'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/settings-light.webp');
-}
-
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='chat'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/chat-dark.webp');
-}
-
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='interactive'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/interactive-dark.webp');
-}
-
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='tasks'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/tasks-dark.webp');
-}
-
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='settings'] .yachiyo-flow-environment-image {
-  background-image: url('/liquid-glass/environments/settings-dark.webp');
-}
-
 .yachiyo-flow-environment[data-custom-background='true'] .yachiyo-flow-environment-image {
-  inset: -3%;
-  background-image: inherit;
+  display: block;
+  top: -3%;
+  right: -3%;
+  bottom: -3%;
+  left: -3%;
+  background-image: var(--flow-custom-background-image);
   filter: blur(10px) saturate(1.12) brightness(1.02);
 }
 
@@ -186,17 +173,20 @@ html[data-theme='dark'] .yachiyo-flow-environment[data-custom-background='true']
   filter: blur(12px) saturate(1.06) brightness(0.58);
 }
 
-.yachiyo-flow-environment-character-tint {
-  background: var(--flow-character-tint, transparent);
-  mix-blend-mode: color;
-}
-
 .yachiyo-flow-environment-scrim {
-  background: rgba(246, 249, 252, 0.08);
+  background: rgba(246, 249, 252, 0.03);
 }
 
 html[data-theme='dark'] .yachiyo-flow-environment-scrim {
-  background: rgba(5, 9, 14, 0.12);
+  background: rgba(5, 9, 14, 0.06);
+}
+
+.yachiyo-flow-environment[data-custom-background='true'] .yachiyo-flow-environment-scrim {
+  background: rgba(242, 246, 250, 0.18);
+}
+
+html[data-theme='dark'] .yachiyo-flow-environment[data-custom-background='true'] .yachiyo-flow-environment-scrim {
+  background: rgba(5, 9, 14, 0.3);
 }
 
 .yachiyo-flow-filter-definitions {
@@ -209,7 +199,10 @@ html[data-theme='dark'] .yachiyo-flow-environment-scrim {
 /* Floating spatial chrome: content owns the full viewport and scrolls behind these layers. */
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-content {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 1;
   padding: 0;
   overflow: hidden;
@@ -223,7 +216,10 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-main-tab-page {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-drawer {
   position: absolute;
-  inset: 0 0 auto;
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: 0;
   z-index: 30;
   pointer-events: none;
 }
@@ -311,7 +307,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse {
   height: 44px;
   min-height: 44px;
   border: 1px solid var(--flow-edge-mid);
-  border-radius: 50%;
+  border-radius: var(--flow-r-control);
+  corner-shape: squircle;
   color: var(--flow-text);
   background: radial-gradient(circle at 34% 20%, var(--flow-edge-mid), transparent 48%), var(--flow-control-fill);
   box-shadow:
@@ -379,12 +376,12 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-disclosure .yachiyo-ag
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-new-topic {
   color: var(--flow-blue) !important;
-  background: color-mix(in srgb, var(--flow-blue) 10%, var(--flow-control-fill)) !important;
+  background: color-mix(in srgb, var(--flow-control-fill) 82%, transparent) !important;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 74%, transparent) !important;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-new-topic:active:not(:disabled) {
-  background: color-mix(in srgb, var(--flow-blue) 17%, var(--flow-control-fill)) !important;
+  background: color-mix(in srgb, var(--flow-blue) 10%, var(--flow-control-fill)) !important;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-header-more-menu {
@@ -458,10 +455,13 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-connection-status[data-conne
   background: var(--flow-green);
 }
 
-/* One shared 54px lens moves inside a 64px R32 shell. */
+/* One shared R18 lens moves inside the concentric R24 navigation shell. */
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav {
   position: absolute;
-  inset: auto 0 0;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 40;
   min-height: var(--flow-nav-height);
   padding: 0 calc(10px + var(--mobile-safe-area-inset-right, 0px)) var(--mobile-safe-area-inset-bottom, 0px)
@@ -510,7 +510,10 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens-inner {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: block;
   border: 1px solid rgba(255, 255, 255, 0.52);
   border-radius: inherit;
@@ -641,7 +644,10 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-task-composer-panel {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface::before {
   position: absolute;
-  inset: 0 10% auto;
+  top: 0;
+  right: 10%;
+  bottom: auto;
+  left: 10%;
   z-index: 0;
   height: 1px;
   content: '';
@@ -687,7 +693,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .manti
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .mantine-ActionIcon-root {
   min-width: 44px;
   min-height: 44px;
-  border-radius: 50%;
+  border-radius: var(--flow-r-control);
+  corner-shape: squircle;
 }
 
 html[data-yachiyo-appearance='flow-glass']
@@ -702,6 +709,8 @@ html[data-yachiyo-appearance='flow-glass']
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-composer-row .yachiyo-composer-model {
+  border-radius: var(--flow-r-control);
+  corner-shape: squircle;
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 72%, transparent);
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--flow-edge-light) 62%, transparent), transparent 46%),
@@ -1174,7 +1183,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-handle {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-history-item {
   border-radius: var(--flow-r-content);
-  background: var(--flow-content-fill);
+  background: rgb(250, 252, 254);
   transition:
     background-color 160ms ease,
     box-shadow 160ms ease;
@@ -1183,8 +1192,26 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-history-item {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-history-item[data-active='true'] {
   color: var(--flow-blue);
-  background: rgba(0, 122, 255, 0.12);
+  background: color-mix(in srgb, rgb(250, 252, 254) 88%, var(--flow-blue) 12%);
   box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.18);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-history-swipe {
+  background: rgb(238, 242, 247);
+}
+
+html[data-yachiyo-appearance='flow-glass'][data-mantine-color-scheme='dark'] .yachiyo-history-swipe {
+  background: rgb(16, 20, 26);
+}
+
+html[data-yachiyo-appearance='flow-glass'][data-mantine-color-scheme='dark'] .yachiyo-history-item {
+  background: rgb(25, 30, 37);
+}
+
+html[data-yachiyo-appearance='flow-glass'][data-mantine-color-scheme='dark']
+  .yachiyo-history-item[data-active='true'] {
+  color: #8dc7ff;
+  background: color-mix(in srgb, rgb(25, 30, 37) 84%, var(--flow-blue) 16%);
 }
 
 /* Press feedback changes material weight and highlight on pointer-down. */
@@ -1195,6 +1222,52 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .mantine-
   box-shadow:
     inset 0 1px 0 var(--flow-edge-mid),
     0 3px 10px rgba(25, 55, 84, 0.12);
+}
+
+html[data-yachiyo-appearance='flow-glass']
+  :is(.yachiyo-mobile-header-new-topic, .yachiyo-agent-settings-button).mantine-ActionIcon-root {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--flow-r-control) !important;
+  corner-shape: squircle;
+  transition:
+    transform 120ms ease-out,
+    color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 160ms ease;
+}
+
+html[data-yachiyo-appearance='flow-glass']
+  :is(.yachiyo-mobile-header-new-topic, .yachiyo-agent-settings-button).mantine-ActionIcon-root::before,
+html[data-yachiyo-appearance='flow-glass']
+  :is(.yachiyo-mobile-header-new-topic, .yachiyo-agent-settings-button).mantine-ActionIcon-root::after {
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
+  border-radius: inherit !important;
+  corner-shape: inherit;
+}
+
+html[data-yachiyo-appearance='flow-glass']
+  :is(.yachiyo-mobile-header-new-topic, .yachiyo-agent-settings-button).mantine-ActionIcon-root:active:not(:disabled) {
+  transform: scale(0.96) !important;
+  color: var(--flow-blue) !important;
+  background: color-mix(in srgb, var(--flow-blue) 10%, var(--flow-control-fill)) !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 70%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--flow-blue) 16%, transparent),
+    0 3px 10px rgba(25, 55, 84, 0.1) !important;
+}
+
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-agent-settings-button.mantine-ActionIcon-root[aria-expanded='true'] {
+  color: var(--flow-blue) !important;
+  background: color-mix(in srgb, var(--flow-blue) 7%, var(--flow-control-fill)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 0 0 1px color-mix(in srgb, var(--flow-blue) 14%, transparent) !important;
 }
 
 html[data-yachiyo-appearance='flow-glass']
@@ -1239,7 +1312,10 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='fu
   :is(.yachiyo-mobile-header, .yachiyo-interactive-header)
   .mantine-ActionIcon-root::after {
   position: absolute;
-  inset: 1px;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
   border-radius: inherit;
   content: '';
   box-shadow:
@@ -1256,7 +1332,10 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='fu
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='full']
   .yachiyo-chat-composer-surface::after {
   position: absolute;
-  inset: 1px;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
   border-radius: calc(var(--flow-r-composer) - 1px);
   content: '';
   box-shadow:
@@ -1305,6 +1384,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
     .yachiyo-connection-status,
     .yachiyo-bottom-nav-grid,
     .yachiyo-bottom-nav-lens,
+    .yachiyo-bottom-nav-lens-inner,
     .yachiyo-chat-composer-surface,
     .yachiyo-task-composer-panel,
     .bubble-user-msg .inline-block.max-w-full,
@@ -1352,8 +1432,25 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   filter: none !important;
 }
 
+/* Android 11 WebView predates complex :is() support, so keep the reduced fallback selector-free. */
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] body * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced']
-  :is(.yachiyo-bottom-nav-lens, .bubble-user-msg .inline-block.max-w-full, .yachiyo-agent-user-message) {
+  .yachiyo-bottom-nav-lens-inner {
+  border-color: var(--flow-edge-mid) !important;
+  background: var(--flow-control-fill) !important;
+}
+
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced']
+  :is(
+    .yachiyo-bottom-nav-lens,
+    .yachiyo-bottom-nav-lens-inner,
+    .bubble-user-msg .inline-block.max-w-full,
+    .yachiyo-agent-user-message
+  ) {
   border-color: var(--flow-edge-mid) !important;
   background: color-mix(in srgb, var(--flow-control-fill) 90%, var(--flow-blue) 10%) !important;
 }
@@ -1408,7 +1505,12 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   }
 
   html[data-yachiyo-appearance='flow-glass']
-    :is(.yachiyo-bottom-nav-lens, .bubble-user-msg .inline-block.max-w-full, .yachiyo-agent-user-message) {
+    :is(
+      .yachiyo-bottom-nav-lens,
+      .yachiyo-bottom-nav-lens-inner,
+      .bubble-user-msg .inline-block.max-w-full,
+      .yachiyo-agent-user-message
+    ) {
     border-color: var(--flow-edge-mid) !important;
     background: color-mix(in srgb, var(--flow-control-fill) 90%, var(--flow-blue) 10%) !important;
   }
@@ -1431,6 +1533,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
       .yachiyo-connection-status,
       .yachiyo-bottom-nav-grid,
       .yachiyo-bottom-nav-lens,
+      .yachiyo-bottom-nav-lens-inner,
       .yachiyo-chat-composer-surface,
       .yachiyo-task-composer-panel,
       .bubble-user-msg .inline-block.max-w-full,
@@ -1490,6 +1593,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
       .yachiyo-connection-status,
       .yachiyo-bottom-nav-grid,
       .yachiyo-bottom-nav-lens,
+      .yachiyo-bottom-nav-lens-inner,
       .yachiyo-chat-composer-surface,
       .yachiyo-task-composer-panel,
       .bubble-user-msg .inline-block.max-w-full,
@@ -1572,7 +1676,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
 
   html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools {
     padding: 1px;
-    border-radius: 20px;
+    border-radius: var(--flow-r-popover);
   }
 
   html[data-yachiyo-appearance='flow-glass'] .yachiyo-pager-header-actions {
@@ -1611,6 +1715,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
       .yachiyo-connection-status,
       .yachiyo-bottom-nav-grid,
       .yachiyo-bottom-nav-lens,
+      .yachiyo-bottom-nav-lens-inner,
       .yachiyo-chat-composer-surface,
       .yachiyo-task-composer-panel,
       .bubble-user-msg .inline-block.max-w-full,
@@ -1711,14 +1816,19 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: url('/liquid-glass/environments/chat-light.webp') center 22% / cover;
+  background:
+    linear-gradient(145deg, rgba(112, 166, 207, 0.035), transparent 46%, rgba(132, 145, 162, 0.025)),
+    #f1f4f7;
 }
 
 .yachiyo-theme-card-preview-flow::after {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   content: '';
-  background: rgba(245, 249, 253, 0.08);
+  background: rgba(245, 249, 253, 0.03);
   pointer-events: none;
 }
 
@@ -1824,7 +1934,10 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header {
   position: absolute;
-  inset: 0 0 auto;
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: 0;
   z-index: 30;
   min-height: calc(60px + var(--mobile-safe-area-inset-top, 0px));
   padding: calc(8px + var(--mobile-safe-area-inset-top, 0px)) calc(12px + var(--mobile-safe-area-inset-right, 0px)) 6px
@@ -1837,7 +1950,10 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-shared-interactive-chrome-host > .yachiyo-interactive-header {
   position: relative;
-  inset: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
   min-height: 44px;
   padding: 0;
 }
@@ -1862,7 +1978,10 @@ html[data-yachiyo-appearance='flow-glass']
   .yachiyo-interactive-header
   :is(.mantine-ActionIcon-root, .yachiyo-character-selector, .yachiyo-interactive-llm-selector)::before {
   position: absolute;
-  inset: 1px;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  left: 1px;
   border-radius: inherit;
   content: '';
   box-shadow: inset 1px 1px 0 color-mix(in srgb, var(--flow-edge-light) 36%, transparent);
@@ -1907,6 +2026,12 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control.man
 
 html[data-yachiyo-appearance='flow-glass']
   .yachiyo-interactive-mode-control
+  .mantine-SegmentedControl-control {
+  flex: 1 1 50%;
+}
+
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-interactive-mode-control
   .mantine-SegmentedControl-indicator {
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 58%, var(--flow-edge-mid));
   border-radius: 20px;
@@ -1926,7 +2051,10 @@ html[data-yachiyo-appearance='flow-glass']
   position: relative;
   z-index: 1;
   min-height: 40px;
-  padding-inline: 13px;
+  width: 100%;
+  padding-inline: 10px;
+  display: grid;
+  place-items: center;
   color: var(--flow-text-secondary);
   font-weight: 560;
 }
