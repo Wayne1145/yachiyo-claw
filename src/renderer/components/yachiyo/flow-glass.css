@@ -237,6 +237,13 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header {
   backdrop-filter: none;
 }
 
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header[data-shell-tab='settings'] {
+  background: var(--flow-sheet-fill);
+  -webkit-backdrop-filter: blur(24px) saturate(1.18);
+  backdrop-filter: blur(24px) saturate(1.18);
+  box-shadow: var(--flow-shadow-control);
+}
+
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-primary,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapsible-inner {
   pointer-events: auto;
@@ -751,7 +758,9 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-composer-row .yachiyo
   background: color-mix(in srgb, #202124 72%, var(--flow-control-fill));
 }
 
-html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-composer-row .yachiyo-composer-primary:active:not(:disabled) {
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-mobile-composer-row
+  .yachiyo-composer-primary:active:not(:disabled) {
   transform: scale(0.94);
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.2),
@@ -1041,9 +1050,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
     box-shadow 120ms ease-out;
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-composer-popover
-  .mantine-Menu-item:is([data-hovered], :active) {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Menu-item:is([data-hovered], :active) {
   border-color: color-mix(in srgb, var(--flow-blue) 22%, var(--flow-edge-mid));
   color: var(--flow-text);
   background: color-mix(in srgb, var(--flow-blue) 10%, var(--flow-control-fill));
@@ -1056,15 +1063,11 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
   opacity: 0.84;
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-composer-popover
-  .mantine-Menu-itemSection[data-position='left'] {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Menu-itemSection[data-position='left'] {
   color: var(--flow-blue);
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-composer-popover
-  .mantine-Menu-itemSection[data-position='right'] {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Menu-itemSection[data-position='right'] {
   color: var(--flow-text-secondary);
 }
 
@@ -1105,13 +1108,14 @@ html[data-yachiyo-appearance='flow-glass'] .mantine-Tooltip-tooltip {
   border-radius: 12px;
   color: var(--flow-text);
   background: var(--flow-popover-fill);
-  box-shadow: inset 0 1px 0 var(--flow-edge-light), var(--flow-shadow-control);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    var(--flow-shadow-control);
   backdrop-filter: blur(18px) saturate(1.3);
   -webkit-backdrop-filter: blur(18px) saturate(1.3);
 }
 
-html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced']
-  .mantine-Tooltip-tooltip {
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] .mantine-Tooltip-tooltip {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -1141,7 +1145,15 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-surface {
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-sheet {
+  box-sizing: border-box;
+  max-height: calc(100dvh - var(--mobile-safe-area-inset-top, 0px));
   border-radius: var(--flow-r-sheet) var(--flow-r-sheet) 0 0;
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-sheet .yachiyo-adaptive-scroll {
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-drawer {
@@ -1208,8 +1220,7 @@ html[data-yachiyo-appearance='flow-glass'][data-mantine-color-scheme='dark'] .ya
   background: rgb(25, 30, 37);
 }
 
-html[data-yachiyo-appearance='flow-glass'][data-mantine-color-scheme='dark']
-  .yachiyo-history-item[data-active='true'] {
+html[data-yachiyo-appearance='flow-glass'][data-mantine-color-scheme='dark'] .yachiyo-history-item[data-active='true'] {
   color: #8dc7ff;
   background: color-mix(in srgb, rgb(25, 30, 37) 84%, var(--flow-blue) 16%);
 }
@@ -1438,8 +1449,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   -webkit-backdrop-filter: none !important;
 }
 
-html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced']
-  .yachiyo-bottom-nav-lens-inner {
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] .yachiyo-bottom-nav-lens-inner {
   border-color: var(--flow-edge-mid) !important;
   background: var(--flow-control-fill) !important;
 }
@@ -1680,9 +1690,9 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   }
 
   html[data-yachiyo-appearance='flow-glass'] .yachiyo-pager-header-actions {
-    width: min(208px, calc(100% - 92px));
-    max-width: min(208px, calc(100% - 92px));
-    flex: 0 0 min(208px, calc(100% - 92px));
+    width: min(160px, calc(100% - 120px));
+    max-width: min(160px, calc(100% - 120px));
+    flex: 0 1 min(160px, calc(100% - 120px));
   }
 
   html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools .mantine-ActionIcon-root,
@@ -1816,9 +1826,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background:
-    linear-gradient(145deg, rgba(112, 166, 207, 0.035), transparent 46%, rgba(132, 145, 162, 0.025)),
-    #f1f4f7;
+  background: linear-gradient(145deg, rgba(112, 166, 207, 0.035), transparent 46%, rgba(132, 145, 162, 0.025)), #f1f4f7;
 }
 
 .yachiyo-theme-card-preview-flow::after {
@@ -1995,9 +2003,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-
   corner-shape: squircle;
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-interactive-header
-  .mantine-ActionIcon-root[data-active='true'] {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .mantine-ActionIcon-root[data-active='true'] {
   border-color: color-mix(in srgb, var(--flow-blue) 38%, var(--flow-edge-mid));
   color: var(--flow-blue);
   background:
@@ -2024,15 +2030,11 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control.man
   -webkit-backdrop-filter: blur(22px) saturate(1.34);
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-interactive-mode-control
-  .mantine-SegmentedControl-control {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-control {
   flex: 1 1 50%;
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-interactive-mode-control
-  .mantine-SegmentedControl-indicator {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-indicator {
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 58%, var(--flow-edge-mid));
   border-radius: 20px;
   corner-shape: squircle;
@@ -2045,9 +2047,7 @@ html[data-yachiyo-appearance='flow-glass']
     0 3px 9px color-mix(in srgb, var(--flow-text) 9%, transparent);
 }
 
-html[data-yachiyo-appearance='flow-glass']
-  .yachiyo-interactive-mode-control
-  .mantine-SegmentedControl-label {
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-label {
   position: relative;
   z-index: 1;
   min-height: 40px;

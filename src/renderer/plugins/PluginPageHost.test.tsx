@@ -251,7 +251,7 @@ describe('PluginPageHost actions', () => {
         </MantineProvider>
       )
 
-      expect(await screen.findByText('插件功能已关闭')).toBeTruthy()
+      expect(await screen.findByText('Plugins are disabled')).toBeTruthy()
       expect(mocks.load).not.toHaveBeenCalled()
       expect(mocks.dispose).toHaveBeenCalledWith('demo-plugin')
     } finally {
@@ -273,7 +273,7 @@ describe('PluginPageHost actions', () => {
         </MantineProvider>
       )
 
-      expect(await screen.findByText('插件页面渲染失败')).toBeTruthy()
+      expect(await screen.findByText('Plugin page failed to render')).toBeTruthy()
       expect(screen.getByText('plugin_render_boom')).toBeTruthy()
       expect(mocks.recordUiFailure).toHaveBeenCalledWith('demo-plugin', expect.any(Error))
     } finally {

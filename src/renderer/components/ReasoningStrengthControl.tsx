@@ -1,5 +1,6 @@
 import { ActionIcon, Menu, Text, Tooltip } from '@mantine/core'
 import { IconBrain, IconCheck, IconChevronDown } from '@tabler/icons-react'
+import { useTranslation } from 'react-i18next'
 import type { ReasoningStrength, SessionSettings } from '@shared/types'
 import {
   getSessionReasoningStrength,
@@ -27,19 +28,21 @@ export function ReasoningStrengthControl({
   compact?: boolean
   display?: 'icon' | 'label'
 }) {
+  const { t } = useTranslation()
   const value = getSessionReasoningStrength(settings) || 'medium'
   const mapping = mapReasoningStrength(value, settings?.provider, settings?.modelId)
-  const label = mapping.exact ? LABELS[value] : `${LABELS[value]}*`
+  const label = `${t(LABELS[value])}${mapping.exact ? '' : '*'}`
+  const mappingNote = mapping.exact ? '' : t('（当前模型或提供商会自行映射）')
 
   return (
     <Menu withinPortal position="top-end" shadow="md">
       <Menu.Target>
-        <Tooltip label={`推理强度：${label}${mapping.exact ? '' : '（当前模型或提供商会自行映射）'}`} withArrow>
+        <Tooltip label={t('推理强度：{{label}}{{mappingNote}}', { label, mappingNote })} withArrow>
           {display === 'label' ? (
             <button
               type="button"
               className="yachiyo-composer-reasoning"
-              aria-label={`推理强度：${label}`}
+              aria-label={String(t('推理强度：{{label}}', { label }))}
               data-mapped={mapping.exact ? 'false' : 'true'}
             >
               <span>{label}</span>
@@ -50,7 +53,7 @@ export function ReasoningStrengthControl({
               variant="subtle"
               color={mapping.exact ? 'gray' : 'yellow'}
               size={compact ? 28 : 32}
-              aria-label="推理强度"
+              aria-label={String(t('推理强度'))}
               style={{ flex: '0 0 auto' }}
             >
               <IconBrain size={compact ? 17 : 19} />
@@ -59,19 +62,19 @@ export function ReasoningStrengthControl({
         </Tooltip>
       </Menu.Target>
       <Menu.Dropdown className="yachiyo-composer-popover yachiyo-composer-reasoning-menu" miw={170}>
-        <Menu.Label>推理强度</Menu.Label>
+        <Menu.Label>{t('推理强度')}</Menu.Label>
         {REASONING_STRENGTHS.map((strength) => (
           <Menu.Item
             key={strength}
             onClick={() => onChange(strength)}
             rightSection={value === strength ? <IconCheck size={14} /> : undefined}
           >
-            <Text size="sm">{LABELS[strength]}</Text>
+            <Text size="sm">{t(LABELS[strength])}</Text>
           </Menu.Item>
         ))}
         {!mapping.exact && (
           <Text size="xs" c="dimmed" px="sm" py={4}>
-            * 当前模型可能使用固定的推理模式。
+            {t('* 当前模型可能使用固定的推理模式。')}
           </Text>
         )}
       </Menu.Dropdown>

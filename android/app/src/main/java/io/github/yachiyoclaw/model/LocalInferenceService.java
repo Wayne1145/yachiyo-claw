@@ -35,6 +35,7 @@ public final class LocalInferenceService extends Service {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService monitorExecutor = Executors.newSingleThreadScheduledExecutor();
     private volatile String activeRuntime = "";
+    private volatile boolean ggufBridgeReady = false;
     private volatile String loadedRuntime = "";
     private volatile String loadedModelPath = "";
     private volatile boolean loadedEager = false;
@@ -174,7 +175,7 @@ public final class LocalInferenceService extends Service {
                     loadedRuntime = "litert-lm";
                     eager = true;
                 } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
-                    activeRuntime = "llama.cpp";
+                    prepareGgufRuntime();
                     GgufRunner.load(modelPath, request.optString("requestId"), eager, gpuLayers, cpuThreads);
                     loadedRuntime = "llama.cpp";
                 } else throw new IllegalArgumentException("local_model_not_chat_model");
@@ -210,7 +211,7 @@ public final class LocalInferenceService extends Service {
                         selectedBackend, declaredNpuCompatible, cpuThreads);
                     loadedRuntime = "litert-lm";
                 } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
-                    activeRuntime = "llama.cpp";
+                    prepareGgufRuntime();
                     stage.set(loadedModelPath.equals(modelPath) ? "generating" : "loading");
                     JSONArray preparedMessages = LocalToolProtocol.prepareMessages(messages, tools);
                     String text = GgufRunner.infer(
@@ -281,7 +282,7 @@ public final class LocalInferenceService extends Service {
                 this, modelPath, backend, npuCompatible, cpuThreads, benchmarkMode, benchmarkPhase);
             result.put("gpuLayers", 0).put("cpuThreads", cpuThreads);
         } else if (LocalModelFormat.isRunnableGgufPath(modelPath)) {
-            activeRuntime = "llama.cpp";
+            prepareGgufRuntime();
             int layerCount = GgufRunner.layerCount(modelPath);
             int percent = Math.max(0, Math.min(100, request.optInt("gpuLayerPercent", 0)));
             int layers = AccelerationPolicy.BACKEND_GPU.equals(backend)
@@ -333,6 +334,16 @@ public final class LocalInferenceService extends Service {
             if (result.optString("fallbackReason").isBlank()) result.put("fallbackReason", policyFallback);
         }
         return result;
+    }
+
+    private void prepareGgufRuntime() {
+        if (!ggufBridgeReady) {
+            // Loading a large native bridge may briefly block its first caller. Keep the heartbeat
+            // independent until class initialization has completed so a cold start is not a crash.
+            GgufRunner.loadProgress();
+            ggufBridgeReady = true;
+        }
+        activeRuntime = "llama.cpp";
     }
 
     private static long processResidentBytes() {

@@ -1,7 +1,7 @@
 {
   "name": "yachiyo-claw",
   "productName": "Yachiyo Claw",
-  "version": "0.0.14",
+  "version": "0.0.16",
   "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22.12.0 <25.0.0",
@@ -56,7 +56,7 @@
     "eval:session-rag:chatbox": "node scripts/session-rag-eval/run-chatbox-flow-eval.mjs",
     "lint": "biome lint .",
     "lint:fix": "biome lint . --write",
-    "check": "npx tsc --noEmit",
+    "check": "pnpm run generate:routes && npx tsc --noEmit",
     "check:android-native-logs": "node scripts/check-android-native-logs.mjs",
     "format": "biome format --write",
     "check:biome": "biome check",

@@ -1,15 +1,15 @@
 export interface AgentBudget {
-  /** Hard ceiling for model turns in one Agent run. */
+  /** Diagnostic threshold retained for compatibility; it does not stop requests. */
   maxModelRequests: number
-  /** Hard ceiling for accumulated model tokens. */
+  /** Diagnostic threshold retained for compatibility; it does not stop generation. */
   maxTokens: number
-  /** Hard ceiling when provider pricing is known; omitted for unpriced models. */
+  /** Diagnostic threshold retained for compatibility; omitted for unpriced models. */
   maxCostUsd?: number
-  /** Hard ceiling for local workspace operations. */
+  /** Diagnostic threshold retained for compatibility; it does not stop local actions. */
   maxLocalActions: number
-  /** Hard ceiling for Git commits. */
+  /** Diagnostic threshold retained for compatibility; it does not stop commits. */
   maxCommits: number
-  /** Total Agent run deadline and maximum per-operation timeout. */
+  /** Default per-operation timeout for legacy workspace callers. */
   deadlineMs: number
 }
 
@@ -96,42 +96,32 @@ export class AgentBudgetTracker {
   }
 
   get remainingMs(): number {
-    return Math.max(0, this.startedAt + this.budget.deadlineMs - Date.now())
+    return this.budget.deadlineMs
   }
 
-  assertWithinDeadline(now = Date.now()): void {
-    if (now - this.startedAt >= this.budget.deadlineMs) throw new AgentBudgetExceededError('deadline')
+  assertWithinDeadline(_now = Date.now()): void {
+    // Technical request and tool timeouts are enforced by their callers.
   }
 
-  reserveModelRequest(now = Date.now()): void {
-    this.assertWithinDeadline(now)
-    if (this.usageState.modelRequests >= this.budget.maxModelRequests) throw new AgentBudgetExceededError('modelRequests')
+  reserveModelRequest(_now = Date.now()): void {
     this.usageState.modelRequests += 1
   }
 
   recordTokens(tokens: number): void {
     if (!Number.isFinite(tokens) || tokens < 0) return
-    if (this.usageState.tokens + tokens > this.budget.maxTokens) throw new AgentBudgetExceededError('tokens')
     this.usageState.tokens += tokens
   }
 
   recordCost(costUsd: number): void {
     if (!Number.isFinite(costUsd) || costUsd < 0) return
-    if (this.budget.maxCostUsd !== undefined && this.usageState.costUsd + costUsd > this.budget.maxCostUsd) {
-      throw new AgentBudgetExceededError('costUsd')
-    }
     this.usageState.costUsd += costUsd
   }
 
-  reserveLocalAction(now = Date.now()): void {
-    this.assertWithinDeadline(now)
-    if (this.usageState.localActions >= this.budget.maxLocalActions) throw new AgentBudgetExceededError('localActions')
+  reserveLocalAction(_now = Date.now()): void {
     this.usageState.localActions += 1
   }
 
-  reserveCommit(now = Date.now()): void {
-    this.assertWithinDeadline(now)
-    if (this.usageState.commits >= this.budget.maxCommits) throw new AgentBudgetExceededError('commits')
+  reserveCommit(_now = Date.now()): void {
     this.usageState.commits += 1
   }
 }

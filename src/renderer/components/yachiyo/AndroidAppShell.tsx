@@ -174,7 +174,13 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       location.pathname === `/plugin/${record.manifest.id}` ||
       location.pathname.startsWith(`/plugin/${record.manifest.id}/`),
   )
-  const activeTab = activePlugin ? `plugin-${activePlugin.manifest.id}` : resolveAndroidShellTab(location.pathname)
+  const activePluginTabId = activePlugin ? `plugin-${activePlugin.manifest.id}` : undefined
+  const activePluginHasShellTab = Boolean(activePluginTabId && shellTabs.some((tab) => tab.id === activePluginTabId))
+  const activeTab = activePlugin
+    ? activePluginHasShellTab
+      ? activePluginTabId!
+      : 'settings'
+    : resolveAndroidShellTab(location.pathname)
   const activeTabLabel = t(
     shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天',
   )
@@ -188,7 +194,10 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const isAgentTaskPath = location.pathname === '/task' || location.pathname.startsWith('/task/')
   const isSettingsDetail = activeTab === 'settings' && location.pathname !== '/settings'
   const isInteractive = activeTab === 'interactive'
-  const settingsHeaderTitle = resolveSettingsHeaderTitle(location.pathname, (key) => String(t(key)))
+  const settingsHeaderTitle =
+    activePlugin && !activePluginHasShellTab
+      ? activePlugin.manifest.displayName
+      : resolveSettingsHeaderTitle(location.pathname, (key) => String(t(key)))
 
   const returnToConversationSettingsSource = useCallback(async () => {
     const source = conversationSettingsReturnRef.current
@@ -483,6 +492,19 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
 
   const headerActions = useMemo<AdaptiveActionDescriptor[]>(() => {
     if (!showConversationTools) return []
+    const startNewTopic = () => {
+      void createEmpty('chat').then(async (session) => {
+        switchCurrentSession(session.id)
+        await router.navigate({ to: '/session/$sessionId', params: { sessionId: session.id } })
+      })
+    }
+    const openConversationSettings = () => {
+      conversationSettingsReturnRef.current = {
+        pathname: location.pathname,
+        search: location.search as Record<string, unknown>,
+      }
+      void router.navigate({ to: '/settings/chat', search: {} })
+    }
     return [
       {
         id: 'search',
@@ -524,8 +546,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         id: 'new-topic',
         label: String(t('New Thread')),
         icon: IconMessagePlus,
-        priority: 120,
-        collapseStrategy: 'keep',
+        priority: 20,
+        collapseStrategy: 'overflow',
+        menuAction: { onSelect: startNewTopic },
         renderControl: () => (
           <ActionIcon
             className="yachiyo-mobile-header-new-topic"
@@ -533,12 +556,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
             color="gray"
             size={44}
             aria-label={String(t('New Thread'))}
-            onClick={() => {
-              void createEmpty('chat').then(async (session) => {
-                switchCurrentSession(session.id)
-                await router.navigate({ to: '/session/$sessionId', params: { sessionId: session.id } })
-              })
-            }}
+            onClick={startNewTopic}
           >
             <IconMessagePlus size={22} />
           </ActionIcon>
@@ -548,8 +566,21 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         id: 'more',
         label: String(t('More')),
         icon: IconDots,
-        priority: 130,
-        collapseStrategy: 'keep',
+        priority: 10,
+        collapseStrategy: 'overflow',
+        menuAction: {
+          render: ({ closeMenu }) => (
+            <Menu.Item
+              leftSection={<IconSettings size={18} />}
+              onClick={() => {
+                closeMenu()
+                openConversationSettings()
+              }}
+            >
+              {t('Chat Settings')}
+            </Menu.Item>
+          ),
+        },
         renderControl: () => (
           <Menu position="bottom-end" withinPortal shadow="md">
             <Menu.Target>
@@ -564,16 +595,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
               </ActionIcon>
             </Menu.Target>
             <Menu.Dropdown className="yachiyo-header-more-menu">
-              <Menu.Item
-                leftSection={<IconSettings size={18} />}
-                onClick={() => {
-                  conversationSettingsReturnRef.current = {
-                    pathname: location.pathname,
-                    search: location.search as Record<string, unknown>,
-                  }
-                  void router.navigate({ to: '/settings/chat', search: {} })
-                }}
-              >
+              <Menu.Item leftSection={<IconSettings size={18} />} onClick={openConversationSettings}>
                 {t('Chat Settings')}
               </Menu.Item>
             </Menu.Dropdown>
@@ -710,7 +732,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
             />
             <div className="yachiyo-mobile-header-drawer">
               <div className="yachiyo-mobile-header-drawer-inner">
-                <header className="yachiyo-mobile-header">
+                <header className="yachiyo-mobile-header" data-shell-tab={activeTab}>
                   <div className="yachiyo-mobile-header-primary">
                     <AndroidStandardChromeLayer activeInteractive={isInteractive} transition={pagerTransition}>
                       {activeTab === 'settings' ? (
@@ -821,7 +843,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
                             className="yachiyo-mobile-header-collapsible"
                             data-state="expanded"
                             initial={reduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, y: -8 }}
-                            animate={reduceMotion ? { height: 'auto', opacity: 1 } : { height: 'auto', opacity: 1, y: 0 }}
+                            animate={
+                              reduceMotion ? { height: 'auto', opacity: 1 } : { height: 'auto', opacity: 1, y: 0 }
+                            }
                             exit={reduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0, y: -8 }}
                             transition={
                               reduceMotion

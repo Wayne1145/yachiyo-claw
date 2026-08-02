@@ -65,7 +65,7 @@ describe('AgentUsageLedger', () => {
     storage = new MemoryStorage()
   })
 
-  it('rejects a request that would exceed the token budget', async () => {
+  it('reserves requests and records usage without rejecting legacy token budgets', async () => {
     const ledger = new AgentUsageLedger({
       storage,
       tokenCounter: () => 10,
@@ -80,17 +80,17 @@ describe('AgentUsageLedger', () => {
       maxOutputTokens: 5,
     })
     expect(first.status).toBe('reserved')
-    await expect(ledger.reserve({
+    await ledger.reserve({
       taskId: 'task-1',
       provider: 'openai',
       model: 'gpt-4o-mini',
       messages: 'second request',
       maxOutputTokens: 5,
-    })).rejects.toThrowError('agent_usage_budget_exceeded:tokens')
-    await expect(ledger.list('task-1')).resolves.toHaveLength(1)
+    })
+    await expect(ledger.list('task-1')).resolves.toHaveLength(2)
   })
 
-  it('serializes concurrent reservations so the request ceiling cannot race', async () => {
+  it('serializes concurrent reservations while retaining both nonblocking records', async () => {
     const ledger = new AgentUsageLedger({
       storage,
       tokenCounter: () => 1,
@@ -101,8 +101,8 @@ describe('AgentUsageLedger', () => {
       ledger.reserve({ taskId: 'task-race', provider: 'p', model: 'm', messages: 'a', maxOutputTokens: 1 }),
       ledger.reserve({ taskId: 'task-race', provider: 'p', model: 'm', messages: 'b', maxOutputTokens: 1 }),
     ])
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(0)
   })
 
   it('does not block unknown pricing when legacy confirmation is configured', async () => {

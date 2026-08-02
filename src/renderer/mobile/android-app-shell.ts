@@ -70,6 +70,7 @@ export function resolveAndroidShellParentPath(pathname: string): string | undefi
 
   const pluginChild = normalizedPath.match(/^\/plugin\/([^/]+)\/.+$/)
   if (pluginChild?.[1]) return `/plugin/${pluginChild[1]}`
+  if (/^\/plugin\/[^/]+$/.test(normalizedPath)) return '/settings/plugins'
 
   if (normalizedPath !== '/settings' && normalizedPath.startsWith('/settings/')) return '/settings'
   if (normalizedPath === '/about') return '/settings'
@@ -84,9 +85,7 @@ export function isAllowedAndroidShellPath(pathname: string): boolean {
     pathname.startsWith('/task/') ||
     pathname.startsWith('/session/') ||
     pathname === '/settings' ||
-    CORE_ANDROID_SETTINGS_ROUTES.some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`)
-    )
+    CORE_ANDROID_SETTINGS_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))
   if (corePath) return true
   registerBuiltinFeatures()
   registerBuiltinFeatureUi()
@@ -100,7 +99,7 @@ export function getAndroidShellTabs(overrides?: Readonly<Record<string, boolean>
 }
 
 export function hasConfiguredModelProvider(
-  settings: Pick<Settings, 'customProviders' | 'licenseKey' | 'providers'>
+  settings: Pick<Settings, 'customProviders' | 'licenseKey' | 'providers'>,
 ): boolean {
   if (settings.licenseKey?.trim()) return true
   const customProviderIds = new Set(settings.customProviders?.map((provider) => provider.id) || [])
@@ -110,10 +109,11 @@ export function hasConfiguredModelProvider(
     if (provider.apiKey?.trim() || provider.oauth?.accessToken?.trim()) return true
     if (provider.accessKey?.trim() && provider.secretKey?.trim()) return true
     return (
-      providerId === ModelProviderEnum.Local ||
-      providerId === ModelProviderEnum.Ollama ||
-      providerId === ModelProviderEnum.LMStudio
-    ) && Boolean(provider.models?.length)
+      (providerId === ModelProviderEnum.Local ||
+        providerId === ModelProviderEnum.Ollama ||
+        providerId === ModelProviderEnum.LMStudio) &&
+      Boolean(provider.models?.length)
+    )
   })
 }
 
@@ -124,7 +124,7 @@ export function hasYachiyoDefaultModel(models: ProviderModelInfo[]): boolean {
 export function createYachiyoApiSettingsPatch(
   settings: AndroidShellSettings,
   apiKey: string,
-  models?: ProviderModelInfo[]
+  models?: ProviderModelInfo[],
 ): Partial<Settings> {
   const normalizedApiKey = apiKey.trim()
   if (!normalizedApiKey) {
@@ -132,14 +132,14 @@ export function createYachiyoApiSettingsPatch(
   }
 
   const existingSettings = settings.providers?.[ModelProviderEnum.Yachiyo]
-  const providerModels = models && normalizeYachiyoModels(models).map((model) => {
-    const defaultModel = yachiyoProvider.defaultSettings?.models?.find(
-      (candidate) => candidate.modelId === model.modelId
-    )
-    return defaultModel
-      ? { ...defaultModel, ...model }
-      : model
-  })
+  const providerModels =
+    models &&
+    normalizeYachiyoModels(models).map((model) => {
+      const defaultModel = yachiyoProvider.defaultSettings?.models?.find(
+        (candidate) => candidate.modelId === model.modelId,
+      )
+      return defaultModel ? { ...defaultModel, ...model } : model
+    })
 
   return {
     providers: {

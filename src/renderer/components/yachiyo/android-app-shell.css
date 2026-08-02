@@ -1284,7 +1284,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   min-width: 0;
   min-height: 114px;
   display: grid !important;
-  grid-template-columns: 44px minmax(0, 1fr) 44px 0 48px;
+  grid-template-columns: 44px minmax(0, 1fr) 74px 0 48px;
   grid-template-rows: minmax(64px, auto) 44px;
   grid-template-areas:
     'input input input input input'
@@ -1387,6 +1387,9 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 
 .yachiyo-composer-reasoning {
   grid-area: reasoning;
+  width: 74px;
+  min-width: 74px;
+  flex-basis: 74px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1399,6 +1402,15 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.yachiyo-composer-reasoning > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .yachiyo-composer-reasoning[data-mapped='true'] {

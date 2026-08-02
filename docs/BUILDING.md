@@ -123,15 +123,20 @@ powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm rebuild sh
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run mobile:assets:yachiyo
 ```
 
-## 当前上游基线
+## 当前发布验证基线
 
-首次安装使用 `--ignore-scripts` 时，未修改 Chatbox 上游的结果如下：
+`v0.0.16` 在工作区固定工具链下的发布前结果如下。跳过项来自仓库中显式标记的集成测试，
+不计入通过数量；新增或恢复用例后应同步更新本表。
 
-| 命令 | 基线结果 | 原因 |
+| 命令 | 基线结果 | 说明 |
 | --- | --- | --- |
-| `pnpm check` | 首次失败，生成 route tree 后通过 | `routeTree.gen.ts` 在首次 Vite 构建时生成且被 Git 忽略 |
-| `pnpm test` | 1127 通过、1 个断言失败、54 跳过；另 4 个 suite 在收集阶段失败 | 一个上游测试硬编码 POSIX 路径；Android-only 安装跳过 Electron 下载，4 个 desktop suite 无法导入 |
-| `pnpm build:web` | bundle 成功，清理阶段失败 | 上游缺少 sourcemap runner；Yachiyo 已补齐 |
+| `pnpm check` | 通过 | 先生成被 Git 忽略的 `routeTree.gen.ts`，再运行 TypeScript 检查 |
+| `pnpm test:android-foundation` | 37 个文件、222 项通过 | Android 共用契约、原生桥、移动端 UI 和关键生命周期 |
+| `pnpm run check:android-native-logs` | 通过，扫描 109 个源文件 | 阻止原生日志泄露令牌、凭据和敏感请求内容 |
+| `pnpm test` | 271 个文件、2025 项通过，54 项跳过 | 全量 Vitest；无失败或收集错误 |
+| `pnpm build:web` | 通过 | Web bundle 与 sourcemap 清理均成功 |
+| `gradle testDebugUnitTest` | 34 个 suite、107 项通过 | Android/JVM 单元测试；无失败或错误 |
+| `gradle assembleDebug` | 通过 | 生成可安装的 Debug APK |
 
 Android 主机门禁是 `pnpm check`、`test:android-foundation`、`mobile:sync:android`、`testDebugUnitTest`、`assembleDebug` 和 APK 审计。共享 Provider/会话层里程碑及公开发布还必须运行 `pnpm test` 和 `pnpm build:web`；已知上游失败需要记录精确用例、基线提交和跟踪项，不能被当成通过。桌面 Electron 测试失败也不能混入 Android 回归统计。
 

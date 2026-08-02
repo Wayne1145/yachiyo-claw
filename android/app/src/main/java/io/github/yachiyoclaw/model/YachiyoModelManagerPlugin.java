@@ -36,6 +36,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
     private static final long INFERENCE_TIMEOUT_MS = 30L * 60L * 1000L;
     private static final long STARTUP_TIMEOUT_MS = 20L * 1000L;
     private static final long HEARTBEAT_STALE_MS = 15L * 1000L;
+    private static final long HEARTBEAT_STALL_MS = 2L * 60L * 1000L;
     private static final long STALE_INFERENCE_FILE_MS = 2L * 60L * 60L * 1000L;
     private final ExecutorService inferenceExecutor = Executors.newSingleThreadExecutor();
     // Request ids the caller asked to cancel; observed by the polling loop for a clean cancelled state.
@@ -426,8 +427,12 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 long now = System.currentTimeMillis();
                 if (heartbeatFile.isFile()) {
                     heartbeatSeen = true;
-                    if (now - heartbeatFile.lastModified() > HEARTBEAT_STALE_MS) {
+                    long heartbeatAge = now - heartbeatFile.lastModified();
+                    if (heartbeatAge > HEARTBEAT_STALE_MS && !isInferenceProcessRunning()) {
                         throw new IllegalStateException("local_inference_process_crashed");
+                    }
+                    if (heartbeatAge > HEARTBEAT_STALL_MS) {
+                        throw new IllegalStateException("local_inference_stalled");
                     }
                 }
                 if (progressFile.isFile() && progressFile.lastModified() != progressModified) {

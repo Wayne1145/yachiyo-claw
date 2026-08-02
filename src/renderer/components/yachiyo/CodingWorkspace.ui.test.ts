@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { yachiyoResources } from '@/i18n/yachiyo-resources'
 
 const source = fs.readFileSync(path.join(__dirname, 'CodingWorkspace.tsx'), 'utf8')
 const styles = fs.readFileSync(path.join(__dirname, 'coding-workspace.css'), 'utf8')
@@ -10,17 +11,32 @@ describe('Coding home Flow Glass contracts', () => {
     expect(source).toContain('className="coding-home-action coding-home-action-primary"')
     expect(source).toContain('className="coding-home-action coding-home-action-secondary"')
     expect(source).toContain('className="coding-empty-state"')
-    expect(styles).toMatch(/\.coding-capability-band\s*\{[^}]*border-radius:\s*var\(--flow-r-panel\);[^}]*blur\(28px\)/s)
+    expect(styles).toMatch(
+      /\.coding-capability-band\s*\{[^}]*border-radius:\s*var\(--flow-r-panel\);[^}]*blur\(28px\)/s,
+    )
     expect(styles).toMatch(/\.coding-home-action\.mantine-Button-root\s*\{[^}]*min-height:\s*52px;[^}]*blur\(20px\)/s)
-    expect(styles).toMatch(/\.coding-empty-state\s*\{[^}]*min-height:\s*60px;[^}]*border-radius:\s*var\(--flow-r-content\)/s)
+    expect(styles).toMatch(
+      /\.coding-empty-state\s*\{[^}]*min-height:\s*60px;[^}]*border-radius:\s*var\(--flow-r-content\)/s,
+    )
   })
 
   it('keeps the refresh control accessible and large enough to touch', () => {
-    expect(source).toContain('aria-label="刷新本地工具链状态"')
-    expect(styles).toMatch(/\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s)
+    expect(source).toContain("aria-label={String(t('刷新本地工具链状态'))}")
+    expect(styles).toMatch(
+      /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s,
+    )
     expect(styles).toMatch(
       /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control, 14px\);[^}]*corner-shape:\s*squircle;/s,
     )
+  })
+
+  it('routes static workspace copy through the Yachiyo translation catalog', () => {
+    expect(source).toContain("import { useTranslation } from 'react-i18next'")
+    const literalKeys = [...source.matchAll(/\bt\(\s*'([^']+)'/g)].map((match) => match[1])
+    expect(literalKeys.length).toBeGreaterThan(30)
+    expect(literalKeys.filter((key) => !(key in yachiyoResources.en))).toEqual([])
+    expect(yachiyoResources.en['手机开发']).toBe('Mobile development')
+    expect(yachiyoResources.en['开发']).toBe('Develop')
   })
 
   it('removes material effects for accessibility fallbacks', () => {

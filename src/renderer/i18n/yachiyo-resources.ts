@@ -1,4 +1,5 @@
 import { yachiyoCatalogEnglish } from './yachiyo-resources-catalogs'
+import { yachiyoCodingEnglish } from './yachiyo-resources-coding'
 import { yachiyoInteractiveEnglish } from './yachiyo-resources-interactive'
 import { yachiyoMiscEnglish } from './yachiyo-resources-misc'
 import { yachiyoUtilityEnglish, yachiyoUtilityTraditionalChinese } from './yachiyo-resources-utility'
@@ -7,6 +8,7 @@ const english: Record<string, string> = {
   主导航: 'Main navigation',
   聊天: 'Chat',
   交互式: 'Interactive',
+  开发: 'Develop',
   任务: 'Tasks',
   设置: 'Settings',
   已连接: 'Connected',
@@ -144,6 +146,8 @@ const english: Record<string, string> = {
   无障碍: 'Accessibility',
   'Agent 已启用': 'Agent enabled',
   'Agent 能力未启用': 'Agent disabled',
+  '启用 Agent': 'Enable Agent',
+  '停用 Agent': 'Disable Agent',
   'Agent 控制': 'Agent controls',
   'Agent 设置': 'Agent settings',
   '当前对话的 Agent 设置': 'Agent settings for this conversation',
@@ -193,6 +197,8 @@ const english: Record<string, string> = {
     'The Agent may execute Root/Shizuku commands, control other apps, and modify or delete data without asking each time.',
   保持审批: 'Keep approvals',
   '我了解风险，继续': 'I understand the risk, continue',
+  '询问八千代…': 'Ask Yachiyo…',
+  ...yachiyoCodingEnglish,
   ...yachiyoCatalogEnglish,
   ...yachiyoInteractiveEnglish,
   ...yachiyoMiscEnglish,
@@ -201,8 +207,7 @@ const english: Record<string, string> = {
   软件语言: 'App language',
   立即应用到整个界面: 'Apply immediately across the app',
   '使用 Hugging Face 镜像': 'Use Hugging Face mirror',
-  '模型搜索和模型文件下载通过 hf-mirror.com 访问。':
-    'Search models and download model files through hf-mirror.com.',
+  '模型搜索和模型文件下载通过 hf-mirror.com 访问。': 'Search models and download model files through hf-mirror.com.',
   '使用 GitHub 镜像': 'Use GitHub mirror',
   '软件更新安装包通过 ghfast.top 下载；版本信息仍从 GitHub 获取。':
     'Download app update packages through ghfast.top; release metadata still comes from GitHub.',
@@ -262,11 +267,14 @@ const english: Record<string, string> = {
     'The request is too large. Reduce the context, attachments, or image size.',
   '服务端无法处理请求参数。请检查模型能力和参数设置。':
     'The server cannot process these parameters. Check the model capabilities and settings.',
-  '请求过于频繁或额度暂时受限。请稍后重试。': 'Requests are rate-limited or temporarily quota-limited. Try again later.',
+  '请求过于频繁或额度暂时受限。请稍后重试。':
+    'Requests are rate-limited or temporarily quota-limited. Try again later.',
   '提供商内部错误。这通常是临时故障，请稍后重试。': 'The provider had an internal error. This is usually temporary.',
   '提供商尚未支持此接口或功能。': 'The provider does not support this endpoint or feature.',
-  '提供商网关收到无效响应。这通常是临时故障。': 'The provider gateway received an invalid response. This is usually temporary.',
-  '提供商服务暂时不可用，可能正在维护或过载。': 'The provider is unavailable, possibly because of maintenance or overload.',
+  '提供商网关收到无效响应。这通常是临时故障。':
+    'The provider gateway received an invalid response. This is usually temporary.',
+  '提供商服务暂时不可用，可能正在维护或过载。':
+    'The provider is unavailable, possibly because of maintenance or overload.',
   '提供商网关等待上游响应超时。请稍后重试。': 'The provider gateway timed out while waiting for upstream.',
   '对话已超过模型上下文上限。请压缩上下文、减少附件或新建对话。':
     'The conversation exceeds the model context limit. Compress it, remove attachments, or start a new chat.',
@@ -283,7 +291,8 @@ const english: Record<string, string> = {
     'The request failed. Review the details below, then check the network, endpoint, key, and model settings.',
   '更新包版本不高于当前版本，已清理旧安装包。':
     'The package is not newer than the installed app, so the stale package was removed.',
-  '更新包签名与当前应用不一致，安装已阻止。': 'The package signature does not match this app. Installation was blocked.',
+  '更新包签名与当前应用不一致，安装已阻止。':
+    'The package signature does not match this app. Installation was blocked.',
   '更新包不是有效的 Yachiyo Claw 安装包。': 'The package is not a valid Yachiyo Claw update.',
   '更新包完整性校验失败，请重新下载。': 'Update integrity verification failed. Download it again.',
   '已下载的更新包不存在或已失效，请重新下载。': 'The downloaded update is missing or expired. Download it again.',
@@ -327,8 +336,7 @@ const english: Record<string, string> = {
   删除记忆: 'Delete memory',
   来源对话: 'Source conversation',
   保存修改: 'Save changes',
-  '确定清空全部自动长期记忆吗？此操作不可撤销。':
-    'Clear all automatic long-term memories? This cannot be undone.',
+  '确定清空全部自动长期记忆吗？此操作不可撤销。': 'Clear all automatic long-term memories? This cannot be undone.',
   清空自动长期记忆: 'Clear automatic long-term memory',
   无法读取长期记忆: 'Could not load long-term memory',
   无法保存记忆: 'Could not save memory',

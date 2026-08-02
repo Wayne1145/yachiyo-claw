@@ -24,7 +24,6 @@ import {
   setActiveAgentRun,
 } from '@/mobile/agent-approval'
 import { AgentLoopGuard, AgentLoopStoppedError } from '@/mobile/agent-loop-guard'
-import { KNOWN_PRICE_AGENT_BUDGET, UNKNOWN_PRICE_AGENT_BUDGET } from '@/mobile/agent-budget'
 import { AgentRunCheckpointStore, type AgentRunCheckpoint } from '@/mobile/agent-run-checkpoints'
 import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-policy'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
@@ -288,10 +287,9 @@ async function generateTaskResponse(
     const dependencies = await createModelDependencies()
     const model = await createModel(sessionSettings, dependencies)
     const knownPrice = resolveDefaultAgentPrice(provider, modelId)
-    const usageLedger = createAgentUsageLedger({
-      priceResolver: () => knownPrice,
-      budget: knownPrice ? KNOWN_PRICE_AGENT_BUDGET : UNKNOWN_PRICE_AGENT_BUDGET,
-    })
+    // Usage powers diagnostics and context UI. Repetition is stopped by AgentLoopGuard,
+    // while ordinary request and token counts never terminate a healthy run.
+    const usageLedger = createAgentUsageLedger({ priceResolver: () => knownPrice })
     await usageLedger.recoverPendingReservations(Date.now(), agentRunId).catch((error) => {
       log.debug('usage ledger recovery skipped:', error)
     })

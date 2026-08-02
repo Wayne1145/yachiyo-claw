@@ -12,6 +12,7 @@ const taskSource = fs.readFileSync(path.join(__dirname, '../../routes/task/$task
 const messageListSource = fs.readFileSync(path.join(__dirname, '../chat/MessageList.tsx'), 'utf8')
 const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
 const newChatSource = fs.readFileSync(path.join(__dirname, '../../routes/index.tsx'), 'utf8')
+const pluginHostSource = fs.readFileSync(path.join(__dirname, '../../plugins/PluginPageHost.tsx'), 'utf8')
 
 describe('Android conversation chrome UI contract', () => {
   it('uses one Android-owned adaptive header with search, history, new topic, and connection status', () => {
@@ -22,7 +23,8 @@ describe('Android conversation chrome UI contract', () => {
     expect(shellSource).toContain("id: 'search'")
     expect(shellSource).toContain("id: 'history'")
     expect(shellSource).toContain("id: 'new-topic'")
-    expect(shellSource).toMatch(/id: 'new-topic'[\s\S]*?collapseStrategy: 'keep'/)
+    expect(shellSource).toMatch(/id: 'new-topic'[\s\S]*?collapseStrategy: 'overflow'/)
+    expect(shellSource).toMatch(/id: 'more'[\s\S]*?collapseStrategy: 'overflow'/)
     expect(shellSource).toContain('className="yachiyo-agent-disclosure-trigger"')
     expect(shellSource).toContain('aria-expanded={!conversationHeaderCollapsed}')
     expect(shellSource).toContain('setOpenSearchDialog(true, !toolbarSessionId)')
@@ -38,6 +40,15 @@ describe('Android conversation chrome UI contract', () => {
     expect(shellStyles).toMatch(
       /\.yachiyo-shared-interactive-chrome-host\s*{[^}]*display:\s*grid;[^}]*grid-area:\s*1 \/ 1;/s,
     )
+  })
+
+  it('uses the settings stack for plugin pages that do not fit in the bottom navigation', () => {
+    expect(shellSource).toContain('activePluginHasShellTab')
+    expect(shellSource).toMatch(/activePluginHasShellTab[\s\S]*?: 'settings'/)
+    expect(shellSource).toContain('? activePlugin.manifest.displayName')
+    expect(pluginHostSource).toContain('{!inAndroidAppShell && (')
+    expect(shellSource).toContain('data-shell-tab={activeTab}')
+    expect(flowStyles).toMatch(/\.yachiyo-mobile-header\[data-shell-tab=['"]settings['"]\][\s\S]*?blur\(24px\)/)
   })
 
   it('removes the duplicate Android Agent footer while keeping desktop directory controls', () => {
@@ -76,7 +87,9 @@ describe('Android conversation chrome UI contract', () => {
 
   it('limits top-drawer behavior to the liquid-glass theme and respects reduced motion', () => {
     expect(shellSource).toMatch(/yachiyo-mobile-header-primary[\s\S]*?yachiyo-mobile-header-collapsible/)
-    expect(flowStyles).toMatch(/html\[data-yachiyo-appearance=["']flow-glass["']\][\s\S]*?\.yachiyo-mobile-header-collapsible/)
+    expect(flowStyles).toMatch(
+      /html\[data-yachiyo-appearance=["']flow-glass["']\][\s\S]*?\.yachiyo-mobile-header-collapsible/,
+    )
     expect(shellSource).toContain('data-state="expanded"')
     expect(flowStyles).toContain('@media (prefers-reduced-motion: reduce)')
     expect(shellSource).toContain('onClick={() => setConversationHeaderCollapsed((value) => !value)}')
@@ -111,9 +124,15 @@ describe('Android conversation chrome UI contract', () => {
     )
     expect(flowStyles).toMatch(/--flow-composer-height:\s*116px;/)
     expect(shellStyles).toMatch(
-      /\.yachiyo-mobile-composer-row\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\) 44px 0 48px;/s,
+      /\.yachiyo-mobile-composer-row\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\) 74px 0 48px;/s,
     )
-    expect(shellStyles).toMatch(/\.yachiyo-composer-model\s*\{[^}]*max-width:\s*none;[^}]*justify-content:\s*flex-start;/s)
+    expect(shellStyles).toMatch(
+      /\.yachiyo-composer-model\s*\{[^}]*max-width:\s*none;[^}]*justify-content:\s*flex-start;/s,
+    )
+    expect(shellStyles).toMatch(/\.yachiyo-composer-reasoning\s*\{[^}]*width:\s*74px;[^}]*white-space:\s*nowrap;/s)
+    expect(flowStyles).toMatch(
+      /\.yachiyo-adaptive-sheet\s*\{[^}]*max-height:\s*calc\(100dvh - var\(--mobile-safe-area-inset-top, 0px\)\);/s,
+    )
   })
 
   it('keeps the composer above navigation in short landscape viewports', () => {

@@ -45,6 +45,8 @@ This repository is maintained with assistance from Codex and written with assist
 - Model files are downloaded into app-private storage with space limits, resume support, pause/resume/cancel actions, SHA-256 verification, and persistent download state.
 - Local-model downloads use the centralized Download Manager in Settings. Task state, speed, ETA, downloaded/total bytes, and failure details remain available after leaving the source page or dismissing a notification, with resume, cancel, and delete controls.
 - Native Android integration for LiteRT-LM and llama.cpp loads `.litertlm` and single-file or complete-shard `.gguf` chat models respectively. MediaPipe Text Embedder generates local text vectors from downloaded `.tflite` models.
+- Local chat models provide `auto` and `extreme` performance modes plus CPU/GPU/NPU backend overrides. Calibration measures TTFT, prefill/decode throughput, and memory in the isolated inference process; GGUF supports Vulkan layer offload with a CPU fallback.
+- Public GPLv3 builds guarantee only the generic CPU/Vulkan paths. NPU becomes eligible only when the model artifact, SoC declaration, ABI, dispatch library, and licensed vendor runtime all match.
 - Downloaded models have a dedicated list and can be made default, loaded into memory, unloaded, or deleted. Manual preloading disables GGUF memory mapping, reads the weights into memory, and shows model size, inference-process PSS, and elapsed time. Deletion also clears native files, provider models, defaults, favorites, and stale references in model pickers.
 - On an Android 12 emulator with 6 GB of RAM, continuous Gemma 3 270M GGUF chat, FunctionGemma LiteRT-LM structured tool calling, and resident model processes have been tested. Models smaller than 1B use a compact persona and request-filtered tool descriptions to protect response context.
 
@@ -54,6 +56,8 @@ This repository is maintained with assistance from Codex and written with assist
 - Local RAG supports document chunking, indexing, retrieval, and persistence. With a compatible MediaPipe embedding model installed it uses vector retrieval, with lexical retrieval as a fallback when no model is configured or inference fails.
 - An optional Vibe Coding environment installs an Alpine Linux mini rootfs in app-private storage and provides Bash, Git, Python, Node.js/npm, SSH, and common build tools through PRoot.
 - The development-environment page supports installation, progress reporting, terminal self-checks, and reset. Agent sandbox tools access `/workspace` through structured calls with path restrictions, timeouts, and output limits.
+- The Android Development tab supports local Web/PWA and Capacitor Debug APK builds, with Kotlin APK support in beta. Remote-only targets never claim a local build without a configured runner.
+- Model-authored writes are staged as baseline-hashed ChangeSets for per-file diff review. Build jobs, Git mutations, SAF write-back, APK installation, and application launch remain behind parameter-bound approval.
 - The Android MCP client supports protected-resource discovery, OAuth authorization code flow with PKCE, app deep-link callbacks, secure access-token and refresh-token storage, retry after refresh, and authenticated MCP requests.
 
 > [!WARNING]
@@ -105,17 +109,17 @@ This repository is maintained with assistance from Codex and written with assist
 ## Known limitations
 
 - LiteRT-LM, llama.cpp, and MediaPipe download, loading, and invocation paths are connected, but system-level performance validation has not been completed across vendor SoCs and 1B-4B production weights for first-token latency, sustained generation rate, peak memory, thermal behavior, and long-session stability. Compatibility estimates are not a run guarantee.
-- GGUF currently uses CPU inference and returns text after generation finishes. Local Agent tool calls depend on models reliably following a constrained structured protocol; no native token-by-token streaming tool events are available. Local embeddings are limited to MediaPipe Text Embedder-compatible `.tflite` models.
+- GGUF supports CPU inference and Vulkan layer offload but still returns text after generation finishes. Local Agent tool calls depend on models reliably following a constrained structured protocol; no native token-by-token streaming tool events are available. Local embeddings are limited to MediaPipe Text Embedder-compatible `.tflite` models.
 - Weights, tokenizers, configurations, and derived content in model repositories remain subject to their own licenses, access restrictions, and terms. Users confirm applicable licenses before downloading or running them; Yachiyo Claw's GPLv3 does not cover third-party model weights.
 - The PRoot sandbox does not provide kernel-level isolation. Skill scripts are consistently routed into it, but complex Python or Node dependencies must still be installed and managed by each Skill or project.
 - WorkManager provides persistent wakeups and recovery, but fully headless Agent inference and tool execution while the application process does not exist is not implemented.
-- In-app update code and automated verification are complete, but formal same-signature upgrade, tampered-package rejection, and Android 11/13/15-16 device-matrix acceptance still need to be completed with production APKs.
+- In-app updates have passed production-signature continuity, increasing-version, and Android 12 overwrite-install verification. Android 11/13/15-16 device-matrix coverage remains pending.
 - Unsigned sideloaded plugins are explicitly marked as having unverified origins and still require users to grant each capability individually. Signed marketplaces, plugin API compatibility, and broader Android System WebView testing need a larger device matrix.
 - Skill updates currently only check and report a remote revision; they do not silently replace installed content. More complete device tools, long-term-memory retrieval, and MCP mobile-management experiences are still being refined.
 
 For the development plan and acceptance criteria, see [ROADMAP](docs/ROADMAP.md). For permissions and execution boundaries, see [SECURITY_MODEL](docs/SECURITY_MODEL.md).
 
-Usage and release material is available in [Download Manager](docs/downloads.md), [Themes](docs/themes.md), [Skills](docs/skills.md), [Plugin Developer Preview](docs/plugins/README.md), [Privacy Notice](PRIVACY.md), [Security Policy](SECURITY.md), and the [v0.0.14 release notes](docs/releases/v0.0.14.md).
+Usage and release material is available in [Download Manager](docs/downloads.md), [Themes](docs/themes.md), [Skills](docs/skills.md), [Plugin Developer Preview](docs/plugins/README.md), [Privacy Notice](PRIVACY.md), [Security Policy](SECURITY.md), and the [v0.0.16 release notes](docs/releases/v0.0.16.md).
 
 ## Agent execution model
 
@@ -230,14 +234,14 @@ Yachiyo Claw is an independent open-source project. It has no affiliation with o
 
 This repository continues development from Chatbox Community Edition and is released under [GPL-3.0-only](LICENSE). Third-party source code, libraries, character assets, Live2D models, and model weights retain their own licenses and terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## v0.0.14
+## v0.0.16
 
-- Fixes repeated installation prompts for same-version update packages. The in-app updater now rejects downgrade and same-version APKs, and clears stale downloaded state.
-- Download settings add switches for GitHub and Hugging Face mirrors. They are enabled by default when mainland China is detected on first launch, and users can still override the choice.
-- GGUF "Load into memory" now performs real preloading and shows model size, process-resident memory, and load time. Normal inference can still use memory mapping to reduce peak memory use.
-- Expands Android-page internationalization, adds in-app explanations for API, local-model, and network errors, and removes legacy links to Chatbox documentation.
-- The Liquid Glass theme retains a fixed title row and collapses only Agent controls. Input-area tools move into a horizontally expandable secondary tray, with improved visual fallbacks for older WebViews.
+- Refactors the Android composer, model selector, and swipeable main pages, with adaptive action density and a fix for the React maximum-update-depth crash.
+- Adds Mobile Vibe Coding V1 with project setup, ChangeSet diff approval, persistent build jobs, controlled Git, Web preview, and APK delivery.
+- Adds local-model auto/extreme optimization, GGUF Vulkan offload, LiteRT CPU/GPU/NPU candidate probing, measured calibration, and thermal/memory fallback.
+- Improves unified download notifications, Live2D diagnostics and WebGL recovery, marketplace configuration, and plugin page lifecycle handling.
+- The stable-release audit fixes mismatched versions, missing generated routes during first type-check, accidentally restored hard Agent budgets, and non-portable Gradle daemon/Foojay configuration.
 
-See the [v0.0.14 release notes](docs/releases/v0.0.14.md) for the complete changes, limitations, and release gates.
+See the [v0.0.16 release notes](docs/releases/v0.0.16.md) for the complete changes, limitations, and release gates.
 
 Copyright (c) NewDreamStudio and contributors.

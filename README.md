@@ -110,18 +110,18 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 ## 尚未完成与已知边界
 
 - LiteRT-LM、llama.cpp 与 MediaPipe 的下载、加载和调用链路已经接通，但尚未对不同厂商 SoC、1B-4B 真实权重的首 token 延迟、持续生成速度、内存峰值、温升和长会话稳定性完成系统性能验证；兼容性估算不等同于运行保证。
-- GGUF 当前为 CPU 推理并在生成完成后一次性返回文本；本地 Agent 工具调用依赖模型稳定遵循受限结构化协议，尚未提供逐 token 原生流式工具事件。本地 embedding 仍仅面向 MediaPipe Text Embedder 兼容的 `.tflite` 模型。
+- GGUF 已支持 CPU 与 Vulkan 分层卸载，但仍在生成完成后一次性返回文本；本地 Agent 工具调用依赖模型稳定遵循受限结构化协议，尚未提供逐 token 原生流式工具事件。本地 embedding 仍仅面向 MediaPipe Text Embedder 兼容的 `.tflite` 模型。
 - 模型仓库中的权重、Tokenizer、配置和衍生内容继续受各自许可证、访问限制及使用条款约束。下载或运行前由用户确认相关许可证，Yachiyo Claw 的 GPLv3 不会覆盖第三方模型权重。
 - PRoot 沙箱尚未提供内核级隔离；Skill 脚本已统一进入该沙箱，但复杂 Python/Node 依赖仍由具体 Skill 或项目自行安装和管理。
 - WorkManager 已提供持久化唤醒和恢复，但应用进程不存在时的完整无界面 Agent 推理与工具执行尚未实现。
-- 应用内更新代码和自动化验证已完成，仍需用正式同签名 APK 完成从已发布版本升级、拒绝篡改包以及 Android 11/13/15-16 设备矩阵验收。
+- 应用内更新已通过正式签名连续性、版本递增和 Android 12 覆盖安装校验；Android 11/13/15-16 设备矩阵仍需继续补测。
 - 未签名的本地侧载插件会明确标记来源不可验证，并仍需用户逐项授予能力；签名市场、插件 API 兼容性和更多 Android System WebView 版本仍需扩大实机矩阵。
 - Skill 更新目前只检查远端 revision 并提示，不会静默替换安装内容；更完整的设备工具、长期记忆检索和 MCP 移动端管理体验仍在继续完善。
 
 开发计划与验收条件见 [ROADMAP](docs/ROADMAP.md)，权限和执行边界见 [SECURITY_MODEL](docs/SECURITY_MODEL.md)。
 使用与发布资料见 [统一下载管理](docs/downloads.md)、[主题](docs/themes.md)、[Skills](docs/skills.md)、
 [插件开发者预览](docs/plugins/README.md)、[隐私说明](PRIVACY.md)、[安全政策](SECURITY.md) 和
-[v0.0.14 发布说明](docs/releases/v0.0.14.md)。
+[v0.0.16 发布说明](docs/releases/v0.0.16.md)。
 
 ## Agent 执行结构
 
@@ -237,14 +237,14 @@ Yachiyo Claw 是独立的开源项目，与影片制作方、发行方、Netflix
 
 本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0-only](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## v0.0.14
+## v0.0.16
 
-- 修复同版本更新包反复提示安装的问题；应用内更新现在拒绝降级或同版本 APK，并清理失效的已下载状态。
-- 下载设置增加 GitHub 与 Hugging Face 镜像开关；中国大陆首次启动时自动启用，仍可由用户手动覆盖。
-- GGUF“加载到内存”改为真实预加载，并显示模型体积、进程驻留内存和加载耗时；普通推理仍可使用内存映射以降低峰值。
-- 扩大 Android 页面国际化覆盖，补齐 API、本地模型和网络错误的应用内解释，并移除跳转到 Chatbox 文档的遗留入口。
-- 液态玻璃主题保留固定标题行，仅收起 Agent 控件；输入区工具改为可横向展开的二级托盘，并增强旧 WebView 的视觉回退。
+- 重构 Android 对话输入区、模型选择器和主页面滑动切换，补充自适应操作密度并修复 React 最大更新深度崩溃。
+- 新增手机端 Vibe Coding V1：项目向导、ChangeSet Diff 审批、持久构建任务、受控 Git、Web 预览和 APK 交付。
+- 本地模型加入 `auto`/`extreme` 性能优化、GGUF Vulkan 分层卸载、LiteRT CPU/GPU/NPU 候选探测、实测基准和温控/内存回退。
+- 增强统一下载通知、Live2D 错误诊断与 WebGL 恢复、插件市场地址和插件页面生命周期管理。
+- 正式版审计修复版本号不一致、首次类型检查缺少路由表、误恢复的 Agent 硬预算，以及不可移植的 Gradle daemon/Foojay 配置。
 
-完整变化、边界和发布门禁见 [v0.0.14 发布说明](docs/releases/v0.0.14.md)。
+完整变化、边界和发布门禁见 [v0.0.16 发布说明](docs/releases/v0.0.16.md)。
 
 Copyright (c) NewDreamStudio and contributors.

@@ -199,6 +199,19 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   插件请求已拒绝: 'Plugin request denied',
   卸载存在残留: 'Uninstall left residual data',
   插件页面渲染失败: 'Plugin page failed to render',
+  插件加载失败: 'Plugin failed to load',
+  插件执行失败: 'Plugin action failed',
+  插件未安装: 'Plugin not installed',
+  '未找到已安装的插件 “{{pluginId}}”。请先在 设置 → 插件 中安装。':
+    'The installed plugin “{{pluginId}}” was not found. Install it from Settings → Plugins first.',
+  插件功能已关闭: 'Plugins are disabled',
+  '请先在“设置 → 功能模块”中启用第三方插件，再打开此页面。':
+    'Enable third-party plugins in Settings → Feature modules before opening this page.',
+  未授权界面能力: 'UI capability not granted',
+  '此插件的 UI 能力未授权。请在 设置 → 插件 中重新授权后再打开。':
+    'This plugin has not been granted UI access. Grant it again in Settings → Plugins before reopening the page.',
+  插件出错: 'Plugin error',
+  '此插件没有提供页面内容。': 'This plugin does not provide page content.',
   插件活动: 'Plugin activity',
   已记录: 'Recorded',
   已自动禁用: 'Automatically disabled',

@@ -93,6 +93,7 @@ describe('Android app shell state', () => {
     expect(resolveAndroidShellParentPath('/settings/provider')).toBe('/settings')
     expect(resolveAndroidShellParentPath('/settings/themes')).toBe('/settings')
     expect(resolveAndroidShellParentPath('/plugin/weather/details')).toBe('/plugin/weather')
+    expect(resolveAndroidShellParentPath('/plugin/weather')).toBe('/settings/plugins')
     expect(resolveAndroidShellParentPath('/about')).toBe('/settings')
     expect(resolveAndroidShellParentPath('/settings')).toBeUndefined()
     expect(resolveAndroidShellParentPath('/session/chat-1')).toBeUndefined()
@@ -113,21 +114,21 @@ describe('Android app shell state', () => {
         customProviders: [],
         licenseKey: '',
         providers: { openai: { apiKey: 'sk-test' } },
-      })
+      }),
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
         customProviders: [],
         licenseKey: '',
         providers: { ollama: { models: [{ modelId: 'local-model' }] } },
-      })
+      }),
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
         customProviders: [],
         licenseKey: '',
         providers: { [ModelProviderEnum.Local]: { models: [{ modelId: 'offline-model' }] } },
-      })
+      }),
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
@@ -136,7 +137,7 @@ describe('Android app shell state', () => {
         ],
         licenseKey: '',
         providers: { 'custom-provider-empty': { apiKey: 'sk-test' } },
-      })
+      }),
     ).toBe(false)
   })
 
@@ -185,7 +186,7 @@ describe('Yachiyo API onboarding configuration', () => {
           },
         },
       },
-      'second-key'
+      'second-key',
     )
 
     expect(second.providers?.[YACHIYO_API_PROVIDER_ID]?.apiKey).toBe('second-key')
