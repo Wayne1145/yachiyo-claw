@@ -28,6 +28,7 @@ import {
   IconGitBranch,
   IconPlayerPlay,
   IconRefresh,
+  IconRobot,
   IconSend,
   IconTerminal2,
   IconX,
@@ -47,12 +48,14 @@ import {
 } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
 import platform from '@/platform'
+import { setAgentWorkingDirectory } from '@/mobile/agent-broker'
+import { saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import { applyCodingChangeSet, rejectCodingChangeFiles, rejectCodingChangeSet } from '@/mobile/coding-changes'
 import { artifactPathMatches, startCodingBuildRun } from '@/mobile/coding-builds'
 import { createCodingProject, importCodingProject, inspectCodingToolchain } from '@/mobile/coding-projects'
 import { codingProjectStorage } from '@/storage/CodingProjectStorage'
 import { submitTaskMessage } from '@/stores/taskSessionActions'
-import { useTaskSessionRecord } from '@/stores/taskSessionStore'
+import { taskSessionStore, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import {
   useCodingArtifacts,
   useCodingBuildRuns,
@@ -322,7 +325,7 @@ export function CodingHome() {
             <Alert color="blue">
               {t(
                 '将创建 {{target}} 项目“{{name}}”，写入应用私有工作区并启动首次构建。依赖下载和构建命令会单独请求确认。',
-                { target: getBuildTargetProfile(targetId).label, name: name.trim() },
+                { target: getBuildTargetProfile(targetId).label, name: name.trim() }
               )}
             </Alert>
           )}
@@ -570,7 +573,7 @@ function ChangesView({ projectId }: { projectId: string }) {
                         variant="subtle"
                         onClick={() =>
                           void run(`${change.id}:${operation.path}`, () =>
-                            rejectCodingChangeFiles(change, [operation.path]),
+                            rejectCodingChangeFiles(change, [operation.path])
                           )
                         }
                       >
@@ -582,7 +585,7 @@ function ChangesView({ projectId }: { projectId: string }) {
                         loading={busy === `${change.id}:${operation.path}`}
                         onClick={() =>
                           void run(`${change.id}:${operation.path}`, () =>
-                            applyCodingChangeSet(project, change, project.taskId, [operation.path]),
+                            applyCodingChangeSet(project, change, project.taskId, [operation.path])
                           )
                         }
                       >
@@ -831,6 +834,7 @@ function RunView({ projectId }: { projectId: string }) {
 }
 
 export function CodingProjectWorkspace() {
+  const navigate = useNavigate()
   const { t } = useTranslation()
   const { projectId } = useParams({ from: '/develop/$projectId' })
   const { data: project, isLoading, refetch } = useCodingProject(projectId)
@@ -851,6 +855,18 @@ export function CodingProjectWorkspace() {
     await codingProjectStorage.put('projects', { ...project, dirtyExternalSync: false, updatedAt: Date.now() })
     await refetch()
   }
+  const useProject = async () => {
+    setAgentWorkingDirectory(project.workspaceKey)
+    saveAgentSessionConfig(project.taskId, {
+      enabled: true,
+      configured: true,
+      deviceControlEnabled: false,
+      workingDirectory: project.workspaceKey,
+    })
+    await platform.sandboxInit?.({ workingDirectory: project.workspaceKey })
+    taskSessionStore.getState().setCurrentTaskId(project.taskId)
+    await navigate({ to: '/task/$taskId', params: { taskId: project.taskId } })
+  }
   return (
     <main className="coding-workspace">
       <Group justify="space-between" className="coding-project-header">
@@ -860,7 +876,12 @@ export function CodingProjectWorkspace() {
             {getBuildTargetProfile(project.targetId).label}
           </Text>
         </div>
-        <Badge>{t(supportLabelKey(project.supportLevel))}</Badge>
+        <Group gap="xs" wrap="wrap" justify="flex-end">
+          <Badge>{t(supportLabelKey(project.supportLevel))}</Badge>
+          <Button size="compact-sm" leftSection={<IconRobot size={16} />} onClick={() => void useProject()}>
+            {t('使用此项目')}
+          </Button>
+        </Group>
       </Group>
       {project.source.kind === 'saf' && project.dirtyExternalSync && (
         <Alert color="yellow" m="sm">

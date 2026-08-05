@@ -31,7 +31,7 @@ const APPROVAL_LABEL: Record<AgentApprovalMode, string> = {
 export function describeAgentMode(
   sessionId: string,
   enabled: boolean,
-  translate: (key: string) => string = (key) => key,
+  translate: (key: string) => string = (key) => key
 ): string {
   if (!enabled) return translate('普通聊天')
   const config = getAgentSessionConfig(sessionId)
@@ -94,7 +94,7 @@ export function AgentSessionControls({
           ? 'Shizuku 已授权'
           : permissions.shizukuRunning
             ? '等待 Shizuku 授权'
-            : 'Shizuku 服务未运行',
+            : 'Shizuku 服务未运行'
       )
     } else {
       setBackendReady(permissions.accessibility)
@@ -271,7 +271,11 @@ export function AgentSessionControls({
           ariaLabel={String(t('Agent 控制'))}
           actions={headerActions}
         />
-        {showStatus && <Text size="xs" c="dimmed" className="yachiyo-agent-mode-label">{status}</Text>}
+        {showStatus && (
+          <Text size="xs" c="dimmed" className="yachiyo-agent-mode-label">
+            {status}
+          </Text>
+        )}
       </div>
 
       <AdaptiveModal
@@ -285,7 +289,7 @@ export function AgentSessionControls({
         size="lg"
       >
         <Stack gap="md">
-          <AgentConfigurationPanel showAccessBackend={false} />
+          <AgentConfigurationPanel showAccessBackend={false} sessionId={sessionId} />
           <section className="yachiyo-agent-config-panel">
             <Switch
               size="md"

@@ -118,10 +118,10 @@ describe('Flow Glass visual contracts', () => {
       /\.yachiyo-mobile-conversation-tools \.mantine-ActionIcon-root\s*{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-control\);[^}]*corner-shape:\s*squircle;/s,
+      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-control\);[^}]*corner-shape:\s*squircle;/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-chat-composer-surface \.mantine-ActionIcon-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control\);/s,
+      /\.yachiyo-chat-composer-surface \.mantine-ActionIcon-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control\);/s
     )
     expect(flowStyles).not.toContain('clip-path: circle(50% at 50% 50%)')
     expect(flowStyles).not.toMatch(/\.yachiyo-mobile-conversation-tools\s*\{[^}]*border-radius:\s*20px;/s)
@@ -231,7 +231,7 @@ describe('Flow Glass visual contracts', () => {
 
   it('removes every theme material effect in reduced quality', () => {
     const reducedStyles = sectionBetween(
-      '/* Balanced retains stable blur/highlights; reduced becomes an explicit, near-solid hierarchy. */',
+      '/* Balanced retains stable blur; reduced keeps translucent layering without expensive blur. */',
       '@supports not ((backdrop-filter: blur(1px))'
     )
 
@@ -243,8 +243,8 @@ describe('Flow Glass visual contracts', () => {
       '--flow-group-fill',
       '--flow-content-fill',
     ]) {
-      expect(reducedStyles, `${token} must be opaque in reduced quality`).toMatch(
-        new RegExp(`${token}: rgb\\(\\d+, \\d+, \\d+\\);`)
+      expect(reducedStyles, `${token} must retain a translucent no-blur fallback`).toMatch(
+        new RegExp(`${token}: rgba\\(\\d+, \\d+, \\d+, 0\\.\\d+\\);`)
       )
     }
     for (const selector of materialSelectors) {

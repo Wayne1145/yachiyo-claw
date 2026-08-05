@@ -1,4 +1,5 @@
 export const yachiyoCodingEnglish: Record<string, string> = {
+  使用此项目: 'Use this project',
   正式支持: 'Fully supported',
   仅源码: 'Source only',
   需要远程构建: 'Remote build required',

@@ -10,7 +10,7 @@ import {
   updateTaskSession,
 } from '@/stores/taskSessionStore'
 import { getAgentWorkingDirectory } from './agent-broker'
-import { copyAgentSessionConfig, saveAgentSessionConfig } from './agent-session-config'
+import { copyAgentSessionConfig, getAgentSessionConfig, saveAgentSessionConfig } from './agent-session-config'
 import { createChatSessionFromTask, syncTaskSessionToChat } from './conversation-sync'
 
 export async function findTaskForChatSession(sessionId: string): Promise<TaskSession | null> {
@@ -23,6 +23,7 @@ export async function ensureAgentTaskForChat(sessionId: string): Promise<TaskSes
   if (!chat) throw new Error('chat_session_not_found')
 
   const taskMessages = chat.messages.filter((message) => message.role !== 'system')
+  const workingDirectory = getAgentSessionConfig(sessionId).workingDirectory || getAgentWorkingDirectory()
   const existing = await findTaskForChatSession(sessionId)
   if (existing) {
     const existingIds = new Set(existing.messages.map((message) => message.id))
@@ -35,6 +36,7 @@ export async function ensureAgentTaskForChat(sessionId: string): Promise<TaskSes
         name: chat.name,
         messages: mergedMessages,
         settings: chat.settings,
+        workingDirectory,
       })) || existing
     )
   }
@@ -42,7 +44,7 @@ export async function ensureAgentTaskForChat(sessionId: string): Promise<TaskSes
   return createTaskSession({
     linkedSessionId: chat.id,
     name: chat.name,
-    workingDirectory: getAgentWorkingDirectory(),
+    workingDirectory,
     messages: taskMessages,
     settings: chat.settings,
   })

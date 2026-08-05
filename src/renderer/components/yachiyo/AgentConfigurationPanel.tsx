@@ -11,21 +11,35 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core'
-import { IconBook2, IconBrain, IconPlugConnected, IconUserCog, IconWand } from '@tabler/icons-react'
-import { useState } from 'react'
+import type { CodingProjectRecord } from '@shared/types'
+import { IconBook2, IconBrain, IconFolderOpen, IconPlugConnected, IconUserCog, IconWand } from '@tabler/icons-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
-import { type AgentBackend, getAgentBackend, setAgentBackend as persistAgentBackend } from '@/mobile/agent-broker'
+import {
+  ANDROID_AGENT_WORKING_DIRECTORY,
+  type AgentBackend,
+  getAgentBackend,
+  getAgentWorkingDirectory,
+  setAgentBackend as persistAgentBackend,
+  setAgentWorkingDirectory,
+} from '@/mobile/agent-broker'
 import { type AgentProfile, getAgentProfileState, saveAgentProfileState } from '@/mobile/agent-profile'
+import { getAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
+import platform from '@/platform'
 import { router } from '@/router'
+import { codingProjectStorage } from '@/storage/CodingProjectStorage'
+import { getTaskSession, listAllTaskSessions, updateTaskSession } from '@/stores/taskSessionStore'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 
 export function AgentConfigurationPanel({
   onBackendChange,
   showAccessBackend = true,
+  sessionId,
 }: {
   onBackendChange?: (backend: AgentBackend) => void
   showAccessBackend?: boolean
+  sessionId?: string
 }) {
   const { t } = useTranslation()
   const [backend, setBackend] = useState<AgentBackend>(getAgentBackend)
@@ -120,6 +134,8 @@ export function AgentConfigurationPanel({
         </section>
       )}
 
+      <AgentWorkspaceSelector sessionId={sessionId} />
+
       <section className="yachiyo-agent-config-panel">
         <Flex className="yachiyo-agent-config-heading" justify="space-between" align="center" gap="sm" wrap="wrap">
           <div className="yachiyo-agent-config-heading-copy">
@@ -184,5 +200,112 @@ export function AgentConfigurationPanel({
         </Stack>
       </AdaptiveModal>
     </>
+  )
+}
+
+export function AgentWorkspaceSelector({
+  sessionId,
+  onChange,
+}: {
+  sessionId?: string
+  onChange?: (workingDirectory: string) => void
+}) {
+  const { t } = useTranslation()
+  const [projects, setProjects] = useState<CodingProjectRecord[]>([])
+  const [workingDirectory, setWorkingDirectoryState] = useState(() =>
+    sessionId ? getAgentSessionConfig(sessionId).workingDirectory : getAgentWorkingDirectory()
+  )
+  const [choosing, setChoosing] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    setWorkingDirectoryState(sessionId ? getAgentSessionConfig(sessionId).workingDirectory : getAgentWorkingDirectory())
+    void codingProjectStorage
+      .list<CodingProjectRecord>('projects')
+      .then(setProjects)
+      .catch(() => setProjects([]))
+  }, [sessionId])
+
+  const options = useMemo(() => {
+    const values = [
+      { value: ANDROID_AGENT_WORKING_DIRECTORY, label: String(t('默认内部工作区')) },
+      ...projects.map((project) => ({
+        value: project.workspaceKey,
+        label: String(t('开发项目：{{name}}', { name: project.name })),
+      })),
+    ]
+    if (!values.some((option) => option.value === workingDirectory)) {
+      values.push({ value: workingDirectory, label: String(t('当前外部工作区')) })
+    }
+    return values
+  }, [projects, t, workingDirectory])
+
+  const applyWorkspace = async (next: string) => {
+    setError('')
+    try {
+      setAgentWorkingDirectory(next)
+      if (sessionId) saveAgentSessionConfig(sessionId, { workingDirectory: next })
+      const directTask = sessionId ? await getTaskSession(sessionId) : null
+      const linkedTask =
+        !directTask && sessionId
+          ? (await listAllTaskSessions()).find((task) => task.linkedSessionId === sessionId)
+          : null
+      const task = directTask || linkedTask
+      if (task) await updateTaskSession(task.id, { workingDirectory: next })
+      const initialized = await platform.sandboxInit?.({ workingDirectory: next })
+      if (initialized && !initialized.success) throw new Error(initialized.error || 'sandbox_init_failed')
+      setWorkingDirectoryState(next)
+      onChange?.(next)
+    } catch (reason) {
+      setError(String(t(reason instanceof Error ? reason.message : String(reason))))
+    }
+  }
+
+  const chooseExternal = async () => {
+    setChoosing(true)
+    setError('')
+    try {
+      const result = await platform.openDirectoryDialog?.()
+      if (result?.path) await applyWorkspace(result.path)
+    } catch (reason) {
+      setError(String(t(reason instanceof Error ? reason.message : String(reason))))
+    } finally {
+      setChoosing(false)
+    }
+  }
+
+  return (
+    <section className="yachiyo-agent-config-panel yachiyo-agent-workspace-selector">
+      <div>
+        <Title order={2}>{t('工作区目录')}</Title>
+        <Text c="dimmed" size="sm">
+          {t('Agent 的文件工具和 Linux 沙箱将在此项目中工作。')}
+        </Text>
+      </div>
+      <Select
+        searchable
+        allowDeselect={false}
+        value={workingDirectory}
+        data={options}
+        label={t('当前工作区')}
+        onChange={(value) => value && void applyWorkspace(value)}
+      />
+      <Button
+        variant="light"
+        loading={choosing}
+        leftSection={<IconFolderOpen size={17} />}
+        onClick={() => void chooseExternal()}
+      >
+        {t('选择外部文件夹')}
+      </Button>
+      <Text size="xs" c="dimmed" className="yachiyo-agent-workspace-key">
+        {workingDirectory}
+      </Text>
+      {error && (
+        <Text size="xs" c="red" role="alert">
+          {error}
+        </Text>
+      )}
+    </section>
   )
 }

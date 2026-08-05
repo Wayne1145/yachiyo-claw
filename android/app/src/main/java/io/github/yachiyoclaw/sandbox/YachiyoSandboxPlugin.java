@@ -9,6 +9,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -546,8 +547,12 @@ public final class YachiyoSandboxPlugin extends Plugin {
             File defaultWorkspace = workspaceFor("default");
             if (!defaultWorkspace.isDirectory() && !defaultWorkspace.mkdirs()) throw new IOException("sandbox_workspace_unavailable");
             workspace = defaultWorkspace;
+            boolean useMirror = YachiyoDownloadSettingsPlugin.linuxMirror(getContext());
             CommandResult packages = runGuestCommand(
-                "apk update && apk add --no-cache " + TOOLCHAIN_PACKAGES + " && python3 --version && node --version && git --version",
+                linuxMirrorSetupCommand(useMirror) +
+                    "apk update && apk add --no-cache " + TOOLCHAIN_PACKAGES + " && " +
+                    developerRegistrySetupCommand(useMirror) +
+                    "python3 --version && node --version && git --version",
                 900_000
             );
             if (packages.exitCode != 0) throw new IOException("sandbox_toolchain_install_failed");
@@ -775,18 +780,45 @@ public final class YachiyoSandboxPlugin extends Plugin {
         return "unsupported";
     }
 
+    static String linuxMirrorSetupCommand(boolean enabled) {
+        if (!enabled) return "";
+        return "printf '%s\\n' " +
+            "'https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.24/main' " +
+            "'https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.24/community' > /etc/apk/repositories; ";
+    }
+
+    static String developerRegistrySetupCommand(boolean enabled) {
+        if (!enabled) return "";
+        return "mkdir -p /root/.config/pip; " +
+            "printf '%s\\n' '[global]' 'index-url = https://pypi.tuna.tsinghua.edu.cn/simple' " +
+            "'trusted-host = pypi.tuna.tsinghua.edu.cn' > /root/.config/pip/pip.conf; " +
+            "npm config set registry https://registry.npmmirror.com; ";
+    }
+
     private String androidToolchainInstallCommand() {
-        return "set -eu; apk add --no-cache openjdk21-jdk gradle android-tools gcompat libstdc++ wget unzip zip; " +
+        boolean useLinuxMirror = YachiyoDownloadSettingsPlugin.linuxMirror(getContext());
+        String commandlineTools = YachiyoDownloadSettingsPlugin.androidCommandlineToolsUrl(getContext());
+        String commandlineToolsFallback = YachiyoDownloadSettingsPlugin.officialAndroidCommandlineToolsUrl();
+        String commandlineToolsDownload = useLinuxMirror
+            ? "wget -q -O commandlinetools.zip " + commandlineTools +
+                " || wget -q -O commandlinetools.zip " + commandlineToolsFallback + "; "
+            : "wget -q -O commandlinetools.zip " + commandlineTools + "; ";
+        String aapt2 = YachiyoDownloadSettingsPlugin.mirrorGithubReleaseUrl(
+            getContext(),
+            "https://github.com/ReVanced/aapt2/releases/download/v1.0.0/aapt2-arm64-v8a"
+        );
+        return "set -eu; " + linuxMirrorSetupCommand(useLinuxMirror) +
+            "apk add --no-cache openjdk21-jdk gradle android-tools gcompat libstdc++ wget unzip zip; " +
             "export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; " +
             "export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH; " +
             "mkdir -p $ANDROID_HOME/cmdline-tools /root/.gradle; cd /tmp; " +
-            "wget -q -O commandlinetools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip; " +
+            commandlineToolsDownload +
             "rm -rf /opt/android-sdk/cmdline-tools/latest /tmp/cmdline-tools; unzip -q commandlinetools.zip; " +
             "mv /tmp/cmdline-tools $ANDROID_HOME/cmdline-tools/latest; " +
             "yes | sdkmanager --sdk_root=$ANDROID_HOME --licenses >/dev/null || true; " +
             "sdkmanager --sdk_root=$ANDROID_HOME 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'; " +
             "case \"$(uname -m)\" in aarch64|arm64) " +
-            "wget -q -O /tmp/aapt2-arm64 https://github.com/ReVanced/aapt2/releases/download/v1.0.0/aapt2-arm64-v8a; " +
+            "wget -q -O /tmp/aapt2-arm64 " + aapt2 + "; " +
             "echo 'e5b5ff7f0d4f6ecd7fa5d05d77fed3f09f6f1bf80f078b8aada82bc578848561  /tmp/aapt2-arm64' | sha256sum -c -; " +
             "install -m 0755 /tmp/aapt2-arm64 $ANDROID_HOME/build-tools/35.0.0/aapt2; " +
             "printf '%s\\n' 'android.aapt2FromMavenOverride=/opt/android-sdk/build-tools/35.0.0/aapt2' >> /root/.gradle/gradle.properties;; esac; " +

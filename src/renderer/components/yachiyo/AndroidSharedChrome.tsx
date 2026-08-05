@@ -22,19 +22,22 @@ export function AndroidInteractiveChrome({ children }: { children: ReactNode }) 
     const distance = presentation.role === 'target' ? (1 - value) * 10 : -value * 10
     return `translate3d(${presentation.direction * distance}px, 0, 0)`
   })
+  // Pager previews are visual-only. A second portaled toolbar can leave an invisible
+  // hit-test layer in Android WebView after a transition, so only the source owns chrome.
+  if (presentation.role === 'target') return null
   const chrome = (
     <motion.header
       className="yachiyo-interactive-header"
       data-shared-chrome-layer={presentation.role}
       data-yachiyo-tab-swipe="block"
-      aria-hidden={presentation.role === 'target' || undefined}
+      aria-hidden={undefined}
       ref={(node) => {
-        if (node) node.inert = presentation.role === 'target' || presentation.transitioning
+        if (node) node.inert = false
       }}
       style={{
         opacity,
         transform,
-        pointerEvents: presentation.role === 'target' || presentation.transitioning ? 'none' : 'auto',
+        pointerEvents: 'auto',
       }}
     >
       {children}

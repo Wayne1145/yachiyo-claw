@@ -115,6 +115,7 @@ vi.mock('@/stores/taskSessionStore', () => ({
   useTaskSessionRecord: () => ({ data: undefined }),
 }))
 vi.mock('./AndroidConversationHistory', () => ({ AndroidConversationHistory: () => null }))
+vi.mock('./AgentConfigurationPanel', () => ({ AgentWorkspaceSelector: () => null }))
 vi.mock('./CharacterSelector', () => ({ CharacterSelector: () => null }))
 vi.mock('./Live2DStage', () => ({
   Live2DStage: forwardRef<HTMLDivElement, { activity?: string }>(({ activity = 'active' }, ref) => (

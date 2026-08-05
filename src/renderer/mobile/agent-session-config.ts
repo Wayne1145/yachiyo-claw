@@ -1,5 +1,6 @@
 import type { AgentBackend } from './agent-broker'
 import { getAgentBackend, setAgentBackend } from './agent-broker'
+import { getAgentWorkingDirectory } from './agent-broker'
 
 const CONFIG_KEY = 'yachiyo-agent-session-config-v2'
 const LEGACY_CONFIG_KEY = 'yachiyo-agent-session-config-v1'
@@ -15,6 +16,8 @@ export interface AgentSessionConfig {
   backend: AgentBackend
   approvalMode: AgentApprovalMode
   allowDangerousForConversation: boolean
+  /** Opaque sandbox workspace key: absolute path, SAF content URI, or coding:<uuid>. */
+  workingDirectory: string
 }
 
 const defaultConfig = (): AgentSessionConfig => ({
@@ -24,6 +27,7 @@ const defaultConfig = (): AgentSessionConfig => ({
   backend: getAgentBackend(),
   approvalMode: 'manual',
   allowDangerousForConversation: false,
+  workingDirectory: getAgentWorkingDirectory(),
 })
 
 function readAll(): Record<string, AgentSessionConfig> {
@@ -45,7 +49,7 @@ function readAll(): Record<string, AgentSessionConfig> {
           // Before v2, enabling Agent always enabled phone control as well.
           deviceControlEnabled: Boolean(config.enabled),
         },
-      ]),
+      ])
     )
     if (Object.keys(migrated).length > 0) {
       localStorage.setItem(CONFIG_KEY, JSON.stringify(migrated))

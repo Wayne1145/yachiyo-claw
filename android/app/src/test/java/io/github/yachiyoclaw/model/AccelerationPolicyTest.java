@@ -50,11 +50,11 @@ public final class AccelerationPolicyTest {
         assertEquals(List.of(gpuFast, gpuSecond, cpu, npu), finalists);
     }
 
-    @Test public void reservesAtLeastOneGibAndFifteenPercent() {
-        assertEquals(1024L * 1024L * 1024L, AccelerationPolicy.requiredSystemHeadroom(4L * 1024L * 1024L * 1024L));
-        assertEquals(3L * 1024L * 1024L * 1024L, AccelerationPolicy.requiredSystemHeadroom(20L * 1024L * 1024L * 1024L));
-        assertFalse(AccelerationPolicy.hasInferenceHeadroom(8L << 30, 2L << 30, 1L << 30));
-        assertTrue(AccelerationPolicy.hasInferenceHeadroom(8L << 30, 3L << 30, 1L << 30));
+    @Test public void keepsAConservativeButBoundedSystemReserve() {
+        assertEquals(512L * 1024L * 1024L, AccelerationPolicy.requiredSystemHeadroom(4L * 1024L * 1024L * 1024L));
+        assertEquals(1024L * 1024L * 1024L, AccelerationPolicy.requiredSystemHeadroom(20L * 1024L * 1024L * 1024L));
+        assertFalse(AccelerationPolicy.hasInferenceHeadroom(8L << 30, 1535L << 20, 1L << 30));
+        assertTrue(AccelerationPolicy.hasInferenceHeadroom(8L << 30, 2L << 30, 1L << 30));
     }
 
     @Test public void createsDeterministicLayerFallbacks() {

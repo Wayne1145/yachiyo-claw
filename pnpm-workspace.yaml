@@ -6,6 +6,7 @@ packages:
 minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
   - "@ruguoapp/*"
+  - brace-expansion
 
 onlyBuiltDependencies:
   - "@parcel/watcher"
@@ -24,6 +25,9 @@ overrides:
   "@mastra/rag": 1.0.8
   "@tanstack/router-generator": 1.120.15
   "@tanstack/router-plugin": 1.120.15
+  "brace-expansion@<1.1.18": 1.1.18
+  "brace-expansion@>=2.0.0 <2.1.4": 2.1.4
+  "brace-expansion@>=5.0.0 <5.0.8": 5.0.9
   convict: ">=6.2.5"
   dompurify: "^3.4.9"
   fast-xml-parser: ">=5.5.7"

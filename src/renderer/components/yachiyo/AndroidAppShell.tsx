@@ -116,14 +116,14 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const lastConversationPathname = useRef(
     location.pathname === '/' || location.pathname.startsWith('/session/') || location.pathname.startsWith('/task/')
       ? location.pathname
-      : '/',
+      : '/'
   )
   const lastTabLocation = useRef(new Map<AndroidShellTab, { pathname: string; search: Record<string, unknown> }>())
   const conversationSettingsReturnRef = useRef<{ pathname: string; search: Record<string, unknown> }>()
   const tabNavigationTransactionRef = useRef(0)
   const settingsStackRef = useRef<AndroidSettingsStackHandle>(null)
   const [historyOpened, setHistoryOpened] = useState(false)
-  const [conversationHeaderCollapsed, setConversationHeaderCollapsed] = useState(false)
+  const [conversationHeaderCollapsed, setConversationHeaderCollapsed] = useState(true)
   const reduceMotion = useReducedMotion()
   const [pagerTransition, setPagerTransition] = useState<AndroidTabTransitionSnapshot>()
   const [sharedChromeHost, setSharedChromeHost] = useState<HTMLElement | null>(null)
@@ -143,7 +143,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const contributionPluginIds = usePluginStore((state) => state.contributionPluginIds)
   const settings = useMemo(
     () => ({ customProviders, defaultChatModel, licenseKey, providers }),
-    [customProviders, defaultChatModel, licenseKey, providers],
+    [customProviders, defaultChatModel, licenseKey, providers]
   )
   const hasProvider = useMemo(() => hasConfiguredModelProvider(settings), [settings])
   const enabledFeatureIds = useMemo(() => getEnabledFeatureIds('android', featureOverrides), [featureOverrides])
@@ -172,7 +172,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const activePlugin = installedPlugins.find(
     (record) =>
       location.pathname === `/plugin/${record.manifest.id}` ||
-      location.pathname.startsWith(`/plugin/${record.manifest.id}/`),
+      location.pathname.startsWith(`/plugin/${record.manifest.id}/`)
   )
   const activePluginTabId = activePlugin ? `plugin-${activePlugin.manifest.id}` : undefined
   const activePluginHasShellTab = Boolean(activePluginTabId && shellTabs.some((tab) => tab.id === activePluginTabId))
@@ -182,7 +182,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       : 'settings'
     : resolveAndroidShellTab(location.pathname)
   const activeTabLabel = t(
-    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天',
+    shellTabs.find((tab) => tab.id === activeTab)?.label ?? activePlugin?.manifest.displayName ?? '聊天'
   )
   const pagerTarget = pagerTransition ? shellTabs.find((tab) => tab.id === pagerTransition.targetId) : undefined
   const pagerTargetLabel = String(t(pagerTarget?.label ?? activeTabLabel))
@@ -266,7 +266,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       startPendingThemeImportRecovery(() => {
         void router.navigate({ to: '/settings/themes' })
       }),
-    [],
+    []
   )
 
   useEffect(() => {
@@ -280,7 +280,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       try {
         const tasks = await listAllTaskSessions()
         const protectedIds = new Set(
-          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id)),
+          tasks.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
         )
         await pruneAbandonedEmptySessions(60_000, protectedIds)
       } catch {
@@ -607,6 +607,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
 
   const handleAgentToggle = async (enabled: boolean) => {
     if (enabled) {
+      setConversationHeaderCollapsed(true)
       let chatSessionId = chatMatch?.[1]
       if (!chatSessionId) {
         const session = await createEmpty('chat')
@@ -855,9 +856,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
                           >
                             <motion.div
                               className="yachiyo-mobile-header-collapsible-inner"
-                              initial={reduceMotion ? false : { scale: 0.99, filter: 'blur(3px)' }}
-                              animate={{ scale: 1, filter: 'blur(0px)' }}
-                              exit={reduceMotion ? { opacity: 0 } : { scale: 0.99, filter: 'blur(3px)' }}
+                              initial={reduceMotion ? false : { scale: 0.99, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              exit={reduceMotion ? { opacity: 0 } : { scale: 0.99, opacity: 0 }}
                               transition={
                                 reduceMotion
                                   ? { duration: 0.18, ease: 'easeOut' }

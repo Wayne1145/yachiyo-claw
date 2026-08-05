@@ -244,7 +244,14 @@ function Get-AndroidPackageStatus {
 
 switch ($Action) {
   'pnpm' {
-    Invoke-WorkspaceCommand 'corepack' (@('pnpm') + $ActionArgs)
+    # Invoke the workspace shim explicitly. PowerShell can otherwise retain a previously resolved
+    # system Corepack command even after PATH is updated, silently selecting the wrong Node/pnpm.
+    $workspaceCorepack = Join-Path $workspaceNode 'corepack.cmd'
+    $workspacePnpm = Join-Path $env:PNPM_HOME 'pnpm.cmd'
+    if (-not (Test-Path -LiteralPath $workspacePnpm -PathType Leaf)) {
+      Invoke-WorkspaceCommand $workspaceCorepack @('enable', 'pnpm', '--install-directory', $env:PNPM_HOME)
+    }
+    Invoke-WorkspaceCommand $workspacePnpm $ActionArgs
   }
   'gradle' {
     $gradle = Join-Path $workspaceRoot 'android\gradlew.bat'

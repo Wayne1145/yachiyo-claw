@@ -17,6 +17,7 @@ import {
   IconCamera,
   IconBrain,
   IconArrowUp,
+  IconArrowsMove,
   IconCheck,
   IconChevronDown,
   IconCpu,
@@ -37,7 +38,7 @@ import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import ProviderImageIcon from '@/components/icons/ProviderImageIcon'
 import ModelSelector from '@/components/ModelSelector'
 import { useProviders } from '@/hooks/useProviders'
-import { saveAgentSessionConfig } from '@/mobile/agent-session-config'
+import { getAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
 import { listCharacterProfiles, selectSessionCharacter } from '@/mobile/character-profiles'
 import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conversation-bridge'
@@ -58,6 +59,12 @@ import {
 import { type Live2DUserError, normalizeLive2DError } from '@/mobile/live2d-errors'
 import { getLive2DRenderQuality, type Live2DRenderQuality, setLive2DRenderQuality } from '@/mobile/live2d-performance'
 import {
+  clearLive2DTransform,
+  type Live2DTransform,
+  loadLive2DTransform,
+  saveLive2DTransform,
+} from '@/mobile/live2d-transform'
+import {
   getSpeechRecognitionErrorMessage,
   recognizeAndroidSpeech,
   speakText,
@@ -74,6 +81,7 @@ import { submitTaskMessage } from '@/stores/taskSessionActions'
 import { updateTaskSession, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
+import { AgentWorkspaceSelector } from './AgentConfigurationPanel'
 import { AndroidInteractiveChrome } from './AndroidSharedChrome'
 import { CharacterSelector } from './CharacterSelector'
 import { Live2DStage, type Live2DStageHandle } from './Live2DStage'
@@ -118,7 +126,10 @@ export function AndroidInteractive({
   const [cameraPosition, setCameraPosition] = useState({ x: 0, y: 0 })
   const [background, setBackground] = useState(() => localStorage.getItem('yachiyo.interactive.background') || '')
   const [renderQuality, setRenderQuality] = useState(getLive2DRenderQuality)
+  const [live2dTransform, setLive2dTransform] = useState<Live2DTransform>(() => loadLive2DTransform(selectedModelId))
+  const [live2dMoveMode, setLive2dMoveMode] = useState(false)
   const stageRef = useRef<Live2DStageHandle>(null)
+  const live2dTransformSnapshotRef = useRef<Live2DTransform>()
   const videoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream>()
   const cameraDragRef = useRef<{
@@ -160,6 +171,11 @@ export function AndroidInteractive({
   useEffect(() => {
     void listLive2DModels().then(setModels)
   }, [])
+
+  useEffect(() => {
+    setLive2dMoveMode(false)
+    setLive2dTransform(loadLive2DTransform(selectedModelId))
+  }, [selectedModelId])
 
   useEffect(() => {
     const generation = ++sessionCreationGenerationRef.current
@@ -441,10 +457,12 @@ export function AndroidInteractive({
   const toggleAgent = async (value: string) => {
     if (!sessionId) return
     if (value === 'agent') {
+      const config = getAgentSessionConfig(sessionId)
       const agentTask = await ensureAgentTaskForChat(sessionId)
-      saveAgentSessionConfig(agentTask.id, { enabled: true, configured: true })
+      saveAgentSessionConfig(agentTask.id, { ...config, enabled: true, configured: true })
       setTaskId(agentTask.id)
       setAgentMode(true)
+      if (!config.configured) setModelPickerOpen(true)
     } else {
       if (taskId) await ensureChatSessionForTask(taskId)
       setAgentMode(false)
@@ -503,6 +521,30 @@ export function AndroidInteractive({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const startLive2DMoveMode = () => {
+    live2dTransformSnapshotRef.current = stageRef.current?.getTransform() ?? live2dTransform
+    setLive2dMoveMode(true)
+  }
+
+  const cancelLive2DMoveMode = () => {
+    const snapshot = live2dTransformSnapshotRef.current ?? live2dTransform
+    stageRef.current?.setTransform(snapshot)
+    setLive2dTransform(snapshot)
+    setLive2dMoveMode(false)
+  }
+
+  const saveLive2DMoveMode = () => {
+    const current = stageRef.current?.getTransform() ?? live2dTransform
+    setLive2dTransform(saveLive2DTransform(selectedModelId, current))
+    setLive2dMoveMode(false)
+  }
+
+  const resetLive2DMoveMode = () => {
+    const reset = clearLive2DTransform(selectedModelId)
+    stageRef.current?.resetTransform()
+    setLive2dTransform(reset)
   }
 
   const interactiveHeaderActions: AdaptiveActionDescriptor[] = [
@@ -641,6 +683,16 @@ export function AndroidInteractive({
       ),
     },
     {
+      id: 'move-live2d',
+      label: String(t('移动 Live2D')),
+      icon: IconArrowsMove,
+      priority: 5,
+      group: 'secondary',
+      collapseStrategy: 'overflow',
+      renderControl: () => null,
+      menuAction: { onSelect: startLive2DMoveMode },
+    },
+    {
       id: 'settings',
       label: String(t('交互设置')),
       icon: IconSettings,
@@ -743,7 +795,33 @@ export function AndroidInteractive({
           muted={muted}
           quality={renderQuality}
           activity={activity}
+          transform={live2dTransform}
+          editMode={live2dMoveMode}
         />
+        {live2dMoveMode && (
+          <div
+            className="yachiyo-live2d-move-panel"
+            role="dialog"
+            aria-modal="false"
+            aria-label={String(t('Live2D 移动模式'))}
+          >
+            <div>
+              <Text fw={700}>{t('Live2D 移动模式')}</Text>
+              <Text size="xs" c="dimmed">
+                {t('单指拖动模型，双指缩放模型。')}
+              </Text>
+            </div>
+            <div className="yachiyo-live2d-move-actions">
+              <Button variant="subtle" color="gray" onClick={cancelLive2DMoveMode}>
+                {t('取消')}
+              </Button>
+              <Button variant="light" color="gray" onClick={resetLive2DMoveMode}>
+                {t('重置')}
+              </Button>
+              <Button onClick={saveLive2DMoveMode}>{t('保存')}</Button>
+            </div>
+          </div>
+        )}
         {cameraActive && (
           <div
             className="yachiyo-camera-preview"
@@ -943,6 +1021,7 @@ export function AndroidInteractive({
               setLive2DRenderQuality(quality)
             }}
           />
+          {agentMode && <AgentWorkspaceSelector sessionId={taskId || sessionId} />}
           {models.map((model) => (
             <button
               key={model.id}
@@ -973,11 +1052,7 @@ export function AndroidInteractive({
           ))}
           <FileButton accept="application/zip,.zip" onChange={importModel}>
             {(props) => (
-              <Button
-                {...props}
-                className="yachiyo-live2d-import-button"
-                leftSection={<IconUpload size={18} />}
-              >
+              <Button {...props} className="yachiyo-live2d-import-button" leftSection={<IconUpload size={18} />}>
                 {t('导入 Live2D ZIP')}
               </Button>
             )}

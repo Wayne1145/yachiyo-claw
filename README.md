@@ -121,7 +121,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 开发计划与验收条件见 [ROADMAP](docs/ROADMAP.md)，权限和执行边界见 [SECURITY_MODEL](docs/SECURITY_MODEL.md)。
 使用与发布资料见 [统一下载管理](docs/downloads.md)、[主题](docs/themes.md)、[Skills](docs/skills.md)、
 [插件开发者预览](docs/plugins/README.md)、[隐私说明](PRIVACY.md)、[安全政策](SECURITY.md) 和
-[v0.0.16 发布说明](docs/releases/v0.0.16.md)。
+[v0.0.17 发布说明](docs/releases/v0.0.17.md)。
 
 ## Agent 执行结构
 
@@ -236,6 +236,15 @@ Yachiyo Claw 是独立的开源项目，与影片制作方、发行方、Netflix
 ## License
 
 本仓库基于 Chatbox Community Edition 继续开发，并以 [GPL-3.0-only](LICENSE) 发布。第三方源码、库、角色素材、Live2D 模型和模型权重保留各自许可证与使用条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## v0.0.17
+
+- 修复 GGUF 本地模型在部分设备上的 Vulkan 探测、内存误判和预加载失败问题，并提供可靠的 CPU/mmap 回退。
+- 增加 Live2D 移动、缩放、保存与重置，补齐 Agent 工作区和开发项目的直接接入。
+- 增加中国大陆开发环境镜像与官方回退，修复 Android CI 平台工具版本漂移。
+- 优化窄屏交互、液态玻璃降级层、技能市场安装按钮和本地模型删除同步。
+
+完整变化、边界和发布门禁见 [v0.0.17 发布说明](docs/releases/v0.0.17.md)。
 
 ## v0.0.16
 

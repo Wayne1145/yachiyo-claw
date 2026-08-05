@@ -31,7 +31,7 @@ export function ReasoningStrengthControl({
   const { t } = useTranslation()
   const value = getSessionReasoningStrength(settings) || 'medium'
   const mapping = mapReasoningStrength(value, settings?.provider, settings?.modelId)
-  const label = `${t(LABELS[value])}${mapping.exact ? '' : '*'}`
+  const label = t(LABELS[value])
   const mappingNote = mapping.exact ? '' : t('（当前模型或提供商会自行映射）')
 
   return (
@@ -72,11 +72,9 @@ export function ReasoningStrengthControl({
             <Text size="sm">{t(LABELS[strength])}</Text>
           </Menu.Item>
         ))}
-        {!mapping.exact && (
-          <Text size="xs" c="dimmed" px="sm" py={4}>
-            {t('* 当前模型可能使用固定的推理模式。')}
-          </Text>
-        )}
+        <Text size="xs" c="dimmed" px="sm" py={4}>
+          {t('部分模型可能使用固定思考模式。')}
+        </Text>
       </Menu.Dropdown>
     </Menu>
   )

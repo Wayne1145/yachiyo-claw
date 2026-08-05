@@ -209,8 +209,19 @@ const english: Record<string, string> = {
   '使用 Hugging Face 镜像': 'Use Hugging Face mirror',
   '模型搜索和模型文件下载通过 hf-mirror.com 访问。': 'Search models and download model files through hf-mirror.com.',
   '使用 GitHub 镜像': 'Use GitHub mirror',
+  默认内部工作区: 'Default internal workspace',
+  '开发项目：{{name}}': 'Development project: {{name}}',
+  当前外部工作区: 'Current external workspace',
+  工作区目录: 'Workspace directory',
+  'Agent 的文件工具和 Linux 沙箱将在此项目中工作。':
+    "The Agent's file tools and Linux sandbox will work in this project.",
+  当前工作区: 'Current workspace',
+  选择外部文件夹: 'Choose external folder',
   '软件更新安装包通过 ghfast.top 下载；版本信息仍从 GitHub 获取。':
     'Download app update packages through ghfast.top; release metadata still comes from GitHub.',
+  '使用 Linux 开发环境镜像': 'Use Linux development mirrors',
+  'Linux 基础系统、Python、Node.js 和 Android 开发工具优先通过中国大陆镜像下载。':
+    'Prefer mainland China mirrors for the Linux base system, Python, Node.js, and Android development tools.',
   '发现新版本 v{{version}}': 'Yachiyo Claw v{{version}} is available',
   '请允许 Yachiyo Claw 安装未知来源应用，授权后返回此处继续安装。':
     'Allow Yachiyo Claw to install unknown apps, then return here to continue.',

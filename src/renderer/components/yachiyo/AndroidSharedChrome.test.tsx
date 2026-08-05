@@ -26,7 +26,7 @@ function transition(progress = 0.25): AndroidTabTransitionSnapshot {
 }
 
 describe('AndroidSharedChrome', () => {
-  it('portals source and target interactive chrome into one host using the shared pager progress', () => {
+  it('portals only active interactive chrome so a preview cannot intercept taps', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const pagerTransition = transition()
@@ -48,11 +48,11 @@ describe('AndroidSharedChrome', () => {
 
     expect(container.querySelector('.yachiyo-interactive-header')).toBeNull()
     const layers = host.querySelectorAll<HTMLElement>('.yachiyo-interactive-header')
-    expect(layers).toHaveLength(2)
+    expect(layers).toHaveLength(1)
     expect(layers[0].style.opacity).toBe('0.75')
-    expect(layers[1].style.opacity).toBe('0.25')
-    expect(layers[1].inert).toBe(true)
-    expect(within(host).getByText('Target chrome').closest('header')?.getAttribute('aria-hidden')).toBe('true')
+    expect(layers[0].inert).toBe(false)
+    expect(layers[0].style.pointerEvents).toBe('auto')
+    expect(within(host).queryByText('Target chrome')).toBeNull()
     host.remove()
   })
 

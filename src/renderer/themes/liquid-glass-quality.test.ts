@@ -41,8 +41,8 @@ describe('Liquid Glass quality', () => {
   })
 
   it('uses capability hints for automatic quality', () => {
-    expect(resolveLiquidGlassQuality('auto', capable)).toBe('full')
-    expect(resolveLiquidGlassQuality('auto', { ...capable, hardwareConcurrency: 6 })).toBe('full')
+    expect(resolveLiquidGlassQuality('auto', capable)).toBe('balanced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, hardwareConcurrency: 6 })).toBe('balanced')
     expect(resolveLiquidGlassQuality('auto', { ...capable, androidMajorVersion: 12 })).toBe('balanced')
     expect(resolveLiquidGlassQuality('auto', { ...capable, deviceMemoryGb: 2 })).toBe('reduced')
   })
@@ -55,12 +55,12 @@ describe('Liquid Glass quality', () => {
   })
 
   it('mirrors requested and resolved quality for first-paint attributes', () => {
-    expect(applyLiquidGlassQuality('auto', capable)).toBe('full')
+    expect(applyLiquidGlassQuality('auto', capable)).toBe('balanced')
     expect(document.documentElement.dataset.yachiyoLiquidGlassQualityPreference).toBe('auto')
-    expect(document.documentElement.dataset.yachiyoLiquidGlassQuality).toBe('full')
-    expect(document.documentElement.dataset.yachiyoLiquidGlassFallback).toBe('none')
+    expect(document.documentElement.dataset.yachiyoLiquidGlassQuality).toBe('balanced')
+    expect(document.documentElement.dataset.yachiyoLiquidGlassFallback).toBe('android-version')
     expect(localStorage.getItem(LIQUID_GLASS_QUALITY_STORAGE_KEY)).toBe('auto')
-    expect(localStorage.getItem(LIQUID_GLASS_RESOLVED_QUALITY_STORAGE_KEY)).toBe('full')
+    expect(localStorage.getItem(LIQUID_GLASS_RESOLVED_QUALITY_STORAGE_KEY)).toBe('balanced')
   })
 
   it('re-resolves quality when an accessibility media preference changes', () => {

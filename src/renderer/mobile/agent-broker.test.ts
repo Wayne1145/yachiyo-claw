@@ -92,7 +92,7 @@ describe('Android Agent Tool Broker', () => {
         stepId: 'privilege-test',
         callId: 'privilege-test',
         execute,
-      }),
+      })
     ).rejects.toThrow('broker_tool_feature_mismatch')
     expect(execute).not.toHaveBeenCalled()
     expect(readAgentAudit({ limit: 1 })[0]).toMatchObject({
@@ -107,8 +107,17 @@ describe('Android Agent Tool Broker', () => {
     setAgentWorkingDirectory('/storage/emulated/0/Yachiyo Claw/')
     expect(getAgentWorkingDirectory()).toBe('/storage/emulated/0/Yachiyo Claw')
     expect(localStorage.getItem('yachiyo:android-device:working-directory:v1')).toBe(
-      '"/storage/emulated/0/Yachiyo Claw"',
+      '"/storage/emulated/0/Yachiyo Claw"'
     )
+  })
+
+  it('accepts typed coding and SAF workspace identifiers', () => {
+    const coding = 'coding:123e4567-e89b-42d3-a456-426614174000'
+    setAgentWorkingDirectory(coding)
+    expect(getAgentWorkingDirectory()).toBe(coding)
+    const saf = 'content://com.android.externalstorage.documents/tree/primary%3AProject'
+    setAgentWorkingDirectory(saf)
+    expect(getAgentWorkingDirectory()).toBe(saf)
   })
 
   it('rejects non-absolute working directories', () => {
@@ -306,7 +315,7 @@ describe('Android Agent Tool Broker', () => {
 
     await expect(executeAgentAction(request)).rejects.toThrow('activity_recreated')
     await expect(
-      executeAgentAction({ ...request, stepId: 'step-after-restart', callId: 'call-after-restart' }),
+      executeAgentAction({ ...request, stepId: 'step-after-restart', callId: 'call-after-restart' })
     ).rejects.toBeInstanceOf(AgentActionRecoveryRequiredError)
     expect(execute).toHaveBeenCalledTimes(1)
   })

@@ -16,6 +16,7 @@ import { modals } from '@mantine/modals'
 import type { MarketplaceSkill, SkillInfo } from '@shared/types/skills'
 import {
   IconBrandGithub,
+  IconCheck,
   IconDots,
   IconDownload,
   IconFolderOpen,
@@ -404,7 +405,9 @@ export const SkillsSection: FC = () => {
   const handleScriptExecution = useCallback(
     async (skill: SkillInfo, enabled: boolean) => {
       const capabilities = Array.from(
-        new Set(skill.source?.capabilityManifest?.scriptEntrypoints?.flatMap((entrypoint) => entrypoint.capabilities) || [])
+        new Set(
+          skill.source?.capabilityManifest?.scriptEntrypoints?.flatMap((entrypoint) => entrypoint.capabilities) || []
+        )
       )
       const apply = async () => {
         const result = await skillsController.configureScriptExecution(skill.name, enabled, capabilities)
@@ -562,16 +565,19 @@ export const SkillsSection: FC = () => {
                         {skill.description || skill.source}
                       </Text>
                     </Box>
-                    <Button
-                      size="compact-xs"
-                      variant={installed ? 'light' : 'filled'}
-                      disabled={installed}
-                      loading={installingMarketplaceSkill === skill.id}
-                      leftSection={<ScalableIcon icon={IconDownload} size={13} />}
-                      onClick={() => void installMarketplaceSkill(skill)}
-                    >
-                      {installed ? '已安装' : '安装'}
-                    </Button>
+                    <Tooltip label={installed ? t('已安装') : t('安装')} withArrow>
+                      <ActionIcon
+                        size={34}
+                        variant={installed ? 'light' : 'filled'}
+                        disabled={installed}
+                        loading={installingMarketplaceSkill === skill.id}
+                        aria-label={String(installed ? t('已安装') : t('安装'))}
+                        style={{ flex: '0 0 34px' }}
+                        onClick={() => void installMarketplaceSkill(skill)}
+                      >
+                        <ScalableIcon icon={installed ? IconCheck : IconDownload} size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                   </Flex>
                   <Flex gap={6} mt="xs" wrap="wrap">
                     <Badge size="xs" variant="light" color="gray">

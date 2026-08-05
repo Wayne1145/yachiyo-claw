@@ -44,7 +44,7 @@ function readMigratedLocalValue<T>(
   name: string,
   legacyKey: string,
   fallback: T,
-  parseLegacy: (raw: string) => T | undefined,
+  parseLegacy: (raw: string) => T | undefined
 ): T {
   if (agentLocalStore.has(name)) return agentLocalStore.get(name, fallback)
   if (typeof localStorage === 'undefined') return fallback
@@ -88,7 +88,7 @@ function persistRootCapability(capability: RootCapability | null): void {
 
 export function getAgentBackend(): AgentBackend {
   return readMigratedLocalValue('backend', BACKEND_KEY, 'root' as AgentBackend, (raw) =>
-    raw === 'root' || raw === 'shizuku' || raw === 'accessibility' ? raw : undefined,
+    raw === 'root' || raw === 'shizuku' || raw === 'accessibility' ? raw : undefined
   )
 }
 
@@ -98,17 +98,25 @@ export function setAgentBackend(backend: AgentBackend): void {
 
 export function getAgentWorkingDirectory(): string {
   return readMigratedLocalValue('working-directory', WORKING_DIRECTORY_KEY, ANDROID_AGENT_WORKING_DIRECTORY, (raw) => {
-    const value = raw.trim()
-    return value.startsWith('/') && !/[\0\r\n]/.test(value) ? value : undefined
+    return normalizeAgentWorkingDirectory(raw)
   })
 }
 
 export function setAgentWorkingDirectory(path: string): void {
-  const normalized = path.trim().replace(/\/+$/, '')
-  if (!normalized.startsWith('/') || /[\0\r\n]/.test(normalized)) {
-    throw new Error('invalid_working_directory')
-  }
+  const normalized = normalizeAgentWorkingDirectory(path)
+  if (!normalized) throw new Error('invalid_working_directory')
   agentLocalStore.set('working-directory', normalized)
+}
+
+function normalizeAgentWorkingDirectory(path: string): string | undefined {
+  const trimmed = path.trim()
+  if (!trimmed || trimmed.length > 2048 || /[\0\r\n]/.test(trimmed)) return undefined
+  if (trimmed.startsWith('/')) return trimmed === '/' ? '/' : trimmed.replace(/\/+$/, '')
+  if (/^coding:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return trimmed
+  }
+  if (/^content:\/\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]+$/.test(trimmed)) return trimmed
+  return undefined
 }
 
 export interface AgentAuditEntry {
@@ -128,7 +136,7 @@ const AUDIT_MAX_ENTRIES = 1_000
 
 export function isAgentFullAccessEnabled(): boolean {
   return readMigratedLocalValue('full-access', FULL_ACCESS_KEY, false, (raw) =>
-    raw === 'true' ? true : raw === 'false' ? false : undefined,
+    raw === 'true' ? true : raw === 'false' ? false : undefined
   )
 }
 
@@ -155,9 +163,7 @@ export function readAgentAudit(options: { pluginId?: string; limit?: number } = 
       return Array.isArray(parsed) ? (parsed as AgentAuditEntry[]) : undefined
     })
     const filtered = options.pluginId
-      ? entries.filter(
-          (entry) => entry.principal?.kind === 'plugin' && entry.principal.pluginId === options.pluginId,
-        )
+      ? entries.filter((entry) => entry.principal?.kind === 'plugin' && entry.principal.pluginId === options.pluginId)
       : entries
     return filtered.slice(-Math.max(1, Math.min(options.limit ?? 100, 500))).reverse()
   } catch {
@@ -189,7 +195,7 @@ export class AgentActionAlreadyAppliedError extends Error {
 export class AgentActionRecoveryRequiredError extends Error {
   constructor(
     public readonly callId: string,
-    public readonly state: 'running' | 'unknown',
+    public readonly state: 'running' | 'unknown'
   ) {
     super('agent_action_recovery_required')
     this.name = 'AgentActionRecoveryRequiredError'
@@ -250,7 +256,7 @@ async function runAbortableBrokerCall<T>(
   execute: () => Promise<T>,
   signal: AbortSignal | undefined,
   deadline: number,
-  onAbort: AgentExecutionOptions<T>['onAbort'],
+  onAbort: AgentExecutionOptions<T>['onAbort']
 ): Promise<T> {
   if (signal?.aborted) throw new Error('agent_action_cancelled')
   const remaining = deadline - Date.now()
@@ -285,7 +291,7 @@ async function runAbortableBrokerCall<T>(
       .then(execute)
       .then(
         (value) => finish(() => resolve(value)),
-        (error) => finish(() => reject(error)),
+        (error) => finish(() => reject(error))
       )
   })
 }
@@ -340,7 +346,7 @@ function checkpointRecordBase(
   parameterDigest: string,
   expectedState: JsonValue,
   sideEffectState: 'not_started' | 'running' | 'applied' | 'verified' | 'unknown',
-  resultDigest: string | null,
+  resultDigest: string | null
 ) {
   return {
     schemaVersion: 1 as const,
@@ -422,7 +428,7 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
           (record) =>
             record.toolId === options.toolId &&
             record.parameterDigest === parameterDigest &&
-            ['running', 'applied', 'verified', 'unknown'].includes(record.sideEffectState),
+            ['running', 'applied', 'verified', 'unknown'].includes(record.sideEffectState)
         )
       : undefined
     if (matchingCheckpoint && matchingCheckpoint.callId !== callId) {
@@ -452,12 +458,7 @@ export async function executeAgentAction<T>(options: AgentExecutionOptions<T>): 
     await store.put(checkpointRecordBase(checkpointRequest, parameterDigest, expectedState, 'running', null))
 
     try {
-      const result = await runAbortableBrokerCall(
-        options.execute,
-        options.abortSignal,
-        deadline,
-        options.onAbort,
-      )
+      const result = await runAbortableBrokerCall(options.execute, options.abortSignal, deadline, options.onAbort)
       if (Date.now() >= deadline) throw new Error('agent_action_deadline_exceeded')
       const successful = options.isSuccess ? options.isSuccess(result) : true
       let state: 'not_started' | 'applied' | 'verified' | 'unknown' = successful
@@ -573,7 +574,7 @@ function isAccessibilitySideEffect(action: AccessibilityActionOptions['action'])
 
 export async function executeAccessibilityAction(
   options: AccessibilityActionOptions,
-  context: AgentBrokerCallContext = {},
+  context: AgentBrokerCallContext = {}
 ): Promise<AccessibilityActionResult> {
   if (getAgentBackend() !== 'accessibility') {
     return { success: false, reason: 'accessibility_backend_required' }
@@ -615,7 +616,7 @@ export async function executeAccessibilityAction(
 export async function executeAppLaunch(
   packageName: string,
   activityName?: string,
-  context: AgentBrokerCallContext = {},
+  context: AgentBrokerCallContext = {}
 ): Promise<AccessibilityActionResult> {
   const parameters = {
     action: 'launch' as const,
@@ -657,7 +658,7 @@ export async function executeAppLaunch(
 export async function executeCompanionAction(
   capability: AndroidCanonicalCapability,
   parameters: JsonValue,
-  context: AgentBrokerCallContext = {},
+  context: AgentBrokerCallContext = {}
 ): Promise<AndroidControlResult> {
   const registry = companionRegistry
   if (!registry) {
@@ -738,7 +739,7 @@ function errorResultForCompanion(capability: AndroidCanonicalCapability): Androi
 export async function executeRootShell(
   command: string,
   timeout = 120_000,
-  context: AgentBrokerCallContext = {},
+  context: AgentBrokerCallContext = {}
 ): Promise<RootCommandResult> {
   const principal = context.principal ?? CORE_AGENT_PRINCIPAL
   const backend = getAgentBackend()

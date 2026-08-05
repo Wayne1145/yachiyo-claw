@@ -4,7 +4,7 @@ import { extensions } from '@pixi/extensions'
 import { Ticker, TickerPlugin } from '@pixi/ticker'
 import { install as installUnsafeEval } from '@pixi/unsafe-eval'
 import JSZip from 'jszip'
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
@@ -16,6 +16,7 @@ import {
   YachiyoLive2DError,
 } from '@/mobile/live2d-errors'
 import { getLive2DResolution, type Live2DRenderQuality, resolveLive2DAssetUrl } from '@/mobile/live2d-performance'
+import { DEFAULT_LIVE2D_TRANSFORM, type Live2DTransform, normalizeLive2DTransform } from '@/mobile/live2d-transform'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
 import { Live2DErrorPanel } from './Live2DErrorPanel'
@@ -25,6 +26,9 @@ type ModelInstance = Awaited<ReturnType<Cubism4Module['Live2DModel']['from']>>
 
 export interface Live2DStageHandle {
   perform: (action: Live2DAction) => Promise<void>
+  getTransform: () => Live2DTransform
+  setTransform: (transform: Live2DTransform) => void
+  resetTransform: () => void
 }
 
 export interface Live2DStageProps {
@@ -33,6 +37,8 @@ export interface Live2DStageProps {
   muted?: boolean
   quality?: Live2DRenderQuality
   activity?: AndroidTabPageActivity
+  transform?: Live2DTransform
+  editMode?: boolean
   onReady?: () => void
 }
 
@@ -66,7 +72,8 @@ async function loadCubismCore(): Promise<void> {
       if (hasCubismCore()) resolve()
       else reject(createLive2DError('L2D-CORE-002'))
     }
-    script.onerror = () => reject(createLive2DError('L2D-CORE-001', { resource: 'live2d/core/live2dcubismcore.min.js' }))
+    script.onerror = () =>
+      reject(createLive2DError('L2D-CORE-001', { resource: 'live2d/core/live2dcubismcore.min.js' }))
     document.head.appendChild(script)
   }).catch((reason) => {
     script.remove()
@@ -146,20 +153,26 @@ function getQualityCandidates(quality: Live2DRenderQuality): Live2DRenderQuality
   return [...new Set(candidates)]
 }
 
-function fitModel(model: ModelInstance, width: number, height: number) {
+function fitModel(model: ModelInstance, width: number, height: number, transform: Live2DTransform) {
   const naturalWidth = Math.max(1, model.width / Math.max(model.scale.x, 0.0001))
   const naturalHeight = Math.max(1, model.height / Math.max(model.scale.y, 0.0001))
-  const scale = Math.min(width / naturalWidth, height / naturalHeight) * 1.08
+  const scale = Math.min(width / naturalWidth, height / naturalHeight) * 1.08 * transform.scale
   model.anchor.set(0.5, 0.5)
   model.scale.set(scale)
-  model.position.set(width / 2, height / 2 + height * 0.04)
+  model.position.set(width / 2 + transform.offsetX * width, height / 2 + height * 0.04 + transform.offsetY * height)
 }
 
-export const Live2DStage = forwardRef<
-  Live2DStageHandle,
-  Live2DStageProps
->(function Live2DStage(
-  { model: descriptor, speaking = false, muted = false, quality = 'high', activity = 'active', onReady },
+export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(function Live2DStage(
+  {
+    model: descriptor,
+    speaking = false,
+    muted = false,
+    quality = 'high',
+    activity = 'active',
+    transform,
+    editMode = false,
+    onReady,
+  },
   ref
 ) {
   const { t } = useTranslation()
@@ -174,6 +187,15 @@ export const Live2DStage = forwardRef<
   const contextRecoveryCountRef = useRef(0)
   const recoveryModeRef = useRef(false)
   const recoveryIdentityRef = useRef({ source: descriptor.source, quality })
+  const transformRef = useRef(normalizeLive2DTransform(transform ?? DEFAULT_LIVE2D_TRANSFORM))
+  const viewportRef = useRef({ width: 1, height: 1 })
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>())
+  const gestureRef = useRef<{
+    transform: Live2DTransform
+    centerX: number
+    centerY: number
+    distance: number
+  }>()
   const [retryKey, setRetryKey] = useState(0)
   const [error, setError] = useState<Live2DUserError>()
   const [ready, setReady] = useState(false)
@@ -187,6 +209,13 @@ export const Live2DStage = forwardRef<
     contextRecoveryCountRef.current = 0
   }
 
+  const applyTransform = useCallback((next: Live2DTransform) => {
+    const normalized = normalizeLive2DTransform(next)
+    transformRef.current = normalized
+    const instance = modelRef.current
+    if (instance) fitModel(instance, viewportRef.current.width, viewportRef.current.height, normalized)
+  }, [])
+
   useImperativeHandle(ref, () => ({
     perform: async (action) => {
       if (activityRef.current !== 'active' || document.visibilityState === 'hidden') return
@@ -199,7 +228,80 @@ export const Live2DStage = forwardRef<
         await instance.motion(action.motionGroup, action.motionIndex ?? 0, runtime.MotionPriority.FORCE)
       }
     },
+    getTransform: () => ({ ...transformRef.current }),
+    setTransform: applyTransform,
+    resetTransform: () => applyTransform(DEFAULT_LIVE2D_TRANSFORM),
   }))
+
+  useEffect(() => {
+    applyTransform(transform ?? DEFAULT_LIVE2D_TRANSFORM)
+  }, [applyTransform, transform])
+
+  useEffect(() => {
+    if (editMode) return
+    pointersRef.current.clear()
+    gestureRef.current = undefined
+  }, [editMode])
+
+  const beginGesture = useCallback(() => {
+    const points = [...pointersRef.current.values()]
+    if (points.length === 0) {
+      gestureRef.current = undefined
+      return
+    }
+    const first = points[0]
+    const second = points[1] ?? first
+    gestureRef.current = {
+      transform: { ...transformRef.current },
+      centerX: (first.x + second.x) / 2,
+      centerY: (first.y + second.y) / 2,
+      distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+    }
+  }, [])
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!editMode || activityRef.current !== 'active') return
+      event.preventDefault()
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      event.currentTarget.setPointerCapture(event.pointerId)
+      beginGesture()
+    },
+    [beginGesture, editMode]
+  )
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!editMode || !pointersRef.current.has(event.pointerId)) return
+      event.preventDefault()
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      const gesture = gestureRef.current
+      const points = [...pointersRef.current.values()]
+      if (!gesture || points.length === 0) return
+      const first = points[0]
+      const second = points[1] ?? first
+      const centerX = (first.x + second.x) / 2
+      const centerY = (first.y + second.y) / 2
+      const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y))
+      applyTransform({
+        offsetX: gesture.transform.offsetX + (centerX - gesture.centerX) / Math.max(1, viewportRef.current.width),
+        offsetY: gesture.transform.offsetY + (centerY - gesture.centerY) / Math.max(1, viewportRef.current.height),
+        scale: points.length > 1 ? gesture.transform.scale * (distance / gesture.distance) : gesture.transform.scale,
+      })
+    },
+    [applyTransform, editMode]
+  )
+
+  const finishPointer = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!pointersRef.current.has(event.pointerId)) return
+      pointersRef.current.delete(event.pointerId)
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      beginGesture()
+    },
+    [beginGesture]
+  )
 
   useEffect(() => {
     const syncTicker = () => {
@@ -260,6 +362,7 @@ export const Live2DStage = forwardRef<
       const android = isAndroidRuntime()
       const width = Math.max(1, host.clientWidth)
       const height = Math.max(1, host.clientHeight)
+      viewportRef.current = { width, height }
       const requestedQuality: Live2DRenderQuality = recoveryModeRef.current ? 'performance' : quality
       let lastFailure: { reason: unknown; phase: Live2DErrorPhase } | undefined
 
@@ -332,7 +435,7 @@ export const Live2DStage = forwardRef<
           modelRef.current = loadedInstance
           app.stage.addChild(loadedInstance)
           instanceAdded = true
-          fitModel(loadedInstance, width, height)
+          fitModel(loadedInstance, width, height, transformRef.current)
           if (activityRef.current === 'active') hasRetainedInstanceRef.current = true
 
           // Models without a LipSync group can still use the standard Cubism mouth parameter.
@@ -349,6 +452,7 @@ export const Live2DStage = forwardRef<
           observer = new ResizeObserver(() => {
             const nextWidth = Math.max(1, host.clientWidth)
             const nextHeight = Math.max(1, host.clientHeight)
+            viewportRef.current = { width: nextWidth, height: nextHeight }
             if (app) {
               app.renderer.resolution = Math.min(
                 app.renderer.resolution,
@@ -361,7 +465,7 @@ export const Live2DStage = forwardRef<
               )
               app.renderer.resize(nextWidth, nextHeight)
             }
-            fitModel(loadedInstance, nextWidth, nextHeight)
+            fitModel(loadedInstance, nextWidth, nextHeight, transformRef.current)
           })
           observer.observe(host)
           if (!recoveryModeRef.current) contextRecoveryCountRef.current = 0
@@ -434,6 +538,11 @@ export const Live2DStage = forwardRef<
       data-ready={renderEnabled && ready && !error ? 'true' : 'false'}
       data-error={error ? 'true' : 'false'}
       data-speaking={speaking && !muted && activity === 'active' ? 'true' : 'false'}
+      data-editing={editMode ? 'true' : 'false'}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointer}
+      onPointerCancel={finishPointer}
     >
       <div ref={hostRef} className="yachiyo-live2d-canvas-host" aria-hidden="true" />
       {error && <Live2DErrorPanel error={error} onRetry={() => setRetryKey((value) => value + 1)} />}

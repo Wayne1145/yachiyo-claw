@@ -450,12 +450,16 @@ export function LocalModelCenter() {
     }
     return [...latestByModel.values()].sort((left, right) => right.updatedAt - left.updatedAt)
   }, [jobs])
+  const installedJobsRef = useRef(installedJobs)
+  installedJobsRef.current = installedJobs
+  const installedRuntimeKey = installedJobs.map((job) => `${job.id}:${job.updatedAt}`).join('|')
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || view !== 'installed' || installedJobs.length === 0) return
+    const installedSnapshot = installedJobsRef.current
+    if (!Capacitor.isNativePlatform() || view !== 'installed' || installedSnapshot.length === 0) return
     let active = true
     void Promise.all(
-      installedJobs.map(async (job) => {
+      installedSnapshot.map(async (job) => {
         try {
           const [health, runtime, accelerationSettings] = await Promise.all([
             yachiyoModelManagerNative.healthCheck({ modelId: job.modelId }),
@@ -505,7 +509,7 @@ export function LocalModelCenter() {
     return () => {
       active = false
     }
-  }, [installedJobs, t, view])
+  }, [installedRuntimeKey, t, view])
 
   const enqueueDownload = async () => {
     if (!selectedLocalModel || !profile || !artifact || artifactGroup.length === 0) return

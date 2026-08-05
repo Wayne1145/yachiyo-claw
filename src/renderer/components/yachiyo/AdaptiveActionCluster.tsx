@@ -79,12 +79,7 @@ export interface AdaptiveActionClusterProps {
   overflowLabel?: string
 }
 
-const layoutSpring = {
-  type: 'spring' as const,
-  mass: 1,
-  stiffness: 480,
-  damping: 42,
-}
+const layoutTransition = { duration: 0.18, ease: [0.2, 0.8, 0.2, 1] as const }
 
 export function AdaptiveActionCluster({ actions, ariaLabel, className, overflowLabel }: AdaptiveActionClusterProps) {
   const { t } = useTranslation()
@@ -281,7 +276,7 @@ export function AdaptiveActionCluster({ actions, ariaLabel, className, overflowL
         return (
           <motion.div
             layout="position"
-            transition={reduceMotion ? { duration: 0.18, ease: 'easeOut' } : layoutSpring}
+            transition={reduceMotion ? { duration: 0 } : layoutTransition}
             key={action.id}
             ref={(element) => {
               if (element) {
@@ -302,7 +297,7 @@ export function AdaptiveActionCluster({ actions, ariaLabel, className, overflowL
       {overflowActions.length > 0 && (
         <motion.div
           layout="position"
-          transition={reduceMotion ? { duration: 0.18, ease: 'easeOut' } : layoutSpring}
+          transition={reduceMotion ? { duration: 0 } : layoutTransition}
           ref={overflowTriggerRef}
           className="yachiyo-adaptive-action-overflow"
         >

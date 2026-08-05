@@ -92,6 +92,7 @@ export function DownloadsCenter() {
   const [retryCount, setRetryCount] = useState(3)
   const [huggingFaceMirror, setHuggingFaceMirror] = useState(false)
   const [githubMirror, setGithubMirror] = useState(false)
+  const [linuxMirror, setLinuxMirror] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(
@@ -130,6 +131,7 @@ export function DownloadsCenter() {
         setRetryCount(value.retryCount)
         setHuggingFaceMirror(value.huggingFaceMirror)
         setGithubMirror(value.githubMirror)
+        setLinuxMirror(value.linuxMirror)
       })
       .catch((cause) =>
         setError(cause instanceof Error ? translatedDownloadError(cause.message, t) : t('下载设置读取失败'))
@@ -210,6 +212,7 @@ export function DownloadsCenter() {
         retryCount,
         huggingFaceMirror,
         githubMirror,
+        linuxMirror,
       })
       setProxy(value.proxy)
       setThreads(value.threads)
@@ -217,6 +220,7 @@ export function DownloadsCenter() {
       setRetryCount(value.retryCount)
       setHuggingFaceMirror(value.huggingFaceMirror)
       setGithubMirror(value.githubMirror)
+      setLinuxMirror(value.linuxMirror)
       setSettingsOpen(false)
       setError(null)
     } catch (cause) {
@@ -364,6 +368,12 @@ export function DownloadsCenter() {
               onChange={(event) => setGithubMirror(event.currentTarget.checked)}
               label={t('使用 GitHub 镜像')}
               description={t('软件更新安装包通过 ghfast.top 下载；版本信息仍从 GitHub 获取。')}
+            />
+            <Switch
+              checked={linuxMirror}
+              onChange={(event) => setLinuxMirror(event.currentTarget.checked)}
+              label={t('使用 Linux 开发环境镜像')}
+              description={t('Linux 基础系统、Python、Node.js 和 Android 开发工具优先通过中国大陆镜像下载。')}
             />
             <Button onClick={() => void saveSettings()}>{t('保存下载设置')}</Button>
           </Stack>

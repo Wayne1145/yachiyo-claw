@@ -142,7 +142,7 @@ public final class YachiyoSandboxDownloadWorker extends Worker {
     }
 
     private HttpURLConnection open(SandboxDistribution.Spec spec, long start, long end) throws Exception {
-        URL current = new URI(spec.url()).toURL();
+        URL current = new URI(YachiyoDownloadSettingsPlugin.mirrorAlpineUrl(getApplicationContext(), spec.url())).toURL();
         for (int redirects = 0; redirects <= 4; redirects++) {
             requireAllowed(current);
             HttpURLConnection connection = (HttpURLConnection) current.openConnection(proxy());
@@ -167,7 +167,8 @@ public final class YachiyoSandboxDownloadWorker extends Worker {
 
     private static void requireAllowed(URL url) {
         if (!"https".equalsIgnoreCase(url.getProtocol())
-            || !"dl-cdn.alpinelinux.org".equalsIgnoreCase(url.getHost())
+            || !("dl-cdn.alpinelinux.org".equalsIgnoreCase(url.getHost())
+                || "mirrors.tuna.tsinghua.edu.cn".equalsIgnoreCase(url.getHost()))
             || url.getUserInfo() != null) throw new IllegalArgumentException("sandbox_download_url_rejected");
     }
 

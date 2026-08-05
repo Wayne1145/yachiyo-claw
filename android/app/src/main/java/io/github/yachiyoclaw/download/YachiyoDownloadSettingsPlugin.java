@@ -39,12 +39,19 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     private static final String RETRY_COUNT = "retryCount";
     private static final String HUGGING_FACE_MIRROR = "huggingFaceMirror";
     private static final String GITHUB_MIRROR = "githubMirror";
+    private static final String LINUX_MIRROR = "linuxMirror";
     private static final String REGION_INITIALIZED = "regionInitialized";
     private static final String DETECTED_COUNTRY = "detectedCountry";
     private static final String HUGGING_FACE_ORIGIN = "https://huggingface.co";
     private static final String HUGGING_FACE_MIRROR_ORIGIN = "https://hf-mirror.com";
     private static final String GITHUB_ORIGIN = "https://github.com/";
     private static final String GITHUB_MIRROR_ORIGIN = "https://ghfast.top/";
+    private static final String ALPINE_ORIGIN = "https://dl-cdn.alpinelinux.org/alpine";
+    private static final String ALPINE_MIRROR_ORIGIN = "https://mirrors.tuna.tsinghua.edu.cn/alpine";
+    private static final String ANDROID_COMMANDLINE_TOOLS =
+        "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip";
+    private static final String ANDROID_COMMANDLINE_TOOLS_MIRROR =
+        "https://mirrors.cloud.tencent.com/AndroidSDK/commandlinetools-linux-11076708_latest.zip";
     private static final String COUNTRY_TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace";
     private static final String NAV_PREFS = "yachiyo-nav";
     private static final String PENDING_ROUTE = "pendingRoute";
@@ -88,6 +95,11 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         return preferences(context).getBoolean(GITHUB_MIRROR, false);
     }
 
+    public static boolean linuxMirror(android.content.Context context) {
+        SharedPreferences preferences = preferences(context);
+        return preferences.getBoolean(LINUX_MIRROR, "CN".equals(preferences.getString(DETECTED_COUNTRY, "")));
+    }
+
     /** Rewrites only the official Hugging Face origin; repository paths and query parameters stay intact. */
     public static String mirrorHuggingFaceUrl(android.content.Context context, String value) {
         if (!huggingFaceMirror(context) || value == null) return value;
@@ -100,6 +112,26 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     public static String mirrorGithubReleaseUrl(android.content.Context context, String value) {
         if (!githubMirror(context) || value == null) return value;
         return value.startsWith(GITHUB_ORIGIN) ? GITHUB_MIRROR_ORIGIN + value : value;
+    }
+
+    /** Uses a byte-identical Alpine mirror while preserving the pinned path and archive digest. */
+    public static String mirrorAlpineUrl(android.content.Context context, String value) {
+        return mirrorAlpineUrl(linuxMirror(context), value);
+    }
+
+    static String mirrorAlpineUrl(boolean enabled, String value) {
+        if (!enabled || value == null) return value;
+        return value.startsWith(ALPINE_ORIGIN + "/")
+            ? ALPINE_MIRROR_ORIGIN + value.substring(ALPINE_ORIGIN.length())
+            : value;
+    }
+
+    public static String androidCommandlineToolsUrl(android.content.Context context) {
+        return linuxMirror(context) ? ANDROID_COMMANDLINE_TOOLS_MIRROR : ANDROID_COMMANDLINE_TOOLS;
+    }
+
+    public static String officialAndroidCommandlineToolsUrl() {
+        return ANDROID_COMMANDLINE_TOOLS;
     }
 
     /** Every persistent downloader uses this exact network/storage policy. */
@@ -123,6 +155,7 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         result.put("retryCount", retryCount(context));
         result.put("huggingFaceMirror", huggingFaceMirror(context));
         result.put("githubMirror", githubMirror(context));
+        result.put("linuxMirror", linuxMirror(context));
         result.put("regionInitialized", preferences(context).getBoolean(REGION_INITIALIZED, false));
         result.put("detectedCountry", preferences(context).getString(DETECTED_COUNTRY, ""));
         return result;
@@ -142,6 +175,7 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
                 boolean saved = preferences(getContext()).edit()
                     .putBoolean(HUGGING_FACE_MIRROR, mainlandChina)
                     .putBoolean(GITHUB_MIRROR, mainlandChina)
+                    .putBoolean(LINUX_MIRROR, mainlandChina)
                     .putBoolean(REGION_INITIALIZED, true)
                     .putString(DETECTED_COUNTRY, country)
                     .commit();
@@ -308,6 +342,7 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
         boolean wifiOnly = Boolean.TRUE.equals(call.getBoolean("wifiOnly", false));
         boolean huggingFaceMirror = Boolean.TRUE.equals(call.getBoolean("huggingFaceMirror", huggingFaceMirror(getContext())));
         boolean githubMirror = Boolean.TRUE.equals(call.getBoolean("githubMirror", githubMirror(getContext())));
+        boolean linuxMirror = Boolean.TRUE.equals(call.getBoolean("linuxMirror", linuxMirror(getContext())));
         if (!proxy.isEmpty() && !validProxy(proxy)) {
             call.reject("download_proxy_invalid");
             return;
@@ -320,6 +355,7 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
             .putBoolean(WIFI_ONLY, wifiOnly)
             .putBoolean(HUGGING_FACE_MIRROR, huggingFaceMirror)
             .putBoolean(GITHUB_MIRROR, githubMirror)
+            .putBoolean(LINUX_MIRROR, linuxMirror)
             .putBoolean(REGION_INITIALIZED, true)
             .commit();
         if (!saved) {

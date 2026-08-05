@@ -119,7 +119,7 @@ This repository is maintained with assistance from Codex and written with assist
 
 For the development plan and acceptance criteria, see [ROADMAP](docs/ROADMAP.md). For permissions and execution boundaries, see [SECURITY_MODEL](docs/SECURITY_MODEL.md).
 
-Usage and release material is available in [Download Manager](docs/downloads.md), [Themes](docs/themes.md), [Skills](docs/skills.md), [Plugin Developer Preview](docs/plugins/README.md), [Privacy Notice](PRIVACY.md), [Security Policy](SECURITY.md), and the [v0.0.16 release notes](docs/releases/v0.0.16.md).
+Usage and release material is available in [Download Manager](docs/downloads.md), [Themes](docs/themes.md), [Skills](docs/skills.md), [Plugin Developer Preview](docs/plugins/README.md), [Privacy Notice](PRIVACY.md), [Security Policy](SECURITY.md), and the [v0.0.17 release notes](docs/releases/v0.0.17.md).
 
 ## Agent execution model
 
@@ -233,6 +233,15 @@ Yachiyo Claw is an independent open-source project. It has no affiliation with o
 ## License
 
 This repository continues development from Chatbox Community Edition and is released under [GPL-3.0-only](LICENSE). Third-party source code, libraries, character assets, Live2D models, and model weights retain their own licenses and terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## v0.0.17
+
+- Repairs GGUF startup on devices with incomplete Vulkan support, including CPU and mmap fallbacks for GPU and preload failures.
+- Adds persistent Live2D move, zoom, save, and reset controls, plus direct agent workspace selection from Development projects.
+- Adds mainland China toolchain mirrors with official fallbacks and fixes Android CI platform-tools patch updates.
+- Improves narrow screens, glass fallbacks, Skills catalog install controls, and local-model registry deletion.
+
+See the [v0.0.17 release notes](docs/releases/v0.0.17.md) for the complete changes, limitations, and release gates.
 
 ## v0.0.16
 

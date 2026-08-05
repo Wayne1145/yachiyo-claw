@@ -270,11 +270,11 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 List<File> models = store.resolveRuntimeFiles(job);
                 JSONObject configuration = accelerationConfiguration(modelId, job, models);
                 String modelPath = configuration.getString("modelPath");
-                requireInferenceMemory(modelPath, true);
+                boolean eager = requireInferenceMemory(modelPath, true);
                 JSONObject payload = new JSONObject().put("op", "load").put("modelId", modelId)
-                    .put("modelPath", modelPath).put("requestId", requestId).put("eager", true)
+                    .put("modelPath", modelPath).put("requestId", requestId).put("eager", eager)
                     .put("configuration", configuration);
-                JSObject result = runWithBackendCrashFallback(payload, requestId, modelId, true);
+                JSObject result = runWithBackendCrashFallback(payload, requestId, modelId, eager);
                 result.put("modelId", modelId);
                 call.resolve(result);
             } catch (Throwable error) {
@@ -479,9 +479,10 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                 configuration.optString("selectedBackend"),
                 "native_process_crash");
             String fallbackPath = fallback.getString("modelPath");
-            requireInferenceMemory(fallbackPath, eager);
+            boolean effectiveEager = requireInferenceMemory(fallbackPath, eager);
             replaceJsonObject(configuration, fallback);
             payload.put("modelPath", fallbackPath).put("configuration", configuration);
+            if (payload.has("eager")) payload.put("eager", effectiveEager);
             return runInIsolatedProcess(payload, requestId, modelId);
         }
     }
@@ -631,20 +632,18 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         return value;
     }
 
-    private void requireInferenceMemory(String modelPath, boolean eager) {
+    private boolean requireInferenceMemory(String modelPath, boolean eager) {
         File model = new File(modelPath);
+        if (!model.isFile() || model.length() <= 0) throw new IllegalStateException("local_model_file_missing");
         ActivityManager manager = getContext().getSystemService(ActivityManager.class);
+        if (manager == null) throw new IllegalStateException("local_model_memory_status_unavailable");
         ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
         manager.getMemoryInfo(memory);
-        long runtimeHeadroom = Math.max(768L * 1024L * 1024L, model.length() / 5L);
-        // Explicit preload disables mmap, so model bytes plus compute/KV headroom must fit before
-        // starting. Ordinary inference retains mmap and needs only runtime buffers up front.
-        long required = eager
-            ? Math.addExact(model.length(), runtimeHeadroom)
-            : Math.max(768L * 1024L * 1024L, 512L * 1024L * 1024L + model.length() / 6L);
-        if (!AccelerationPolicy.hasInferenceHeadroom(memory.totalMem, memory.availMem, required) || memory.lowMemory) {
-            throw new IllegalStateException("local_model_memory_insufficient");
-        }
+        LocalModelMemoryPolicy.Decision decision =
+            LocalModelMemoryPolicy.decide(memory.totalMem, memory.availMem, model.length(), eager);
+        // OEM lowMemory thresholds are advisory and often trigger well before mmap inference is unsafe.
+        if (!decision.runnable()) throw new IllegalStateException("local_model_memory_insufficient");
+        return decision.eager();
     }
 
     private boolean isInferenceProcessRunning() {

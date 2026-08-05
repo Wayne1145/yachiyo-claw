@@ -175,6 +175,23 @@ jobs:
             fi
           }
 
+          assert_minimum_revision() {
+            local properties="$1"
+            local minimum="$2"
+            local label="$3"
+            local actual
+
+            if [[ ! -f "${properties}" ]]; then
+              echo "::error::Missing ${label} source.properties: ${properties}"
+              exit 1
+            fi
+            actual="$(sed -n 's/^Pkg\.Revision[[:space:]]*=[[:space:]]*//p' "${properties}" | tr -d '\r')"
+            if [[ -z "${actual}" || "$(printf '%s\n%s\n' "${minimum}" "${actual}" | sort -V | head -n 1)" != "${minimum}" ]]; then
+              echo "::error::${label} revision is too old: minimum ${minimum}, got ${actual:-missing}"
+              exit 1
+            fi
+          }
+
           expected_jdk="$(node -p "require('./toolchain.lock.json').jdk.version")"
           actual_jdk="$(sed -n 's/^SEMANTIC_VERSION="\([^"]*\)"$/\1/p' "${JAVA_HOME}/release")"
           if [[ "${actual_jdk}" != "${expected_jdk}" ]]; then
@@ -193,7 +210,9 @@ jobs:
             "${ANDROID_SDK_ROOT}/cmdline-tools/${ANDROID_COMMAND_LINE_TOOLS_BUILD}/source.properties" \
             "${command_line_tools_revision}" \
             "Android command-line tools"
-          assert_revision \
+          # sdkmanager cannot install a versioned platform-tools package and always resolves
+          # the latest compatible revision, so the workspace lock is a minimum for this item.
+          assert_minimum_revision \
             "${ANDROID_SDK_ROOT}/platform-tools/source.properties" \
             "${platform_tools_revision}" \
             "Android platform-tools"

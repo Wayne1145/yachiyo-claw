@@ -202,20 +202,31 @@ void ensure_model(const std::string & path, bool eager, int32_t requested_gpu_la
         g_fallback_reason.clear();
         g_model_eager = false;
     }
-    refresh_gpu_info();
     int32_t gpu_layers = requested_gpu_layers;
-    if (gpu_layers > 0 && (!llama_supports_gpu_offload() || g_gpu_device.empty())) {
-        gpu_layers = 0;
-        g_fallback_reason = "gpu_unavailable";
+    if (gpu_layers > 0) {
+        refresh_gpu_info();
+        if (!llama_supports_gpu_offload() || g_gpu_device.empty()) {
+            gpu_layers = 0;
+            g_fallback_reason = "gpu_unavailable";
+        }
+    } else {
+        g_gpu_device.clear();
+        g_gpu_free_bytes = 0;
+        g_gpu_total_bytes = 0;
     }
     llama_model_params params = llama_model_default_params();
+    // A non-null, empty device list prevents CPU-only loads from probing broken OEM/emulator
+    // Vulkan devices. llama.cpp otherwise enumerates every GPU even when n_gpu_layers is zero.
+    ggml_backend_dev_t no_offload_devices[] = {nullptr};
     params.n_gpu_layers = gpu_layers;
+    if (gpu_layers == 0) params.devices = no_offload_devices;
     params.use_mmap = !eager;
     params.use_mlock = false;
     params.progress_callback = continue_loading;
     g_model = llama_model_load_from_file(path.c_str(), params);
     if (g_model == nullptr && gpu_layers > 0 && !g_cancelled.load(std::memory_order_relaxed)) {
         params.n_gpu_layers = 0;
+        params.devices = no_offload_devices;
         g_load_progress.store(0.0F, std::memory_order_relaxed);
         g_model = llama_model_load_from_file(path.c_str(), params);
         if (g_model != nullptr) {

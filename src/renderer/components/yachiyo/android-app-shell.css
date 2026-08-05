@@ -756,12 +756,75 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   overflow: hidden;
 }
 
+.yachiyo-live2d-stage[data-editing='true'] {
+  z-index: 5;
+  cursor: grab;
+  touch-action: none;
+}
+
+.yachiyo-live2d-stage[data-editing='true']:active {
+  cursor: grabbing;
+}
+
 .yachiyo-live2d-canvas-host {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
   left: 0;
+}
+
+.yachiyo-live2d-move-panel {
+  position: absolute;
+  z-index: 9;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  max-width: 520px;
+  min-height: 68px;
+  margin-inline: auto;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--yachiyo-border) 72%, transparent);
+  border-radius: 22px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: color-mix(in srgb, var(--yachiyo-surface) 76%, transparent);
+  box-shadow: 0 10px 30px rgba(48, 35, 45, 0.16);
+  backdrop-filter: blur(18px) saturate(1.18);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+}
+
+.yachiyo-live2d-move-panel > div:first-child {
+  min-width: 0;
+}
+
+.yachiyo-live2d-move-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.yachiyo-live2d-move-actions .mantine-Button-root {
+  min-width: 58px;
+  border-radius: var(--yachiyo-r-control);
+  corner-shape: squircle;
+}
+
+@media (max-width: 430px) {
+  .yachiyo-live2d-move-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .yachiyo-live2d-move-actions {
+    width: 100%;
+  }
+
+  .yachiyo-live2d-move-actions .mantine-Button-root {
+    flex: 1 1 0;
+  }
 }
 
 .coding-tab-preview {
@@ -2796,6 +2859,12 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   margin: 0 0 4px;
   font-size: 17px;
   letter-spacing: 0;
+}
+
+.yachiyo-agent-workspace-key {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .yachiyo-agent-config-heading-copy,

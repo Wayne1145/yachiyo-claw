@@ -49,10 +49,17 @@ describe('Agent session configuration', () => {
     expect(config.deviceControlEnabled).toBe(false)
   })
 
+  it('keeps the selected workspace with the conversation and its fork', () => {
+    const workingDirectory = 'coding:123e4567-e89b-42d3-a456-426614174000'
+    saveAgentSessionConfig('workspace-chat', { workingDirectory })
+    expect(getAgentSessionConfig('workspace-chat').workingDirectory).toBe(workingDirectory)
+    expect(copyAgentSessionConfig('workspace-chat', 'workspace-fork').workingDirectory).toBe(workingDirectory)
+  })
+
   it('migrates legacy enabled conversations with their previous phone-control behavior', () => {
     localStorage.setItem(
       'yachiyo-agent-session-config-v1',
-      JSON.stringify({ legacy: { enabled: true, configured: true, backend: 'root' } }),
+      JSON.stringify({ legacy: { enabled: true, configured: true, backend: 'root' } })
     )
 
     expect(getAgentSessionConfig('legacy').deviceControlEnabled).toBe(true)
@@ -92,7 +99,7 @@ describe('Agent session configuration', () => {
         title: '滑动屏幕',
         detail: 'scroll',
         risk: 'safe',
-      }),
+      })
     ).resolves.toBe(true)
   })
 })

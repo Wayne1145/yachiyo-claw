@@ -7,6 +7,7 @@ export interface DownloadSettings {
   retryCount: number
   huggingFaceMirror: boolean
   githubMirror: boolean
+  linuxMirror: boolean
   regionInitialized?: boolean
   detectedCountry?: string
 }

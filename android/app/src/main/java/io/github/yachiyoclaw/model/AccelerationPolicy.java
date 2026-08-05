@@ -16,6 +16,7 @@ final class AccelerationPolicy {
     static final String BACKEND_GPU = "gpu";
     static final String BACKEND_NPU = "npu";
     private static final long GIB = 1024L * 1024L * 1024L;
+    private static final long MIB = 1024L * 1024L;
 
     private AccelerationPolicy() {}
 
@@ -127,8 +128,8 @@ final class AccelerationPolicy {
     }
 
     static long requiredSystemHeadroom(long totalRamBytes) {
-        long proportional = totalRamBytes <= 0 ? 0 : Math.round(totalRamBytes * 0.15d);
-        return Math.max(GIB, proportional);
+        long proportional = totalRamBytes <= 0 ? 0 : Math.round(totalRamBytes * 0.08d);
+        return Math.max(512L * MIB, Math.min(GIB, proportional));
     }
 
     static boolean hasInferenceHeadroom(long totalRamBytes, long availableRamBytes, long requestedBytes) {
