@@ -244,6 +244,26 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Install locked Vulkan headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(node -p "require('./toolchain.lock.json').vulkanHeaders.url")"
+          sha256="$(node -p "require('./toolchain.lock.json').vulkanHeaders.sha256.toLowerCase()")"
+          archive="${RUNNER_TEMP}/vulkan-headers.zip"
+          stage="${RUNNER_TEMP}/vulkan-headers"
+          destination="$(node -p "require('node:path').resolve(require('./toolchain.lock.json').vulkanHeaders.path)")"
+
+          curl --fail --location --retry 3 --output "${archive}" "${url}"
+          printf '%s  %s\n' "${sha256}" "${archive}" | sha256sum --check --strict
+          rm -rf "${stage}" "${destination}"
+          mkdir -p "${stage}" "$(dirname "${destination}")"
+          unzip -q "${archive}" -d "${stage}"
+          source_root="$(find "${stage}" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "${source_root}"
+          mv "${source_root}" "${destination}"
+          test -f "${destination}/include/vulkan/vulkan.hpp"
+
       - name: Audit Android native log privacy
         run: pnpm check:android-native-logs
 
