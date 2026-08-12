@@ -7,8 +7,12 @@ def syncAndroidWebAssets = tasks.register('syncAndroidWebAssets', Exec) {
     group = 'build setup'
     description = 'Builds the Android renderer and synchronizes Capacitor assets before packaging.'
     workingDir workspaceRoot
-    commandLine 'powershell.exe', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/yachiyo-env.ps1', '-NoProxy',
-        'pnpm', 'run', 'mobile:sync:android'
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+        commandLine 'powershell.exe', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/yachiyo-env.ps1', '-NoProxy',
+            'pnpm', 'run', 'mobile:sync:android'
+    } else {
+        commandLine 'pnpm', 'run', 'mobile:sync:android'
+    }
     // Renderer source is outside Gradle's normal input graph, so always synchronize before an Android build.
     outputs.upToDateWhen { false }
 }
