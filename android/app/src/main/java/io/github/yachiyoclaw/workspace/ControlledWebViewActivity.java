@@ -5,6 +5,9 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Base64;
 import android.view.ViewGroup;
 import android.webkit.SafeBrowsingResponse;
@@ -108,6 +111,38 @@ public final class ControlledWebViewActivity extends Activity {
                 callback.complete(null, "browser_screenshot_failed");
             }
         });
+        return true;
+    }
+
+    static boolean history(String action, ResultCallback callback) {
+        ControlledWebViewActivity activity = current.get();
+        if (activity == null || activity.webView == null) return false;
+        activity.runOnUiThread(() -> {
+            if ("back".equals(action) && activity.webView.canGoBack()) activity.webView.goBack();
+            else if ("forward".equals(action) && activity.webView.canGoForward()) activity.webView.goForward();
+            else if ("reload".equals(action)) activity.webView.reload();
+            else { callback.complete(null, "browser_history_unavailable"); return; }
+            callback.complete("true", null);
+        });
+        return true;
+    }
+
+    static boolean waitFor(String script, long timeoutMs, ResultCallback callback) {
+        ControlledWebViewActivity activity = current.get();
+        if (activity == null || activity.webView == null) return false;
+        long deadline = SystemClock.uptimeMillis() + Math.max(100, Math.min(timeoutMs, 30_000));
+        Handler handler = new Handler(Looper.getMainLooper());
+        Runnable[] poll = new Runnable[1];
+        poll[0] = () -> {
+            ControlledWebViewActivity live = current.get();
+            if (live != activity || live.webView == null) { callback.complete(null, "browser_unavailable"); return; }
+            live.webView.evaluateJavascript(script, value -> {
+                if (value != null && value.contains("\\\"ready\\\":true")) callback.complete(value, null);
+                else if (SystemClock.uptimeMillis() >= deadline) callback.complete(value, "browser_wait_timeout");
+                else handler.postDelayed(poll[0], 200);
+            });
+        };
+        activity.runOnUiThread(poll[0]);
         return true;
     }
 }

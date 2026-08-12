@@ -377,6 +377,7 @@ async function generateTaskResponse(
       agentSessionId: deviceAgent ? agentRunId : taskId,
       agentApprovalSessionId: deviceAgent ? taskId : undefined,
       featureOptions: {
+        'core-agent': { agentMode: true },
         'web-search': { webBrowsing },
         'knowledge-base': { knowledgeBase },
         sandbox: { sandboxEnabled },

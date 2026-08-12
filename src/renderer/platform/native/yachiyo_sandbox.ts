@@ -2,6 +2,7 @@ import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
 import { createFeatureGatedPlugin } from './feature-gated-plugin'
 
 export type SandboxInstallStage =
+  | 'copying_bundled_rootfs'
   | 'downloading'
   | 'extracting'
   | 'rootfs_ready'

@@ -395,6 +395,8 @@ const english: Record<string, string> = {
   '宿主 API 白名单': 'Host API allowlist',
   'Worker 隔离': 'Worker isolation',
   '下载 Alpine Linux': 'Download Alpine Linux',
+  '准备内置 Alpine Linux': 'Prepare bundled Alpine Linux',
+  '正在准备内置 Alpine Linux': 'Preparing bundled Alpine Linux',
   '安装 Linux 文件系统': 'Install Linux filesystem',
   'Linux 基础环境已就绪': 'Linux base environment is ready',
   '安装 Python、Node.js 和 Git': 'Install Python, Node.js, and Git',

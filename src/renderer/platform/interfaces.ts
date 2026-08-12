@@ -212,8 +212,17 @@ export interface Platform extends Storage {
   workspaceInstallPermission?(): Promise<{ allowed: boolean }>
   openWorkspaceInstallPermission?(): Promise<{ opened: boolean }>
   controlledBrowserNavigate?(url: string): Promise<{ success: boolean; url?: string; error?: string }>
-  controlledBrowserClick?(selector: string): Promise<{ success: boolean; value?: unknown; error?: string }>
-  controlledBrowserType?(selector: string, text: string): Promise<{ success: boolean; value?: unknown; error?: string }>
+  controlledBrowserClick?(target: { ref?: string; selector?: string }): Promise<{ success: boolean; value?: unknown; error?: string }>
+  controlledBrowserType?(target: { ref?: string; selector?: string }, text: string): Promise<{ success: boolean; value?: unknown; error?: string }>
+  controlledBrowserAction?(params: {
+    action: 'scroll' | 'wait' | 'select' | 'back' | 'forward' | 'reload'
+    ref?: string
+    selector?: string
+    value?: string
+    direction?: 'up' | 'down'
+    amount?: number
+    timeoutMs?: number
+  }): Promise<{ success: boolean; value?: unknown; error?: string }>
   controlledBrowserSnapshot?(): Promise<{ success: boolean; value?: unknown; error?: string }>
   controlledBrowserScreenshot?(): Promise<{ success: boolean; mimeType?: string; base64?: string; error?: string }>
 

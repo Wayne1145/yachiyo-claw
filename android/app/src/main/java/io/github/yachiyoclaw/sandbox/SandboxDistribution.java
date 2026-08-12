@@ -32,6 +32,7 @@ final class SandboxDistribution {
                 "arm64-v8a",
                 "aarch64",
                 "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/alpine-minirootfs-3.24.1-aarch64.tar.gz",
+                "sandbox/rootfs/alpine-minirootfs-3.24.1-aarch64.tgz",
                 4_023_732L,
                 "f55a90f69052c5bd6f92cb09a8f47065970830b194c917a006fb94028e721259"
             );
@@ -41,6 +42,7 @@ final class SandboxDistribution {
                 "x86_64",
                 "x86_64",
                 "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/alpine-minirootfs-3.24.1-x86_64.tar.gz",
+                "sandbox/rootfs/alpine-minirootfs-3.24.1-x86_64.tgz",
                 3_698_422L,
                 "41f73e3cf5fa919b8aa5ca6b30dc48f0da2720776d7423e2a7748211456fe081"
             );
@@ -48,5 +50,5 @@ final class SandboxDistribution {
         return null;
     }
 
-    record Spec(String androidAbi, String alpineArch, String url, long size, String sha256) {}
+    record Spec(String androidAbi, String alpineArch, String url, String assetPath, long size, String sha256) {}
 }

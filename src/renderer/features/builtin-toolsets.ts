@@ -18,6 +18,7 @@ import { createCodingToolSet } from '@/packages/model-calls/toolsets/coding'
 import { codingProjectStorage } from '@/storage/CodingProjectStorage'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import { skillsController } from '@/packages/skills/controller'
+import platform from '@/platform'
 import { generateSkillsXml } from '@/stores/session/skills-xml'
 import * as settingActions from '@/stores/settingActions'
 import type { FeatureToolsetFactory, ToolsetContext } from './toolset-contract'
@@ -33,6 +34,7 @@ import { hasFeatureToolset, registerFeatureToolset } from './toolset-registry'
  */
 
 interface FeatureOptionsBag {
+  'core-agent'?: { agentMode?: boolean }
   'web-search'?: { webBrowsing?: boolean }
   'knowledge-base'?: { knowledgeBase?: Pick<KnowledgeBase, 'id' | 'name'> }
   sandbox?: { sandboxEnabled?: boolean }
@@ -42,6 +44,80 @@ interface FeatureOptionsBag {
   camera?: { cameraSessionId?: string }
   skills?: { enabledSkillNames?: string[]; sandboxEnabled?: boolean }
   mcp?: { agentSessionId?: string }
+}
+
+function agentResult(
+  ok: boolean,
+  code: string,
+  summary: string,
+  options: { data?: unknown; evidence?: string[]; retryable?: boolean; nextHint?: string } = {},
+) {
+  return {
+    ok,
+    code,
+    summary,
+    data: options.data ?? null,
+    evidence: options.evidence ?? [],
+    retryable: options.retryable ?? false,
+    nextHint: options.nextHint ?? null,
+  }
+}
+
+const coreAgentFactory: FeatureToolsetFactory = async (context) => {
+  if (!options(context, 'core-agent')?.agentMode || !context.model.isSupportToolUse()) return null
+  return {
+    instructions: [
+      '\n<agent_kernel>',
+      'This is a host-managed tool loop. Do not finish an actionable request with ordinary assistant text.',
+      'First call agent_environment_status when runtime capabilities or the selected workspace matter.',
+      'Use tools until the requested outcome is verified. Recover from retryable failures by correcting parameters, inspecting state, or choosing another tool.',
+      'Call agent_complete only after concrete evidence proves the requested outcome. Call agent_blocked only after a tool result proves a blocker that cannot be resolved with another available tool.',
+      'A plan, explanation, partial artifact, unverified command, or an opened page is not completion.',
+      '</agent_kernel>\n',
+    ].join('\n'),
+    tools: {
+      agent_environment_status: tool({
+        description: 'Inspect the live Yachiyo Agent runtime, Linux sandbox, workspace, browser, and enabled feature state before choosing tools.',
+        inputSchema: z.object({}),
+        execute: async () => {
+          const [sandbox, externalWorkspace] = await Promise.all([
+            platform.sandboxStatus?.().catch((error) => ({ state: 'error', error: String(error) })),
+            platform.externalWorkspaceStatus?.().catch((error) => ({ available: false, error: String(error) })),
+          ])
+          return agentResult(true, 'environment_observed', 'Live Agent environment inspected.', {
+            data: {
+              platform: context.platformType,
+              agentRunId: context.agentRunId ?? null,
+              enabledFeatures: [...(context.enabledFeatureIds ?? [])],
+              sandbox: sandbox ?? { state: 'unavailable' },
+              externalWorkspace: externalWorkspace ?? { available: false },
+              controlledBrowserAvailable: Boolean(platform.controlledBrowserNavigate && platform.controlledBrowserSnapshot),
+            },
+            evidence: ['live_runtime_status'],
+          })
+        },
+      }),
+      agent_complete: tool({
+        description: 'End the Agent loop only after the user request is fully completed and verified by concrete tool evidence.',
+        inputSchema: z.object({
+          summary: z.string().min(1).max(4_000),
+          evidence: z.array(z.string().min(1).max(1_000)).min(1).max(20),
+        }),
+        execute: ({ summary, evidence }) => agentResult(true, 'agent_completed', summary, { evidence }),
+      }),
+      agent_blocked: tool({
+        description: 'End the Agent loop only when a concrete, verified blocker prevents further progress with every available tool.',
+        inputSchema: z.object({
+          summary: z.string().min(1).max(4_000),
+          blocker_code: z.string().min(1).max(120),
+          evidence: z.array(z.string().min(1).max(1_000)).min(1).max(20),
+          user_action: z.string().min(1).max(2_000),
+        }),
+        execute: ({ summary, blocker_code, evidence, user_action }) =>
+          agentResult(false, blocker_code, summary, { evidence, nextHint: user_action }),
+      }),
+    },
+  }
 }
 
 function options<K extends keyof FeatureOptionsBag>(context: ToolsetContext, id: K): FeatureOptionsBag[K] {
@@ -105,7 +181,8 @@ const fileFactory: FeatureToolsetFactory = async (context) => {
 
 const webSearchFactory: FeatureToolsetFactory = async (context) => {
   const webBrowsing = Boolean(options(context, 'web-search')?.webBrowsing)
-  if (!webBrowsing || !context.model.isSupportToolUse('web-browsing')) return null
+  // Yachiyo supplies search as an ordinary tool; no provider-native search capability is required.
+  if (!webBrowsing || !context.model.isSupportToolUse()) return null
   const provider = settingActions.getExtensionSettings().webSearch.provider
   const includeParseLink = PROVIDERS_WITH_PARSE_LINK.has(provider)
   const tools: ToolSet = { web_search: webSearchTool }
@@ -255,6 +332,7 @@ const skillsFactory: FeatureToolsetFactory = async (context) => {
 // Registration order reproduces buildToolsForSession's instruction concatenation order. mcp contributes
 // no instructions, so it goes first as the tool base.
 const BUILTIN_TOOLSETS: Array<[string, FeatureToolsetFactory]> = [
+  ['core-agent', coreAgentFactory],
   ['mcp', mcpFactory],
   ['knowledge-base', knowledgeBaseFactory],
   ['session-attachment-rag', sessionRagFactory],

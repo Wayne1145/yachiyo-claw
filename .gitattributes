@@ -13,3 +13,4 @@
 *.so    binary
 *.so.*  binary
 *.onnx  binary
+*.tgz   binary

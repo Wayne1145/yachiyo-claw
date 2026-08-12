@@ -16,6 +16,7 @@ import { IconBook2, IconBrain, IconFolderOpen, IconPlugConnected, IconUserCog, I
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
+import { AdaptiveSelect } from '@/components/AdaptiveSelect'
 import {
   ANDROID_AGENT_WORKING_DIRECTORY,
   type AgentBackend,
@@ -282,12 +283,13 @@ export function AgentWorkspaceSelector({
           {t('Agent 的文件工具和 Linux 沙箱将在此项目中工作。')}
         </Text>
       </div>
-      <Select
+      <AdaptiveSelect
         searchable
         allowDeselect={false}
         value={workingDirectory}
         data={options}
         label={t('当前工作区')}
+        classNames={{ dropdown: 'pointer-events-auto' }}
         onChange={(value) => value && void applyWorkspace(value)}
       />
       <Button

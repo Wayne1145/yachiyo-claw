@@ -93,6 +93,7 @@ function SandboxSetup({ onReady }: { onReady: () => void }) {
   }
 
   const stageLabel: Record<string, string> = {
+    copying_bundled_rootfs: '正在准备内置 Alpine Linux',
     downloading: '正在下载 Alpine Linux',
     extracting: '正在安装 Linux 文件系统',
     rootfs_ready: 'Linux 基础环境已就绪',

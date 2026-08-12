@@ -11,8 +11,9 @@ Use workspace_deploy only when the user explicitly asks to publish; the configur
 </workspace_delivery>
 
 <controlled_browser>
-The controlled Android WebView supports HTTPS navigation (plus HTTP loopback preview), CSS-selector click/type, DOM snapshots, and screenshots.
-It is not a Playwright Chromium binary. Navigation, click, and type require Tool Broker approval.
+The controlled Android WebView supports HTTPS navigation (plus HTTP loopback preview), semantic snapshots with stable element refs, click/type/select, wait, scroll, history navigation, and screenshots.
+Call browser_snapshot after navigation and after each state-changing action. Prefer element refs from the latest snapshot over CSS selectors.
+It is not a Playwright Chromium binary. Navigation and state-changing actions require Tool Broker approval.
 </controlled_browser>
 `
 
@@ -84,19 +85,59 @@ export const workspaceBrowserToolSet = {
       execute: ({ url }) => platform.controlledBrowserNavigate?.(url) ?? unavailable('controlled_browser'),
     }),
     browser_click: tool({
-      description: 'Click the first element matching a CSS selector in the controlled browser.',
-      inputSchema: z.object({ selector: z.string().min(1).max(2_048) }),
-      execute: ({ selector }) => platform.controlledBrowserClick?.(selector) ?? unavailable('controlled_browser'),
+      description: 'Click an element using its stable ref from the latest browser_snapshot. CSS selector is a fallback.',
+      inputSchema: z.object({
+        ref: z.string().min(1).max(120).optional(),
+        selector: z.string().min(1).max(2_048).optional(),
+      }).refine((input) => Boolean(input.ref || input.selector), 'ref_or_selector_required'),
+      execute: ({ ref, selector }) => platform.controlledBrowserClick?.({ ref, selector }) ?? unavailable('controlled_browser'),
     }),
     browser_type: tool({
-      description: 'Replace an input value and dispatch input/change events in the controlled browser.',
-      inputSchema: z.object({ selector: z.string().min(1).max(2_048), text: z.string().max(100_000) }),
-      execute: ({ selector, text }) => platform.controlledBrowserType?.(selector, text) ?? unavailable('controlled_browser'),
+      description: 'Replace an input value by stable ref and dispatch input/change events. CSS selector is a fallback.',
+      inputSchema: z.object({
+        ref: z.string().min(1).max(120).optional(),
+        selector: z.string().min(1).max(2_048).optional(),
+        text: z.string().max(100_000),
+      }).refine((input) => Boolean(input.ref || input.selector), 'ref_or_selector_required'),
+      execute: ({ ref, selector, text }) => platform.controlledBrowserType?.({ ref, selector }, text) ?? unavailable('controlled_browser'),
     }),
     browser_snapshot: tool({
-      description: 'Read the current controlled page URL, title, visible text, and bounded HTML snapshot.',
+      description: 'Read URL, title, visible text, and a bounded semantic list of interactive elements with stable refs.',
       inputSchema: z.object({}),
       execute: () => platform.controlledBrowserSnapshot?.() ?? unavailable('controlled_browser'),
+    }),
+    browser_scroll: tool({
+      description: 'Scroll the page or a referenced scrollable element, then return a fresh semantic snapshot.',
+      inputSchema: z.object({
+        direction: z.enum(['up', 'down']),
+        amount: z.number().int().min(100).max(5_000).default(700),
+        ref: z.string().min(1).max(120).optional(),
+      }),
+      execute: (input) => platform.controlledBrowserAction?.({ action: 'scroll', ...input }) ?? unavailable('controlled_browser'),
+    }),
+    browser_wait: tool({
+      description: 'Wait until text, a stable ref, or a CSS selector appears in the controlled page.',
+      inputSchema: z.object({
+        value: z.string().min(1).max(2_048),
+        ref: z.string().min(1).max(120).optional(),
+        selector: z.string().min(1).max(2_048).optional(),
+        timeoutMs: z.number().int().min(100).max(30_000).default(8_000),
+      }),
+      execute: (input) => platform.controlledBrowserAction?.({ action: 'wait', ...input }) ?? unavailable('controlled_browser'),
+    }),
+    browser_select: tool({
+      description: 'Select an option in a select element by stable ref or CSS selector.',
+      inputSchema: z.object({
+        value: z.string().max(10_000),
+        ref: z.string().min(1).max(120).optional(),
+        selector: z.string().min(1).max(2_048).optional(),
+      }).refine((input) => Boolean(input.ref || input.selector), 'ref_or_selector_required'),
+      execute: (input) => platform.controlledBrowserAction?.({ action: 'select', ...input }) ?? unavailable('controlled_browser'),
+    }),
+    browser_history: tool({
+      description: 'Navigate back, forward, or reload, then return a fresh semantic snapshot.',
+      inputSchema: z.object({ action: z.enum(['back', 'forward', 'reload']) }),
+      execute: ({ action }) => platform.controlledBrowserAction?.({ action }) ?? unavailable('controlled_browser'),
     }),
     browser_screenshot: tool({
       description: 'Capture the visible controlled browser viewport as a bounded JPEG base64 payload.',

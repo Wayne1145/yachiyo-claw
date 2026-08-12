@@ -4,7 +4,25 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 3
+    versioning-strategy: increase-if-necessary
+    groups:
+      production-security:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+          - "minor"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "patch"
+          - "minor"

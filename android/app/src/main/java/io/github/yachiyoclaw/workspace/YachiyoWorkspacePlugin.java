@@ -192,22 +192,52 @@ public final class YachiyoWorkspacePlugin extends Plugin {
 
     @PluginMethod
     public void browserClick(PluginCall call) {
+        String ref = call.getString("ref");
         String selector = call.getString("selector", "");
-        evaluate(call, "(() => { const e=document.querySelector(" + JSONObject.quote(selector) + "); if(!e)return {ok:false,error:'selector_not_found'}; e.click(); return {ok:true}; })()", "browser_unavailable");
+        evaluate(call, ControlledBrowserScripts.click(ref, selector), "browser_unavailable");
     }
 
     @PluginMethod
     public void browserType(PluginCall call) {
+        String ref = call.getString("ref");
         String selector = call.getString("selector", "");
         String text = call.getString("text", "");
-        String script = "(() => { const e=document.querySelector(" + JSONObject.quote(selector) + "); if(!e)return {ok:false,error:'selector_not_found'}; e.focus(); e.value=" + JSONObject.quote(text) + "; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return {ok:true}; })()";
-        evaluate(call, script, "browser_unavailable");
+        evaluate(call, ControlledBrowserScripts.type(ref, selector, text), "browser_unavailable");
     }
 
     @PluginMethod
     public void browserSnapshot(PluginCall call) {
-        String script = "(() => ({url:location.href,title:document.title,text:(document.body?.innerText||'').slice(0,120000),html:document.documentElement.outerHTML.slice(0,240000)}))()";
-        evaluate(call, script, "browser_unavailable");
+        evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
+    }
+
+    @PluginMethod
+    public void browserAction(PluginCall call) {
+        String action = call.getString("action", "");
+        String ref = call.getString("ref");
+        String selector = call.getString("selector");
+        String value = call.getString("value", "");
+        if ("scroll".equals(action)) {
+            evaluateWithSnapshot(call, ControlledBrowserScripts.scroll(ref, call.getString("direction", "down"), call.getInt("amount", 700)));
+        } else if ("select".equals(action)) {
+            evaluateWithSnapshot(call, ControlledBrowserScripts.select(ref, selector, value));
+        } else if ("wait".equals(action)) {
+            if (!ControlledWebViewActivity.waitFor(ControlledBrowserScripts.waitCondition(ref, selector, value), call.getInt("timeoutMs", 8_000), (result, error) -> {
+                if (error != null) call.resolve(new JSObject().put("success", false).put("error", error).put("value", result));
+                else evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
+            })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
+        } else if ("back".equals(action) || "forward".equals(action) || "reload".equals(action)) {
+            if (!ControlledWebViewActivity.history(action, (result, error) -> {
+                if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
+                else evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
+            })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
+        } else call.resolve(new JSObject().put("success", false).put("error", "browser_action_invalid"));
+    }
+
+    private void evaluateWithSnapshot(PluginCall call, String actionScript) {
+        if (!ControlledWebViewActivity.evaluate(actionScript, (value, error) -> {
+            if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
+            else evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
+        })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
     }
 
     @PluginMethod

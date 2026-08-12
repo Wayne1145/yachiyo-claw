@@ -54,7 +54,8 @@ This repository is maintained with assistance from Codex and written with assist
 
 - Android parses PDF and DOCX locally: PDF.js extracts page text, while JSZip unpacks DOCX and reads WordprocessingML. Input size, page count, and expanded-text limits apply during parsing.
 - Local RAG supports document chunking, indexing, retrieval, and persistence. With a compatible MediaPipe embedding model installed it uses vector retrieval, with lexical retrieval as a fallback when no model is configured or inference fails.
-- An optional Vibe Coding environment installs an Alpine Linux mini rootfs in app-private storage and provides Bash, Git, Python, Node.js/npm, SSH, and common build tools through PRoot.
+- Alpine 3.24.1 mini rootfs archives for arm64 and x86_64 are bundled in the APK and SHA-256 verified before extraction, so the base system needs no separate download. Python, Node.js, Git, and the optional Android toolchain are installed through the selected mirror afterward.
+- The Vibe Coding environment provides Bash, Git, Python, Node.js/npm, SSH, and common build tools through PRoot.
 - The development-environment page supports installation, progress reporting, terminal self-checks, and reset. Agent sandbox tools access `/workspace` through structured calls with path restrictions, timeouts, and output limits.
 - The Android Development tab supports local Web/PWA and Capacitor Debug APK builds, with Kotlin APK support in beta. Remote-only targets never claim a local build without a configured runner.
 - Model-authored writes are staged as baseline-hashed ChangeSets for per-file diff review. Build jobs, Git mutations, SAF write-back, APK installation, and application launch remain behind parameter-bound approval.
@@ -65,6 +66,8 @@ This repository is maintained with assistance from Codex and written with assist
 
 ### Android Agent
 
+- Explicit Agent sessions use a host-managed tool loop: inspect the live environment, keep using tools and verify results, then terminate through an explicit completion or blocking tool. Ordinary text cannot prematurely finish actionable work.
+- The controlled browser exposes semantic snapshots with stable element references plus navigation, click, type, select, scroll, wait, history, and screenshot tools. Snapshots bound visible text and interactive elements instead of sending full-page HTML to the model.
 - By default, Agent mode enables only in-app tools such as the Linux sandbox, Skills, MCP, files, and retrieval. Device control is a separate switch.
 - Once device control is enabled, Root, Shizuku, and Accessibility execution backends can be selected, each with its own permission guidance.
 - Built-in tools observe the screen, tap, swipe, enter text, press system keys, launch apps, and read device information.
@@ -198,7 +201,7 @@ Yachiyo Claw does not merge the code of every referenced project directly. The t
 | [Stuk/jszip](https://github.com/Stuk/jszip) | Local DOCX ZIP and WordprocessingML parsing |
 | [proot-me/proot](https://github.com/proot-me/proot) | Android userspace Linux filesystem and process environment |
 | [termux/termux-packages](https://github.com/termux/termux-packages) | Build source for PRoot and Android runtime dependencies |
-| [Alpine Linux](https://alpinelinux.org/) | Mini rootfs and apk package ecosystem downloaded at first use |
+| [Alpine Linux](https://alpinelinux.org/) | APK-bundled mini rootfs and apk package ecosystem |
 | [Hugging Face Hub](https://huggingface.co/) | Local-model search, metadata, and weight downloads |
 | [ModelScope](https://modelscope.cn/) | Local-model search, metadata, and weight downloads |
 

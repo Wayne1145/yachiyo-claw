@@ -53,6 +53,7 @@ typings/
 
 # Output of 'npm pack'
 *.tgz
+!android/app/src/main/assets/sandbox/rootfs/*.tgz
 
 # Yarn Integrity file
 .yarn-integrity
@@ -158,6 +159,7 @@ node_modules
 
 release/app/dist
 release/build
+release/app/package-lock.json
 .erb/dll
 
 .idea

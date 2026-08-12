@@ -3,6 +3,7 @@ import { Button, Select, Stack, Text } from '@mantine/core'
 import { useState } from 'react'
 import { Drawer } from 'vaul'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
+import { useAndroidPagerGestureLock } from '@/components/yachiyo/android-pager-gesture-lock'
 
 export interface AdaptiveSelectProps extends Omit<MantineSelectProps, 'onChange'> {
   onChange?: (value: string | null) => void
@@ -11,6 +12,7 @@ export interface AdaptiveSelectProps extends Omit<MantineSelectProps, 'onChange'
 export function AdaptiveSelect(props: AdaptiveSelectProps) {
   const isSmallScreen = useIsSmallScreen()
   const [drawerOpened, setDrawerOpened] = useState(false)
+  useAndroidPagerGestureLock(isSmallScreen && drawerOpened)
 
   return isSmallScreen ? (
     <Drawer.NestedRoot open={drawerOpened} onOpenChange={(open) => setDrawerOpened(open)} noBodyStyles>
@@ -18,9 +20,12 @@ export function AdaptiveSelect(props: AdaptiveSelectProps) {
         <Select {...props} dropdownOpened={false} />
       </Drawer.Trigger>
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 bg-chatbox-background-mask-overlay" />
+        <Drawer.Overlay className="yachiyo-adaptive-overlay fixed inset-0 bg-chatbox-background-mask-overlay" />
 
-        <Drawer.Content className="flex flex-col h-fit fixed bottom-0 left-0 right-0 outline-none bg-chatbox-background-primary rounded-t-lg max-h-[80vh] overflow-hidden select-none">
+        <Drawer.Content
+          className="yachiyo-adaptive-surface flex flex-col h-fit fixed bottom-0 left-0 right-0 outline-none bg-chatbox-background-primary rounded-t-lg max-h-[80vh] overflow-hidden select-none pointer-events-auto"
+          data-yachiyo-tab-swipe="block"
+        >
           <Drawer.Handle />
           {props.label && (
             <Text c="chatbox-tertiary" size="xs" className="text-center my-xxs">

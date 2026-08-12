@@ -44,8 +44,17 @@ interface YachiyoWorkspaceNative {
   registerPreview(options: { port: number; path?: string }): Promise<WorkspaceOperationResult>
   openPreview(options: { id: string }): Promise<WorkspaceOperationResult>
   browserNavigate(options: { url: string }): Promise<BrowserOperationResult>
-  browserClick(options: { selector: string }): Promise<BrowserOperationResult>
-  browserType(options: { selector: string; text: string }): Promise<BrowserOperationResult>
+  browserClick(options: { ref?: string; selector?: string }): Promise<BrowserOperationResult>
+  browserType(options: { ref?: string; selector?: string; text: string }): Promise<BrowserOperationResult>
+  browserAction(options: {
+    action: 'scroll' | 'wait' | 'select' | 'back' | 'forward' | 'reload'
+    ref?: string
+    selector?: string
+    value?: string
+    direction?: 'up' | 'down'
+    amount?: number
+    timeoutMs?: number
+  }): Promise<BrowserOperationResult>
   browserSnapshot(): Promise<BrowserOperationResult>
   browserScreenshot(): Promise<BrowserOperationResult>
 }

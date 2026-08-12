@@ -723,23 +723,37 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
     }, () => yachiyoWorkspaceNative.browserNavigate({ url }), { success: false, error: 'browser_navigation_denied' })
   }
 
-  public async controlledBrowserClick(selector: string) {
+  public async controlledBrowserClick(target: { ref?: string; selector?: string }) {
     const result = await runWorkspaceBrokeredAction({
       title: '受控浏览器点击',
-      detail: selector,
+      detail: target.ref || target.selector || '',
       risk: 'dangerous',
       mutating: true,
-    }, () => yachiyoWorkspaceNative.browserClick({ selector }), { success: false, error: 'browser_click_denied' })
+    }, () => yachiyoWorkspaceNative.browserClick(target), { success: false, error: 'browser_click_denied' })
     return { ...result, value: parseBrowserEvaluation(result.value) }
   }
 
-  public async controlledBrowserType(selector: string, text: string) {
+  public async controlledBrowserType(target: { ref?: string; selector?: string }, text: string) {
     const result = await runWorkspaceBrokeredAction({
       title: '受控浏览器输入',
-      detail: `${selector}\n${text.slice(0, 240)}`,
+      detail: `${target.ref || target.selector || ''}\n${text.slice(0, 240)}`,
       risk: 'dangerous',
       mutating: true,
-    }, () => yachiyoWorkspaceNative.browserType({ selector, text }), { success: false, error: 'browser_type_denied' })
+    }, () => yachiyoWorkspaceNative.browserType({ ...target, text }), { success: false, error: 'browser_type_denied' })
+    return { ...result, value: parseBrowserEvaluation(result.value) }
+  }
+
+  public async controlledBrowserAction(params: Parameters<NonNullable<Platform['controlledBrowserAction']>>[0]) {
+    const mutating = !['wait'].includes(params.action)
+    const invoke = () => yachiyoWorkspaceNative.browserAction(params)
+    const result = mutating
+      ? await runWorkspaceBrokeredAction({
+          title: '受控浏览器操作',
+          detail: `${params.action}: ${params.ref || params.selector || params.value || ''}`,
+          risk: 'dangerous',
+          mutating: true,
+        }, invoke, { success: false, error: 'browser_action_denied' })
+      : await invoke()
     return { ...result, value: parseBrowserEvaluation(result.value) }
   }
 

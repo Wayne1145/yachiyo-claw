@@ -30,10 +30,11 @@ overrides:
   "brace-expansion@>=5.0.0 <5.0.8": 5.0.9
   convict: ">=6.2.5"
   dompurify: "^3.4.9"
+  fast-uri: ">=3.1.5"
   fast-xml-parser: ">=5.5.7"
   handlebars: ">=4.7.9"
   protobufjs: "^7.5.5"
-  shell-quote: "^1.8.4"
+  shell-quote: "^1.10.0"
 
 patchedDependencies:
   "@ai-sdk/deepseek@2.0.17": patches/@ai-sdk__deepseek@2.0.17.patch

@@ -7,6 +7,7 @@ import {
   type ImageModel,
   type JSONValue,
   type LanguageModelUsage,
+  hasToolCall,
   type ModelMessage,
   type Provider,
   pruneMessages,
@@ -52,7 +53,14 @@ function resolveMaxSteps(options: { maxSteps?: number; maxModelRequests?: number
   if (!options.agentMode) {
     return options.maxSteps ?? Number.MAX_SAFE_INTEGER
   }
-  return Math.min(options.maxSteps ?? Number.MAX_SAFE_INTEGER, options.maxModelRequests ?? Number.MAX_SAFE_INTEGER)
+  // This is a runaway-loop ceiling, not a usage budget. Healthy runs normally stop through a terminal tool.
+  return Math.min(options.maxSteps ?? 48, options.maxModelRequests ?? 48)
+}
+
+function resolveStopConditions(options: { maxSteps?: number; maxModelRequests?: number; agentMode?: boolean }) {
+  const stepLimit = stepCountIs(resolveMaxSteps(options))
+  if (!options.agentMode) return stepLimit
+  return [hasToolCall('agent_complete'), hasToolCall('agent_blocked'), stepLimit]
 }
 
 function applyAgentCallLimits(callSettings: CallSettings, options: { maxOutputTokens?: number; agentMode?: boolean }) {
@@ -92,6 +100,8 @@ function createAgentStepHook(options: {
     return {
       messages: prunedMessages,
       activeTools,
+      // Agent runs terminate through agent_complete/agent_blocked, so a plain text-only step is not accepted as completion.
+      ...(options.tools && Object.keys(options.tools).length > 0 ? { toolChoice: 'required' as const } : {}),
     }
   }
 }
@@ -334,7 +344,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     const result = streamText({
       model,
       messages,
-      stopWhen: stepCountIs(resolveMaxSteps(options)),
+      stopWhen: resolveStopConditions(options),
       prepareStep: createAgentStepHook({
         ...options,
         tools: options.tools,
@@ -768,7 +778,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     const result = streamText({
       model,
       messages: coreMessages,
-      stopWhen: stepCountIs(resolveMaxSteps(options)),
+      stopWhen: resolveStopConditions(options),
       prepareStep: createAgentStepHook({
         ...options,
         tools: options.tools,

@@ -52,7 +52,8 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 
 - Android 可在本地解析 PDF 与 DOCX：PDF 使用 PDF.js 提取页面文字，DOCX 使用 JSZip 解包并读取 WordprocessingML；解析过程包含输入体积、页数和展开后文本上限。
 - 本地 RAG 支持文档分块、索引、检索和持久化；安装兼容的 MediaPipe embedding 模型后使用向量检索，未配置或推理失败时保留词法检索回退。
-- 可选的 Vibe Coding 环境在应用私有目录安装 Alpine Linux mini rootfs，并通过 PRoot 提供 Bash、Git、Python、Node.js/npm、SSH 和常用构建工具。
+- Alpine 3.24.1 mini rootfs 已按 arm64/x86_64 内置在 APK 中并在解压前校验 SHA-256，无需额外下载；Python、Node.js、Git 与可选 Android 工具链再通过所选镜像安装。
+- Vibe Coding 环境通过 PRoot 提供 Bash、Git、Python、Node.js/npm、SSH 和常用构建工具。
 - 开发环境页支持安装、进度显示、终端自检和重置；Agent 的沙箱工具通过结构化调用访问 `/workspace`，带路径约束、超时和输出上限。
 - Android 底部导航的“开发”入口复用现有 Task/Provider：Web、PWA 与 Capacitor Debug APK 可在兼容手机上本地构建和验证，Kotlin APK 为 Beta；React Native、Flutter 与 NDK 仅支持源码编辑。
 - Windows、macOS、iOS、Linux x86_64 与 Docker 目标需要远程 Runner。未配置 Runner 时只会显示“源码已准备”，不会生成或报告虚假的本地构建产物。
@@ -66,6 +67,8 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 
 ### Android Agent
 
+- 显式 Agent 会话使用宿主管理的工具循环：先观察运行环境，持续调用工具并验证结果，最后通过完成或阻塞工具明确结束；普通文本不会提前终止仍可执行的任务。
+- 受控浏览器提供带稳定元素引用的语义快照，以及导航、点击、输入、选择、滚动、等待、历史导航和截图工具；快照限制可见文本与交互元素数量，避免把整页 HTML 填入上下文。
 - Agent 默认只启用 Linux 沙箱、Skills、MCP、文件与检索等应用内部工具；手机控制是独立开关。
 - 开启手机控制后可在 Root、Shizuku 和无障碍三种执行后端间切换，并显示独立权限指引。
 - 内置屏幕观察、点击、滑动、文字输入、系统按键、应用启动和设备信息读取工具。
@@ -201,7 +204,7 @@ Yachiyo Claw 没有把所有参考项目的代码直接合并进来。下表区�
 | [Stuk/jszip](https://github.com/Stuk/jszip)                             | DOCX ZIP/WordprocessingML 本地解析                |
 | [proot-me/proot](https://github.com/proot-me/proot)                     | Android 用户态 Linux 文件系统与进程环境           |
 | [termux/termux-packages](https://github.com/termux/termux-packages)     | PRoot 及 Android 运行时依赖的构建来源             |
-| [Alpine Linux](https://alpinelinux.org/)                                | 首次使用时下载的 mini rootfs 与 apk 软件包生态    |
+| [Alpine Linux](https://alpinelinux.org/)                                | APK 内置 mini rootfs 与 apk 软件包生态            |
 | [Hugging Face Hub](https://huggingface.co/)                             | 本地模型搜索、元数据和权重下载来源                |
 | [ModelScope / 魔搭社区](https://modelscope.cn/)                         | 本地模型搜索、元数据和权重下载来源                |
 

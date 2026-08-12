@@ -5,6 +5,7 @@ import { ANDROID_TOOL_STAGE_INITIAL } from '@shared/agent/android-tool-stages'
 import { describe, expect, it, vi } from 'vitest'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
 import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-calls/toolsets/session-attachment-rag'
+import workspaceBrowserToolSet from '@/packages/model-calls/toolsets/workspace-browser'
 import { buildToolsForSession, generateSkillsXml } from '@/stores/session/tools-builder'
 import { settingsStore } from '@/stores/settingsStore'
 
@@ -232,6 +233,16 @@ describe('buildToolsForSession web search tools', () => {
     expect(result.instructions).toContain('parse_link')
   })
 
+  it('exposes Yachiyo web search when generic tools work but provider-native web search is absent', async () => {
+    mockSettings.provider = 'bing'
+    const model = makeModel(true)
+    model.isSupportToolUse = (scope) => scope === undefined
+
+    const result = await buildToolsForSession(model, { webBrowsing: true, messages: [] })
+
+    expect(result.tools).toHaveProperty('web_search')
+  })
+
   it('removes tools and their instructions when the feature override is off', async () => {
     const previous = settingsStore.getState().featureOverrides
     try {
@@ -326,5 +337,33 @@ describe('buildToolsForSession combined internal and phone-control Agent', () =>
     expect(result.tools).toHaveProperty('web_search')
     expect(result.tools).not.toHaveProperty('sandbox_bash')
     expect(result.instructions).not.toContain('sandbox_bash')
+  })
+
+  it('adds host terminal tools only to explicit Agent runs', async () => {
+    const chat = await buildToolsForSession(model, { webBrowsing: false, messages: [] })
+    const agent = await buildToolsForSession(model, {
+      webBrowsing: false,
+      messages: [],
+      featureOptions: { 'core-agent': { agentMode: true } },
+    })
+
+    expect(chat.tools).not.toHaveProperty('agent_complete')
+    expect(agent.tools).toHaveProperty('agent_environment_status')
+    expect(agent.tools).toHaveProperty('agent_complete')
+    expect(agent.tools).toHaveProperty('agent_blocked')
+    expect(agent.instructions).toContain('host-managed tool loop')
+  })
+
+  it('registers the reference-based controlled browser workflow for internal Agents', async () => {
+    expect(workspaceBrowserToolSet.tools).toEqual(expect.objectContaining({
+      browser_snapshot: expect.anything(),
+      browser_click: expect.anything(),
+      browser_type: expect.anything(),
+      browser_scroll: expect.anything(),
+      browser_wait: expect.anything(),
+      browser_select: expect.anything(),
+      browser_history: expect.anything(),
+    }))
+    expect(workspaceBrowserToolSet.description).toContain('stable element refs')
   })
 })

@@ -181,6 +181,7 @@ export async function orchestrateGeneration(
       messages: promptMsgs,
       agentSessionId: sessionId,
       featureOptions: {
+        'core-agent': { agentMode: false },
         'web-search': { webBrowsing },
         'knowledge-base': { knowledgeBase },
         sandbox: { sandboxEnabled: false },

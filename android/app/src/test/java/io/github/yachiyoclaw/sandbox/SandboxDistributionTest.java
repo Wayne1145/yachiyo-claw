@@ -11,6 +11,7 @@ public class SandboxDistributionTest {
     @Test
     public void mapsSupportedAndroidAbis() {
         assertEquals("aarch64", SandboxDistribution.forAbi("arm64-v8a").alpineArch());
+        assertEquals("sandbox/rootfs/alpine-minirootfs-3.24.1-aarch64.tgz", SandboxDistribution.forAbi("arm64-v8a").assetPath());
         assertEquals("x86_64", SandboxDistribution.forAbi("x86_64").alpineArch());
         assertNull(SandboxDistribution.forAbi("armeabi-v7a"));
         assertEquals("aarch64", SandboxDistribution.current("/data/app/example/lib/arm64").alpineArch());

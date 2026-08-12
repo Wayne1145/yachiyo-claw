@@ -9,25 +9,15 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
-import java.net.Proxy;
-import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.StandardCopyOption;
-import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-import io.github.yachiyoclaw.download.YachiyoDownloadSettingsPlugin;
-import io.github.yachiyoclaw.download.DownloadTransfer;
-import io.github.yachiyoclaw.download.DownloadTaskStore;
-import io.github.yachiyoclaw.download.DownloadNotifications;
 
 final class AlpineSandboxInstaller {
     interface ProgressListener {
@@ -71,12 +61,12 @@ final class AlpineSandboxInstaller {
             return;
         }
         if (!sandboxDirectory.exists() && !sandboxDirectory.mkdirs()) throw new IOException("sandbox_storage_unavailable");
-        File archive = YachiyoSandboxDownloadWorker.archiveFile(context, distribution);
+        File archive = new File(sandboxDirectory, "bundled-" + distribution.alpineArch() + ".tar.gz");
         File staging = new File(sandboxDirectory, "rootfs.installing");
         deleteRecursively(staging);
         if (!staging.mkdirs()) throw new IOException("sandbox_staging_unavailable");
         try {
-            archive = YachiyoSandboxDownloadWorker.await(context, distribution, listener);
+            copyBundledArchive(archive, listener);
             listener.onProgress("extracting", 0, 0, 0);
             extract(archive, staging, listener);
             File marker = new File(staging, readyMarker.getName());
@@ -89,6 +79,37 @@ final class AlpineSandboxInstaller {
             throw error;
         }
         Files.deleteIfExists(archive.toPath());
+    }
+
+    private void copyBundledArchive(File archive, ProgressListener listener) throws Exception {
+        File partial = new File(archive.getAbsolutePath() + ".partial");
+        Files.deleteIfExists(partial.toPath());
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        long copied = 0;
+        try (InputStream input = new BufferedInputStream(context.getAssets().open(distribution.assetPath()));
+             FileOutputStream fileOutput = new FileOutputStream(partial);
+             BufferedOutputStream output = new BufferedOutputStream(fileOutput)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                copied += read;
+                if (copied > SandboxDistribution.MAX_ARCHIVE_BYTES) throw new IOException("sandbox_archive_too_large");
+                digest.update(buffer, 0, read);
+                output.write(buffer, 0, read);
+                listener.onProgress("copying_bundled_rootfs", (int) Math.min(99, copied * 100 / distribution.size()), copied, distribution.size());
+            }
+            output.flush();
+            fileOutput.getFD().sync();
+        } catch (Exception error) {
+            Files.deleteIfExists(partial.toPath());
+            throw error;
+        }
+        if (copied != distribution.size() || !hex(digest.digest()).equalsIgnoreCase(distribution.sha256())) {
+            Files.deleteIfExists(partial.toPath());
+            throw new IOException("sandbox_bundled_archive_integrity_failed");
+        }
+        Files.move(partial.toPath(), archive.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        listener.onProgress("copying_bundled_rootfs", 100, copied, distribution.size());
     }
 
     private void prepareRuntimeFiles() throws Exception {
