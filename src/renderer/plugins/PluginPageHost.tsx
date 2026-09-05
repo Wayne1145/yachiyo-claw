@@ -31,6 +31,50 @@ type CachedPluginPage = {
 }
 
 const pluginPageCache = new Map<string, CachedPluginPage>()
+const pluginUiInvocationQueues = new Map<string, Promise<void>>()
+
+function enqueuePluginUiInvocation<T>(pluginId: string, invocation: () => Promise<T>): Promise<T> {
+  const previous = pluginUiInvocationQueues.get(pluginId) ?? Promise.resolve()
+  const result = previous.catch(() => undefined).then(invocation)
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  pluginUiInvocationQueues.set(pluginId, tail)
+  void tail.finally(() => {
+    if (pluginUiInvocationQueues.get(pluginId) === tail) pluginUiInvocationQueues.delete(pluginId)
+  })
+  return result
+}
+
+async function invokePluginUiTool(
+  pluginId: string,
+  loaded: LoadedPlugin,
+  name: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<{ plugin: LoadedPlugin; result: unknown }> {
+  return enqueuePluginUiInvocation(pluginId, async () => {
+    if (signal.aborted) throw new Error('cancelled')
+    let plugin = loaded
+    if (
+      !plugin.runtime ||
+      (typeof plugin.runtime.isDisposed === 'function' && plugin.runtime.isDisposed())
+    ) {
+      const reloaded = await loadPluginForPage(pluginId, { startRuntime: true })
+      if (!reloaded?.uiGranted || !reloaded.runtime) throw new Error('plugin_runtime_unavailable')
+      plugin = reloaded
+    }
+    const runtime = plugin.runtime
+    if (!runtime) throw new Error('plugin_runtime_unavailable')
+    const entrySha256 = plugin.record.manifest.entrySha256 ?? plugin.record.packageSha256
+    const result = await invokeLoadedPluginTool(pluginId, runtime, name, args as never, undefined, {
+      principal: { kind: 'plugin', pluginId, entrySha256 },
+      abortSignal: signal,
+    })
+    return { plugin, result }
+  })
+}
 
 export class PluginViewErrorBoundary extends Component<
   { pluginId: string; children: ReactNode },
@@ -111,7 +155,7 @@ export function PluginPageHost({
     setState(cached ? { phase: 'cached', ...cached } : { phase: 'loading' })
     void (async () => {
       try {
-        const plugin = await loadPluginForPage(pluginId, { startRuntime: activity === 'active' })
+        let plugin = await loadPluginForPage(pluginId, { startRuntime: activity === 'active' })
         if (controller.signal.aborted || generation.current !== currentGeneration) return
         if (!plugin) {
           pluginPageCache.delete(pluginId)
@@ -139,16 +183,9 @@ export function PluginPageHost({
 
         let view: PluginView | null = plugin.view
         if (plugin.runtime && plugin.tools.some((tool) => tool.name === 'render')) {
-          view = parsePluginView(
-            await invokeLoadedPluginTool(pluginId, plugin.runtime, 'render', {}, undefined, {
-              principal: {
-                kind: 'plugin',
-                pluginId,
-                entrySha256,
-              },
-              abortSignal: controller.signal,
-            }),
-          )
+          const rendered = await invokePluginUiTool(pluginId, plugin, 'render', {}, controller.signal)
+          plugin = rendered.plugin
+          view = parsePluginView(rendered.result)
         }
         if (!controller.signal.aborted && generation.current === currentGeneration) {
           const readyState = { phase: 'ready' as const, plugin, view }
@@ -197,20 +234,12 @@ export function PluginPageHost({
             return
           }
           try {
-            const result = await invokeLoadedPluginTool(
+            const invocation = await invokePluginUiTool(
               pluginId,
-              current.plugin.runtime,
+              current.plugin,
               action.handler,
               payload as never,
-              undefined,
-              {
-                principal: {
-                  kind: 'plugin',
-                  pluginId,
-                  entrySha256: current.plugin.record.manifest.entrySha256 ?? current.plugin.record.packageSha256,
-                },
-                abortSignal: controller.signal,
-              },
+              controller.signal,
             )
             if (
               activityRef.current !== 'active' ||
@@ -220,13 +249,16 @@ export function PluginPageHost({
               return
             }
             try {
-              const view = parsePluginView(result)
+              const view = parsePluginView(invocation.result)
               pluginPageCache.set(pluginId, {
-                displayName: current.plugin.record.manifest.displayName,
-                entrySha256: current.plugin.record.manifest.entrySha256 ?? current.plugin.record.packageSha256,
+                displayName: invocation.plugin.record.manifest.displayName,
+                entrySha256:
+                  invocation.plugin.record.manifest.entrySha256 ?? invocation.plugin.record.packageSha256,
                 view,
               })
-              setState((previous) => (previous.phase === 'ready' ? { ...previous, view } : previous))
+              setState((previous) =>
+                previous.phase === 'ready' ? { ...previous, plugin: invocation.plugin, view } : previous,
+              )
             } catch {
               // Action handlers may intentionally return data without replacing the view.
             }

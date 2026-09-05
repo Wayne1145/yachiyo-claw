@@ -118,6 +118,40 @@ describe('PluginPageHost actions', () => {
     expect(mocks.invoke).not.toHaveBeenCalled()
   })
 
+  it('serializes runtime renders when two active Android hosts overlap during navigation', async () => {
+    let active = 0
+    let maxActive = 0
+    mocks.load.mockResolvedValue({
+      record: {
+        manifest: { id: 'overlap-plugin', displayName: 'Overlap Plugin' },
+        packageSha256: 'f'.repeat(64),
+      },
+      runtime: { isDisposed: () => false },
+      tools: [{ name: 'render' }],
+      uiGranted: true,
+      view: null,
+    })
+    mocks.invoke.mockImplementation(async () => {
+      active++
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      active--
+      return { schemaVersion: 1, children: [{ type: 'text', key: 'status', content: '可用' }] }
+    })
+
+    render(
+      <MantineProvider>
+        <PluginPageHost pluginId="overlap-plugin" activity="active" />
+        <PluginPageHost pluginId="overlap-plugin" activity="active" />
+      </MantineProvider>
+    )
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(active).toBe(0))
+    expect(maxActive).toBe(1)
+    expect(screen.getAllByText('可用')).toHaveLength(2)
+  })
+
   it('aborts the active action and drops queued actions when the page leaves active state', async () => {
     let activeSignal: AbortSignal | undefined
     mocks.load.mockResolvedValue({
