@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "title": "Ubuntu 24.04",
+  "children": [
+    { "type": "heading", "key": "title", "content": "Ubuntu 24.04", "level": 2 },
+    { "type": "text", "key": "loading", "content": "正在读取开发环境状态…", "dimmed": true },
+    { "type": "button", "key": "refresh", "label": "读取状态", "icon": "refresh", "action": { "type": "invoke", "handler": "render" } }
+  ]
+}

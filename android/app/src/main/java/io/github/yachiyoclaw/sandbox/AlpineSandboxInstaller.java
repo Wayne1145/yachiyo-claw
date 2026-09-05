@@ -112,7 +112,7 @@ final class AlpineSandboxInstaller {
         listener.onProgress("copying_bundled_rootfs", 100, copied, distribution.size());
     }
 
-    private void prepareRuntimeFiles() throws Exception {
+    void prepareRuntimeFiles() throws Exception {
         if (!runtimeDirectory.exists() && !runtimeDirectory.mkdirs()) throw new IOException("sandbox_runtime_unavailable");
         File talloc = new File(runtimeDirectory, "libtalloc.so.2");
         if (!talloc.isFile()) {
@@ -132,6 +132,12 @@ final class AlpineSandboxInstaller {
     }
 
     private void extract(File archive, File destination, ProgressListener listener) throws Exception {
+        extractArchive(archive, destination, SandboxDistribution.MAX_EXTRACTED_BYTES, listener);
+    }
+
+    /** Shared hardened tar.gz extractor for trusted, digest-pinned Linux distributions. */
+    static void extractArchive(File archive, File destination, long maximumExtractedBytes, ProgressListener listener)
+        throws Exception {
         List<PendingLink> links = new ArrayList<>();
         long extracted = 0;
         int entries = 0;
@@ -156,7 +162,7 @@ final class AlpineSandboxInstaller {
                 }
                 if (!entry.isFile()) continue;
                 extracted = Math.addExact(extracted, entry.getSize());
-                if (extracted > SandboxDistribution.MAX_EXTRACTED_BYTES) throw new IOException("sandbox_rootfs_too_large");
+                if (extracted > maximumExtractedBytes) throw new IOException("sandbox_rootfs_too_large");
                 try (FileOutputStream output = new FileOutputStream(target)) {
                     byte[] buffer = new byte[64 * 1024];
                     long remaining = entry.getSize();

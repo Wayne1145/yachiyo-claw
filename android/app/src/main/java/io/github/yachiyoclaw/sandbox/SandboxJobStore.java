@@ -37,8 +37,12 @@ final class SandboxJobStore {
     }
 
     synchronized Job create(String id, String command, String workspace, int timeoutMs, long now) throws Exception {
+        return create(id, command, workspace, timeoutMs, now, "alpine");
+    }
+
+    synchronized Job create(String id, String command, String workspace, int timeoutMs, long now, String runtimeId) throws Exception {
         return locked(() -> {
-            Job job = new Job(id, cipher.encrypt(command), workspace, timeoutMs, STATE_QUEUED, now, now, 0L, null);
+            Job job = new Job(id, cipher.encrypt(command), workspace, timeoutMs, STATE_QUEUED, now, now, 0L, null, runtimeId);
             List<Job> jobs = readAll();
             jobs.removeIf(item -> item.id.equals(id));
             jobs.add(job);
@@ -91,7 +95,7 @@ final class SandboxJobStore {
             for (int index = 0; index < jobs.size(); index++) {
                 Job current = jobs.get(index);
                 if (!current.id.equals(id)) continue;
-                updated = new Job(current.id, current.commandCiphertext, current.workspace, current.timeoutMs, state, current.createdAt, now, pid, exitCode);
+                updated = new Job(current.id, current.commandCiphertext, current.workspace, current.timeoutMs, state, current.createdAt, now, pid, exitCode, current.runtimeId);
                 jobs.set(index, updated);
                 break;
             }
@@ -107,16 +111,22 @@ final class SandboxJobStore {
             boolean changed = false;
             for (int index = 0; index < jobs.size(); index++) {
                 Job job = jobs.get(index);
-                if (!STATE_RUNNING.equals(job.state) && !STATE_QUEUED.equals(job.state)) continue;
+                if (!STATE_RUNNING.equals(job.state)) continue;
                 boolean alive = job.pid > 0 && new File("/proc/" + job.pid).isDirectory();
-                if (STATE_QUEUED.equals(job.state) && now - job.createdAt < 30_000) continue;
-                if (STATE_RUNNING.equals(job.state) && alive && now < job.createdAt + job.timeoutMs) continue;
-                jobs.set(index, new Job(job.id, job.commandCiphertext, job.workspace, job.timeoutMs, STATE_INTERRUPTED, job.createdAt, now, job.pid, null));
+                if (!shouldInterrupt(job, now, alive)) continue;
+                jobs.set(index, new Job(job.id, job.commandCiphertext, job.workspace, job.timeoutMs, STATE_INTERRUPTED, job.createdAt, now, job.pid, null, job.runtimeId));
                 changed = true;
             }
             if (changed) writeAll(jobs);
             return null;
         });
+    }
+
+    static boolean shouldInterrupt(Job job, long now, boolean processAlive) {
+        if (!STATE_RUNNING.equals(job.state)) return false;
+        long startedAt = Math.max(job.createdAt, job.updatedAt);
+        long elapsed = Math.max(0L, now - startedAt);
+        return !processAlive || elapsed >= job.timeoutMs;
     }
 
     File stdout(String id) { return new File(directory, id + ".stdout"); }
@@ -167,8 +177,13 @@ final class SandboxJobStore {
         final long updatedAt;
         final long pid;
         final Integer exitCode;
+        final String runtimeId;
 
         Job(String id, String commandCiphertext, String workspace, int timeoutMs, String state, long createdAt, long updatedAt, long pid, Integer exitCode) {
+            this(id, commandCiphertext, workspace, timeoutMs, state, createdAt, updatedAt, pid, exitCode, "alpine");
+        }
+
+        Job(String id, String commandCiphertext, String workspace, int timeoutMs, String state, long createdAt, long updatedAt, long pid, Integer exitCode, String runtimeId) {
             this.id = id;
             this.commandCiphertext = commandCiphertext;
             this.workspace = workspace;
@@ -178,13 +193,14 @@ final class SandboxJobStore {
             this.updatedAt = updatedAt;
             this.pid = pid;
             this.exitCode = exitCode;
+            this.runtimeId = runtimeId == null || runtimeId.isBlank() ? "alpine" : runtimeId;
         }
 
         JSONObject toJson() throws Exception {
             JSONObject value = new JSONObject()
                 .put("id", id).put("commandCiphertext", commandCiphertext).put("workspace", workspace)
                 .put("timeoutMs", timeoutMs).put("state", state).put("createdAt", createdAt)
-                .put("updatedAt", updatedAt).put("pid", pid);
+                .put("updatedAt", updatedAt).put("pid", pid).put("runtimeId", runtimeId);
             if (exitCode != null) value.put("exitCode", exitCode);
             return value;
         }
@@ -194,14 +210,15 @@ final class SandboxJobStore {
                 value.optString("id"), value.optString("commandCiphertext"), value.optString("workspace"),
                 value.optInt("timeoutMs", 120_000), value.optString("state", STATE_INTERRUPTED),
                 value.optLong("createdAt"), value.optLong("updatedAt"), value.optLong("pid"),
-                value.has("exitCode") ? value.optInt("exitCode") : null
+                value.has("exitCode") ? value.optInt("exitCode") : null,
+                value.optString("runtimeId", "alpine")
             );
         }
 
         JSONObject publicJson() throws Exception {
             return new JSONObject()
                 .put("id", id).put("state", state).put("timeoutMs", timeoutMs)
-                .put("createdAt", createdAt).put("updatedAt", updatedAt).put("pid", pid)
+                .put("createdAt", createdAt).put("updatedAt", updatedAt).put("pid", pid).put("runtimeId", runtimeId)
                 .put("exitCode", exitCode == null ? JSONObject.NULL : exitCode);
         }
     }

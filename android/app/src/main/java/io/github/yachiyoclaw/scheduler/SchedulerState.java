@@ -16,11 +16,10 @@ public final class SchedulerState {
     public static final String CANCELLED = "cancelled";
 
     public static final String OUTBOX_WAKE = "schedule_wake";
-    public static final long LEASE_DURATION_MS = 5 * 60 * 1000L;
+    public static final long LEASE_DURATION_MS = 20 * 60 * 1000L;
     public static final long OUTBOX_LEASE_DURATION_MS = 5 * 60 * 1000L;
     public static final int MAX_ATTEMPTS = 5;
 
     private SchedulerState() {}
 }
-
 

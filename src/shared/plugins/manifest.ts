@@ -23,6 +23,7 @@ export const PLUGIN_CAPABILITIES = [
   'ui', // contribute declarative UI
   'tools', // contribute non-privileged Agent tools
   'sandbox', // run commands in the PRoot sandbox
+  'linux-runtime', // official signed plugins may manage a host-provided Linux distribution
   'network', // make HTTP requests (must carry a domain allow-list)
   'device', // device control (most dangerous; never granted at install time)
 ] as const
@@ -283,6 +284,10 @@ export function parsePluginManifest(json: unknown, options: { appVersion?: strin
         throw new PluginManifestError(`Tool "${tool.name}" must be prefixed with "${manifest.id}_".`)
       }
     }
+  }
+
+  if (declared.has('linux-runtime') && manifest.id !== 'ubuntu-runtime') {
+    throw new PluginManifestError('The linux-runtime capability is reserved for the official Ubuntu runtime plugin.')
   }
 
   if (manifest.minAppVersion && options.appVersion) {

@@ -15,7 +15,8 @@ import org.json.JSONObject;
 public final class YachiyoSchedulerStore {
     private static final int MAX_TITLE_LENGTH = 240;
     private static final int MAX_PROMPT_LENGTH = 128 * 1024;
-    private static final String PAYLOAD_VERSION = "1";
+    private static final String PAYLOAD_VERSION = "2";
+    private static final String SCHEDULE_AAD_PREFIX = "io.github.yachiyoclaw/schedule/v2/";
 
     private final YachiyoSchedulerDatabase database;
     private final ScheduleDao dao;
@@ -39,6 +40,22 @@ public final class YachiyoSchedulerStore {
         String timezone,
         long now
     ) throws Exception {
+        return upsert(id, title, prompt, runAt, repeat, enabled, exact, requiresNetwork, timezone, null, now);
+    }
+
+    public ScheduleSnapshot upsert(
+        String id,
+        String title,
+        String prompt,
+        long runAt,
+        String repeat,
+        boolean enabled,
+        boolean exact,
+        boolean requiresNetwork,
+        String timezone,
+        JSONObject runtime,
+        long now
+    ) throws Exception {
         String scheduleId = id == null || id.trim().isEmpty() ? UUID.randomUUID().toString() : id.trim();
         String normalizedTitle = normalizeTitle(title, prompt);
         String normalizedPrompt = normalizePrompt(prompt);
@@ -49,7 +66,8 @@ public final class YachiyoSchedulerStore {
         JSONObject payload = new JSONObject();
         payload.put("version", PAYLOAD_VERSION);
         payload.put("prompt", normalizedPrompt);
-        String payloadEnvelope = secureStorage.encrypt(payload.toString());
+        if (runtime != null) payload.put("runtime", validateRuntime(runtime));
+        String payloadEnvelope = secureStorage.encrypt(payload.toString(), scheduleAad(scheduleId));
         ScheduleEntity existing = dao.findSchedule(scheduleId);
         ScheduleEntity schedule = new ScheduleEntity();
         schedule.id = scheduleId;
@@ -208,9 +226,20 @@ public final class YachiyoSchedulerStore {
             scheduleId,
             executionId,
             SchedulerState.RUNNING,
-            now
+            now,
+            now + SchedulerState.LEASE_DURATION_MS
         ));
         return changed[0] == 1;
+    }
+
+    public boolean checkpoint(String scheduleId, String executionId, JSONObject checkpoint, long now) {
+        String safe = clampJson(checkpoint == null ? "{}" : checkpoint.toString(), 64 * 1024);
+        return dao.checkpointRunningExecution(
+            scheduleId,
+            executionId,
+            safe,
+            now + SchedulerState.LEASE_DURATION_MS
+        ) == 1;
     }
 
     /**
@@ -295,7 +324,7 @@ public final class YachiyoSchedulerStore {
             ScheduleEntity schedule = dao.findSchedule(candidate.scheduleId);
             ScheduleExecutionEntity execution = dao.findExecution(candidate.executionId);
             if (schedule == null || execution == null) continue;
-            JSONObject payload = new JSONObject(secureStorage.decrypt(schedule.payloadEnvelope));
+            JSONObject payload = decryptPayload(schedule);
             JSONObject event = new JSONObject(candidate.payloadJson);
             event.put("deliveryId", candidate.id);
             event.put("deliveryToken", token);
@@ -445,7 +474,7 @@ public final class YachiyoSchedulerStore {
         result.put("schemaVersion", SchedulerState.SCHEMA_VERSION);
         result.put("id", schedule.id);
         result.put("title", schedule.title);
-        result.put("prompt", new JSONObject(secureStorage.decrypt(schedule.payloadEnvelope)).optString("prompt", ""));
+        result.put("prompt", decryptPayload(schedule).optString("prompt", ""));
         result.put("runAt", schedule.runAt);
         result.put("nextRunAt", schedule.nextRunAt);
         result.put("repeat", schedule.repeat);
@@ -457,6 +486,13 @@ public final class YachiyoSchedulerStore {
         result.put("currentExecutionId", schedule.currentExecutionId);
         result.put("createdAt", schedule.createdAt);
         result.put("updatedAt", schedule.updatedAt);
+        for (ScheduleExecutionEntity execution : dao.listExecutions(schedule.id)) {
+            if (execution.lastError != null && !execution.lastError.isBlank()) result.put("lastError", execution.lastError);
+            if (execution.resultJson != null && !execution.resultJson.isBlank() && !"{}".equals(execution.resultJson)) {
+                result.put("lastResult", execution.resultJson);
+                break;
+            }
+        }
         return result;
     }
 
@@ -535,6 +571,58 @@ public final class YachiyoSchedulerStore {
         return value;
     }
 
+    JSONObject runtimePayload(String scheduleId) throws Exception {
+        ScheduleEntity schedule = requireSchedule(scheduleId);
+        JSONObject payload = decryptPayload(schedule);
+        JSONObject runtime = payload.optJSONObject("runtime");
+        return runtime == null ? null : new JSONObject(runtime.toString());
+    }
+
+    String promptPayload(String scheduleId) throws Exception {
+        return decryptPayload(requireSchedule(scheduleId)).optString("prompt", "");
+    }
+
+    private JSONObject decryptPayload(ScheduleEntity schedule) throws Exception {
+        try {
+            return new JSONObject(secureStorage.decrypt(schedule.payloadEnvelope, scheduleAad(schedule.id)));
+        } catch (Exception versionTwoError) {
+            // Version 1 schedules used the settings AAD. Preserve them for foreground handoff only.
+            return new JSONObject(secureStorage.decrypt(schedule.payloadEnvelope));
+        }
+    }
+
+    private static JSONObject validateRuntime(JSONObject input) throws Exception {
+        JSONObject result = new JSONObject();
+        String protocol = input.optString("protocol", "");
+        String apiHost = input.optString("apiHost", "").trim();
+        String apiKey = input.optString("apiKey", "").trim();
+        String model = input.optString("model", "").trim();
+        String systemPrompt = input.optString("systemPrompt", "");
+        String workspaceId = input.optString("workspaceId", "default").trim();
+        if (!"openai-chat-completions".equals(protocol)) throw new IllegalArgumentException("headless_protocol_unsupported");
+        if (!apiHost.startsWith("https://") || apiHost.length() > 2_048) throw new IllegalArgumentException("headless_api_host_invalid");
+        if (apiKey.isEmpty() || apiKey.length() > 16_384) throw new IllegalArgumentException("headless_api_key_invalid");
+        if (model.isEmpty() || model.length() > 256) throw new IllegalArgumentException("headless_model_invalid");
+        if (systemPrompt.length() > 64 * 1024) throw new IllegalArgumentException("headless_system_prompt_too_large");
+        if (!workspaceId.matches("[A-Za-z0-9._:-]{1,100}")) throw new IllegalArgumentException("headless_workspace_invalid");
+        result.put("version", 1);
+        result.put("protocol", protocol);
+        result.put("apiHost", apiHost);
+        result.put("apiKey", apiKey);
+        result.put("model", model);
+        result.put("systemPrompt", systemPrompt);
+        result.put("reasoningStrength", input.optString("reasoningStrength", "medium"));
+        result.put("workspaceId", workspaceId);
+        result.put("internalTools", input.optBoolean("internalTools", true));
+        result.put("maxSteps", Math.max(1, Math.min(20, input.optInt("maxSteps", 10))));
+        result.put("timeoutMs", Math.max(15_000, Math.min(15 * 60_000, input.optInt("timeoutMs", 5 * 60_000))));
+        return result;
+    }
+
+    private static String scheduleAad(String scheduleId) {
+        return SCHEDULE_AAD_PREFIX + scheduleId;
+    }
+
     private static boolean isTerminal(String status) {
         return SchedulerPolicy.isTerminal(status);
     }
@@ -567,5 +655,3 @@ public final class YachiyoSchedulerStore {
         return value == null || value.trim().isEmpty();
     }
 }
-
-

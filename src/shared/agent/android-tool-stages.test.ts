@@ -11,6 +11,8 @@ describe('Android tool stages', () => {
     expect(selectAndroidToolStage(0, [])).toBe('initial')
     expect(selectAndroidActiveTools(0, [])).toEqual([
       'android_device_info',
+      'android_permission_status',
+      'android_app_list',
       'android_observe',
       'android_launch_app',
       'android_run_recipe',

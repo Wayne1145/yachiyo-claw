@@ -250,6 +250,18 @@ export function AndroidScheduledTasks() {
                     {formatRunTime(task.runAt, i18n.resolvedLanguage || i18n.language)} · {t(repeatLabel[task.repeat])}
                   </span>
                   {task.lastError && <small>{task.lastError}</small>}
+                  {task.lastResult && (
+                    <small>
+                      {(() => {
+                        try {
+                          const parsed = JSON.parse(task.lastResult) as { text?: string }
+                          return parsed.text || task.lastResult
+                        } catch {
+                          return task.lastResult
+                        }
+                      })()}
+                    </small>
+                  )}
                 </div>
                 <AdaptiveActionCluster
                   className="yachiyo-scheduled-task-actions"

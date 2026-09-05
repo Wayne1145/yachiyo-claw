@@ -27,8 +27,17 @@ describe('parsePluginManifest', () => {
     expect(manifest.entry).toBe('main.js')
   })
 
-  it('exposes the six capabilities', () => {
-    expect(PLUGIN_CAPABILITIES).toEqual(['storage', 'ui', 'tools', 'sandbox', 'network', 'device'])
+  it('exposes the seven capabilities', () => {
+    expect(PLUGIN_CAPABILITIES).toEqual(['storage', 'ui', 'tools', 'sandbox', 'linux-runtime', 'network', 'device'])
+  })
+
+  it('reserves linux-runtime for the official Ubuntu plugin id', () => {
+    const manifest = base({
+      capabilities: [{ name: 'linux-runtime', reason: 'Manage the official Ubuntu runtime image.' }],
+    })
+    expect(() => parsePluginManifest(manifest)).toThrow(/reserved for the official Ubuntu runtime/i)
+    manifest.id = 'ubuntu-runtime'
+    expect(parsePluginManifest(manifest).capabilities[0].name).toBe('linux-runtime')
   })
 
   it('rejects a non-kebab-case id', () => {

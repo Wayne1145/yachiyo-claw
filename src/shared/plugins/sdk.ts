@@ -25,6 +25,16 @@ export const PLUGIN_HOST_METHODS = [
   'sandbox.exec',
   'sandbox.readFile',
   'sandbox.writeFile',
+  'linux.status',
+  'linux.install',
+  'linux.remove',
+  'linux.exec',
+  'linux.startJob',
+  'linux.jobStatus',
+  'linux.jobOutput',
+  'linux.stopJob',
+  'linux.readFile',
+  'linux.writeFile',
   'device.observe',
   'device.find',
   'device.click',
@@ -60,6 +70,22 @@ export interface PluginHostCallMap {
   }
   'sandbox.readFile': { args: { path: string }; result: { content: string } }
   'sandbox.writeFile': { args: { path: string; content: string }; result: { ok: true } }
+  'linux.status': { args: Record<string, never>; result: JsonValue }
+  'linux.install': { args: Record<string, never>; result: JsonValue }
+  'linux.remove': { args: Record<string, never>; result: { success: boolean } }
+  'linux.exec': {
+    args: { command: string; timeoutMs?: number }
+    result: { stdout: string; stderr: string; exitCode: number }
+  }
+  'linux.startJob': { args: { command: string; timeoutMs?: number }; result: { accepted: boolean; jobId: string } }
+  'linux.jobStatus': { args: { jobId: string }; result: JsonValue }
+  'linux.jobOutput': {
+    args: { jobId: string; stdoutOffset?: number; stderrOffset?: number }
+    result: JsonValue
+  }
+  'linux.stopJob': { args: { jobId: string }; result: { accepted: boolean; jobId: string } }
+  'linux.readFile': { args: { path: string }; result: { content: string } }
+  'linux.writeFile': { args: { path: string; content: string }; result: { ok: true } }
   'device.observe': { args: Record<string, never>; result: JsonValue }
   'device.find': { args: PluginNodeSelector; result: JsonValue }
   'device.click': { args: PluginNodeSelector; result: JsonValue }

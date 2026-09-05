@@ -1,12 +1,22 @@
 import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
-import type { ScheduleOutboxEvent, ScheduleRecord, ScheduleStatus } from '@shared/scheduler/contracts'
+import type {
+  HeadlessRuntimeSnapshot,
+  ScheduleOutboxEvent,
+  ScheduleRecord,
+  ScheduleStatus,
+} from '@shared/scheduler/contracts'
+import { ModelProviderEnum, ModelProviderType } from '@shared/types'
+import { getProviderDefinition } from '@shared/providers'
+import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL } from '@shared/providers/definitions/yachiyo'
 import { useSyncExternalStore } from 'react'
 import { copyAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
+import { buildAgentIdentityPrompt } from '@/mobile/agent-profile'
 import { ensureAgentTaskForChat } from '@/mobile/conversation-bridge'
 import { router } from '@/router'
 import * as chatStore from '@/stores/chatStore'
 import { queryClient } from '@/stores/queryClient'
+import { settingsStore } from '@/stores/settingsStore'
 import { initEmptyChatSession } from '@/stores/sessionHelpers'
 import { isTaskGenerating, submitTaskMessage } from '@/stores/taskSessionActions'
 import { TASK_SESSION_QUERY_KEY, taskSessionStore, updateTaskSession } from '@/stores/taskSessionStore'
@@ -42,6 +52,7 @@ export interface ScheduledAgentTask {
   lastRunAt?: number
   lastError?: string
   lastSessionId?: string
+  lastResult?: string
   nativeStatus?: ScheduleStatus
   currentExecutionId?: string
   needsForeground?: boolean
@@ -138,8 +149,9 @@ function projectNativeSchedule(record: ScheduleRecord): ScheduledAgentTask {
     createdAt: record.createdAt,
     lastRunAt: previous?.lastRunAt,
     lastSessionId: previous?.lastSessionId,
+    lastResult: record.lastResult,
     lastError:
-      previous?.lastError ||
+      record.lastError || previous?.lastError ||
       (interrupted ? '上次前台执行未完成，已停止自动重放；请检查对应会话后手动继续。' : undefined),
     nativeStatus: record.status,
     currentExecutionId: record.currentExecutionId,
@@ -183,6 +195,47 @@ function nativeScheduleInput(task: ScheduledAgentTask) {
     exact: false,
     requiresNetwork: true,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    runtime: buildHeadlessRuntimeSnapshot(task.id),
+  }
+}
+
+export function buildHeadlessRuntimeSnapshot(taskId: string): HeadlessRuntimeSnapshot | undefined {
+  const settings = settingsStore.getState()
+  const selected = settings.defaultChatModel ?? {
+    provider: ModelProviderEnum.Yachiyo,
+    model: YACHIYO_DEFAULT_MODEL,
+  }
+  const definition = getProviderDefinition(selected.provider)
+  const custom = settings.customProviders?.find((provider) => provider.id === selected.provider)
+  const providerType = definition?.type ?? custom?.type
+  if (providerType !== ModelProviderType.OpenAI) return undefined
+  const provider = settings.providers?.[selected.provider]
+  const apiKey = (provider?.apiKey || provider?.oauth?.accessToken || '').trim()
+  if (!apiKey) return undefined
+  const apiHost = (
+    selected.provider === ModelProviderEnum.Yachiyo
+      ? YACHIYO_API_HOST
+      : provider?.apiHost || definition?.defaultSettings?.apiHost || custom?.defaultSettings?.apiHost || ''
+  ).replace(/\/+$/, '')
+  if (!apiHost.startsWith('https://')) return undefined
+  const apiPath = provider?.apiPath || definition?.defaultSettings?.apiPath || custom?.defaultSettings?.apiPath || ''
+  const endpointHost = /chat\/completions$/i.test(apiHost)
+    ? apiHost
+    : /chat\/completions$/i.test(apiPath)
+      ? `${apiHost}/${apiPath.replace(/^\/+/, '')}`
+      : apiHost
+  return {
+    version: 1,
+    protocol: 'openai-chat-completions',
+    apiHost: endpointHost,
+    apiKey,
+    model: selected.model || YACHIYO_DEFAULT_MODEL,
+    systemPrompt: buildAgentIdentityPrompt() || settings.defaultPrompt || '',
+    reasoningStrength: settings.reasoningStrength,
+    workspaceId: `schedule:${taskId.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80)}`,
+    internalTools: true,
+    maxSteps: 10,
+    timeoutMs: 5 * 60_000,
   }
 }
 

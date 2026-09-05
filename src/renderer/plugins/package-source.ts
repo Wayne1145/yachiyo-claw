@@ -9,6 +9,7 @@ import {
   type NativeDownloadTask,
 } from '@/platform/native/yachiyo_downloads'
 import { markPendingPluginInstallEnqueued } from './pending-install'
+import bundledOfficialMarketplace from '../../../plugin-marketplace/index.json'
 
 export const DEFAULT_PLUGIN_MARKETPLACE_URL =
   'https://raw.githubusercontent.com/Wayne1145/yachiyo-claw/main/plugin-marketplace/index.json'
@@ -211,13 +212,29 @@ export async function loadPluginMarketplace(
   fetchImpl: typeof fetch = fetch
 ): Promise<PluginMarketplaceEntry[]> {
   const target = requirePublicHttps(url).toString()
-  const response = await fetchPublicHttps(target, { headers: { Accept: 'application/json' } }, fetchImpl)
-  if (!response.ok) throw new Error(`plugin_marketplace_http_${response.status}`)
-  const contentLength = Number(response.headers.get('content-length') || 0)
-  if (contentLength > MAX_CATALOG_BYTES) throw new Error('plugin_marketplace_too_large')
-  const text = await response.text()
-  if (new TextEncoder().encode(text).byteLength > MAX_CATALOG_BYTES) throw new Error('plugin_marketplace_too_large')
-  return parsePluginMarketplaceCatalog(JSON.parse(text)).plugins
+  const candidates = [target]
+  if (Capacitor.isNativePlatform() && target === DEFAULT_PLUGIN_MARKETPLACE_URL) {
+    const settings = await yachiyoDownloadsNative.getSettings().catch(() => null)
+    if (settings?.githubMirror) candidates.unshift(`https://ghfast.top/${target}`)
+  }
+  let lastError: unknown
+  for (const candidate of candidates) {
+    try {
+      const response = await fetchPublicHttps(candidate, { headers: { Accept: 'application/json' } }, fetchImpl)
+      if (!response.ok) throw new Error(`plugin_marketplace_http_${response.status}`)
+      const contentLength = Number(response.headers.get('content-length') || 0)
+      if (contentLength > MAX_CATALOG_BYTES) throw new Error('plugin_marketplace_too_large')
+      const text = await response.text()
+      if (new TextEncoder().encode(text).byteLength > MAX_CATALOG_BYTES) throw new Error('plugin_marketplace_too_large')
+      return parsePluginMarketplaceCatalog(JSON.parse(text)).plugins
+    } catch (error) {
+      lastError = error
+    }
+  }
+  if (target === DEFAULT_PLUGIN_MARKETPLACE_URL) {
+    return parsePluginMarketplaceCatalog(bundledOfficialMarketplace).plugins
+  }
+  throw lastError instanceof Error ? lastError : new Error('plugin_marketplace_unavailable')
 }
 
 export function marketplacePackage(entry: PluginMarketplaceEntry): ResolvedPluginPackage {
@@ -230,7 +247,13 @@ export async function pluginPackageDownloadRequest(
   source: ResolvedPluginPackage,
   title: string,
 ): Promise<PluginPackageDownloadRequest> {
-  const url = requirePublicHttps(source.url).toString()
+  let url = requirePublicHttps(source.url).toString()
+  if (Capacitor.isNativePlatform()) {
+    const settings = await yachiyoDownloadsNative.getSettings().catch(() => null)
+    if (settings?.githubMirror && /^https:\/\/(?:github\.com|raw\.githubusercontent\.com)\//i.test(url)) {
+      url = requirePublicHttps(`https://ghfast.top/${url}`).toString()
+    }
+  }
   const expectedSize = boundedSize(source.size)
   const identity = await sha256Hex(new TextEncoder().encode(`${url}\n${source.sha256 ?? ''}`))
   return {

@@ -6,11 +6,7 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Reliable wake stage. Full headless AgentRuntime execution is intentionally not claimed yet:
- * this Worker atomically claims the execution, persists an outbox wake, and asks the foreground
- * bridge to drain it. A future headless runtime can consume the same checkpoint contract.
- */
+/** Runs a bounded native Agent loop when its encrypted runtime snapshot permits headless work. */
 public final class YachiyoScheduleWorker extends Worker {
     public static final String KEY_SCHEDULE_ID = "scheduleId";
     public static final String KEY_EXECUTION_ID = "executionId";
@@ -30,23 +26,45 @@ public final class YachiyoScheduleWorker extends Worker {
         }
 
         long now = System.currentTimeMillis();
-        YachiyoSchedulerStore store = YachiyoSchedulerRuntime.get(getApplicationContext()).store();
+        YachiyoSchedulerRuntime scheduler = YachiyoSchedulerRuntime.get(getApplicationContext());
+        YachiyoSchedulerStore store = scheduler.store();
         try {
-            // WorkManager runs the wake stage as a short foreground service. It never starts the
-            // Activity or executes model/tool side effects while the renderer is unavailable.
             setForegroundAsync(
                 YachiyoSchedulerNotification.foregroundInfo(getApplicationContext(), executionId)
             ).get(10, TimeUnit.SECONDS);
             // A unique WorkRequest can still race with a reconcile or a package restore. CAS claim
             // makes duplicate workers harmless and increments the durable attempt counter.
             if (!store.claim(scheduleId, executionId, now)) return Result.success();
-            if (!store.markAwaitingForeground(scheduleId, executionId, now)) return Result.success();
-            YachiyoSchedulerNotification.post(getApplicationContext(), executionId);
+            org.json.JSONObject runtime = store.runtimePayload(scheduleId);
+            if (runtime == null) return handoff(store, scheduleId, executionId, now);
+            if (!store.markRunning(scheduleId, executionId, now)) return Result.success();
+            HeadlessAgentRuntime agent = new HeadlessAgentRuntime(
+                getApplicationContext(),
+                executionId,
+                runtime,
+                checkpoint -> {
+                    if (!store.checkpoint(scheduleId, executionId, checkpoint, System.currentTimeMillis())) {
+                        throw new IllegalStateException("headless_execution_lease_lost");
+                    }
+                }
+            );
+            HeadlessAgentRuntime.Result result = agent.execute(store.promptPayload(scheduleId));
+            org.json.JSONObject checkpoint = new org.json.JSONObject()
+                .put("version", 1).put("stage", "completed").put("steps", result.steps())
+                .put("updatedAt", System.currentTimeMillis());
+            scheduler.completeHeadless(scheduleId, executionId, checkpoint, result.toJson(), System.currentTimeMillis());
             return Result.success();
+        } catch (HeadlessAgentRuntime.ForegroundRequiredException foreground) {
+            return handoff(store, scheduleId, executionId, System.currentTimeMillis());
         } catch (Exception error) {
             store.markRetryableFailure(scheduleId, executionId, error.getClass().getSimpleName(), now);
             return Result.retry();
         }
     }
-}
 
+    private Result handoff(YachiyoSchedulerStore store, String scheduleId, String executionId, long now) {
+        if (!store.markAwaitingForeground(scheduleId, executionId, now)) return Result.success();
+        YachiyoSchedulerNotification.post(getApplicationContext(), executionId);
+        return Result.success();
+    }
+}

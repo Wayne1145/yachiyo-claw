@@ -2,7 +2,12 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it } from 'vitest'
-import { calculateNextScheduledRunAt, recoverInterruptedScheduledTasks } from './scheduled-agent-tasks'
+import {
+  buildHeadlessRuntimeSnapshot,
+  calculateNextScheduledRunAt,
+  recoverInterruptedScheduledTasks,
+} from './scheduled-agent-tasks'
+import { settingsStore } from '@/stores/settingsStore'
 
 describe('scheduled agent tasks', () => {
   it('advances daily schedules beyond missed runs', () => {
@@ -32,5 +37,31 @@ describe('scheduled agent tasks', () => {
     expect(task.status).toBe('failed')
     expect(task.enabled).toBe(true)
     expect(task.lastError).toContain('重新执行')
+  })
+
+  it('captures an OpenAI-compatible default model without exposing it in schedule metadata', () => {
+    settingsStore.setState({
+      defaultChatModel: { provider: 'yachiyo', model: 'gpt-5.6' },
+      providers: { yachiyo: { apiKey: 'sk-headless-test' } },
+      defaultPrompt: 'Soul prompt',
+      reasoningStrength: 'high',
+    })
+    expect(buildHeadlessRuntimeSnapshot('task/id')).toMatchObject({
+      protocol: 'openai-chat-completions',
+      apiHost: 'https://api.yachiyo8000.cn/v1/chat/completions',
+      apiKey: 'sk-headless-test',
+      model: 'gpt-5.6',
+      reasoningStrength: 'high',
+      workspaceId: 'schedule:task_id',
+    })
+    expect(buildHeadlessRuntimeSnapshot('task/id')?.systemPrompt).toContain('<agent_soul>')
+  })
+
+  it('falls back to foreground execution when no API key can be encrypted into the task', () => {
+    settingsStore.setState({
+      defaultChatModel: { provider: 'yachiyo', model: 'gpt-5.6' },
+      providers: { yachiyo: { apiKey: '' } },
+    })
+    expect(buildHeadlessRuntimeSnapshot('task')).toBeUndefined()
   })
 })

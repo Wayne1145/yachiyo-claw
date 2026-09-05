@@ -2,18 +2,18 @@
   "schemaVersion": 1,
   "plugins": [
     {
-      "id": "hello-yachiyo",
-      "name": "Hello Yachiyo",
-      "description": "Minimal declarative view, isolated storage, and Agent tool example.",
+      "id": "ubuntu-runtime",
+      "name": "Ubuntu 24.04 开发环境",
+      "description": "为 Yachiyo Claw Agent 提供完整 Ubuntu 24.04、Python、Node.js、Git 与原生构建工具。",
       "version": "1.0.0",
-      "packageUrl": "https://raw.githubusercontent.com/Wayne1145/yachiyo-claw/main/plugin-marketplace/packages/hello-yachiyo-1.0.0.zip",
-      "packageSize": 1584,
-      "sha256": "8b3e99a38766699841f4dd931f988af86e44a01135c4988d2114754689460fd3",
+      "packageUrl": "https://raw.githubusercontent.com/Wayne1145/yachiyo-claw/main/plugin-marketplace/packages/ubuntu-runtime-1.0.0.zip",
+      "packageSize": 3182,
+      "sha256": "477521f8e35d5e0d0f49659622bf6f941642dbce3e7d87cbe21c2e2aff106efb",
       "signature": {
         "algorithm": "ecdsa-p256",
-        "value": "oFy62PY6v8qoTVccgDw829hfQ9YXMXM6N1xDh1od4sGmsLR63j8XQOvvHIwoja-HySVM1XDKhlb67KzYGyO7Iw",
-        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEU3UFfUlzmgoltaDcbHVm0N5XhLQpRT9rjIFYupdGZLJU5NefHPh_6hDNMpn_3uH9EM_e542-CXVTH7EhNZ_G0w",
-        "keyId": "newdreamstudio-example-v1"
+        "value": "rM03SB3BUs6BxRWasF72LeEpvz66vJx_EaDsXs4Szj2FepETUK7LDRbf9v7vPvtrLfOg__6jdLYVzUWOPjV2GQ",
+        "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEV5XqN8JcJwAaCeyY3NffLpe3vKzED5j9CfxioGJSBgDNKulKF_z4SxL_z3aZWA7CEMu-F-6Q4SA63UCY9hk8cA",
+        "keyId": "newdreamstudio-official-v1"
       },
       "repository": "https://github.com/Wayne1145/yachiyo-claw"
     }

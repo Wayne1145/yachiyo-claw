@@ -48,6 +48,8 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     private static final String GITHUB_MIRROR_ORIGIN = "https://ghfast.top/";
     private static final String ALPINE_ORIGIN = "https://dl-cdn.alpinelinux.org/alpine";
     private static final String ALPINE_MIRROR_ORIGIN = "https://mirrors.tuna.tsinghua.edu.cn/alpine";
+    private static final String UBUNTU_CDIMAGE_ORIGIN = "https://cdimage.ubuntu.com/";
+    private static final String UBUNTU_CDIMAGE_MIRROR_ORIGIN = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/";
     private static final String ANDROID_COMMANDLINE_TOOLS =
         "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip";
     private static final String ANDROID_COMMANDLINE_TOOLS_MIRROR =
@@ -117,6 +119,18 @@ public final class YachiyoDownloadSettingsPlugin extends Plugin {
     /** Uses a byte-identical Alpine mirror while preserving the pinned path and archive digest. */
     public static String mirrorAlpineUrl(android.content.Context context, String value) {
         return mirrorAlpineUrl(linuxMirror(context), value);
+    }
+
+    /** Uses TUNA's byte-identical Ubuntu cdimage mirror for pinned Ubuntu Base artifacts. */
+    public static String mirrorUbuntuImageUrl(android.content.Context context, String value) {
+        return mirrorUbuntuImageUrl(linuxMirror(context), value);
+    }
+
+    public static String mirrorUbuntuImageUrl(boolean enabled, String value) {
+        if (!enabled || value == null) return value;
+        return value.startsWith(UBUNTU_CDIMAGE_ORIGIN)
+            ? UBUNTU_CDIMAGE_MIRROR_ORIGIN + value.substring(UBUNTU_CDIMAGE_ORIGIN.length())
+            : value;
     }
 
     static String mirrorAlpineUrl(boolean enabled, String value) {

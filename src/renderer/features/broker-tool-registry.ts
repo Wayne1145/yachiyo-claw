@@ -21,6 +21,12 @@ export const INTERNAL_BROKER_TOOL_IDS = [
   'plugin.sandbox.write',
   'plugin.sandbox.exec',
   'plugin.network.fetch',
+  'plugin.ubuntu.install',
+  'plugin.ubuntu.remove',
+  'plugin.ubuntu.exec',
+  'plugin.ubuntu.read',
+  'plugin.ubuntu.write',
+  'plugin.ubuntu.stop',
 ] as const
 
 export type InternalBrokerToolId = (typeof INTERNAL_BROKER_TOOL_IDS)[number]
@@ -106,7 +112,7 @@ export function registerBuiltInBrokerTools(): void {
   }
   for (const toolId of INTERNAL_BROKER_TOOL_IDS) {
     const featureId = toolId.startsWith('skill.') ? 'skills' : toolId.startsWith('plugin.') ? 'plugins' : 'sandbox'
-    const readOnly = toolId === 'plugin.sandbox.read'
+    const readOnly = toolId === 'plugin.sandbox.read' || toolId === 'plugin.ubuntu.read'
     const backend = toolId === 'plugin.network.fetch' ? 'standard' : 'sandbox'
     registerBrokerToolDescriptor({
       featureId,

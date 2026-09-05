@@ -34,6 +34,29 @@ export interface NativeSandboxJob {
   updatedAt: number
   pid: number
   exitCode?: number | null
+  runtimeId?: 'alpine' | 'ubuntu-24.04' | string
+}
+
+export interface NativeUbuntuStatus {
+  available: boolean
+  runtimeId?: 'ubuntu-24.04'
+  version?: string
+  installed?: boolean
+  ready?: boolean
+  state: 'unsupported' | 'not_downloaded' | 'queued' | 'downloading' | 'paused' | 'completed' | 'configuring' | 'ready' | 'failed'
+  freeBytes?: number
+  requiredFreeBytes?: number
+  architecture?: 'arm64' | 'amd64'
+  download?: NativeDownloadTaskSnapshot
+}
+
+interface NativeDownloadTaskSnapshot {
+  id: string
+  status: string
+  bytesDownloaded: number
+  bytesTotal: number
+  bytesPerSecond: number
+  error?: string
 }
 
 export interface NativeSandboxProgress {
@@ -58,6 +81,14 @@ interface NativeSandboxPlugin {
     command: string
     timeout?: number
   }): Promise<{ accepted: boolean; jobId: string }>
+  ubuntuStatus(): Promise<NativeUbuntuStatus>
+  installUbuntu(): Promise<{ accepted: boolean; state: string; downloadId?: string; jobId?: string }>
+  startUbuntuPluginJob(options: {
+    pluginId: 'ubuntu-runtime'
+    command: string
+    timeout?: number
+  }): Promise<{ accepted: boolean; jobId: string }>
+  removeUbuntu(): Promise<{ success: boolean }>
   listJobs(): Promise<{ jobs: NativeSandboxJob[] }>
   queryJob(options: { jobId: string }): Promise<NativeSandboxJob>
   readJobOutput(options: { jobId: string; stdoutOffset?: number; stderrOffset?: number }): Promise<{

@@ -5,6 +5,11 @@
       "keyId": "newdreamstudio-example-v1",
       "algorithm": "ecdsa-p256",
       "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEU3UFfUlzmgoltaDcbHVm0N5XhLQpRT9rjIFYupdGZLJU5NefHPh_6hDNMpn_3uH9EM_e542-CXVTH7EhNZ_G0w"
+    },
+    {
+      "keyId": "newdreamstudio-official-v1",
+      "algorithm": "ecdsa-p256",
+      "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEV5XqN8JcJwAaCeyY3NffLpe3vKzED5j9CfxioGJSBgDNKulKF_z4SxL_z3aZWA7CEMu-F-6Q4SA63UCY9hk8cA"
     }
   ]
 }

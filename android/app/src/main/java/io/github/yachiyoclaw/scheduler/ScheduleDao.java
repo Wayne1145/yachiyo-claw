@@ -41,11 +41,17 @@ public interface ScheduleDao {
     int claimExecution(String scheduleId, String executionId, long now, long leaseExpiresAt);
 
     @Query(
-        "UPDATE scheduler_executions SET status = :status, leaseExpiresAt = 0, " +
+        "UPDATE scheduler_executions SET status = :status, leaseExpiresAt = :leaseExpiresAt, " +
         "startedAt = CASE WHEN :status = 'running' AND startedAt = 0 THEN :now ELSE startedAt END " +
         "WHERE id = :executionId AND scheduleId = :scheduleId AND status = 'claimed'"
     )
-    int markExecutionRunning(String scheduleId, String executionId, String status, long now);
+    int markExecutionRunning(String scheduleId, String executionId, String status, long now, long leaseExpiresAt);
+
+    @Query(
+        "UPDATE scheduler_executions SET checkpointJson = :checkpointJson, leaseExpiresAt = :leaseExpiresAt " +
+        "WHERE id = :executionId AND scheduleId = :scheduleId AND status = 'running'"
+    )
+    int checkpointRunningExecution(String scheduleId, String executionId, String checkpointJson, long leaseExpiresAt);
 
     @Query(
         "UPDATE scheduler_executions SET status = 'running', leaseExpiresAt = 0, " +
@@ -112,5 +118,4 @@ public interface ScheduleDao {
     @Query("DELETE FROM scheduler_outbox WHERE scheduleId = :scheduleId")
     void deleteOutbox(String scheduleId);
 }
-
 

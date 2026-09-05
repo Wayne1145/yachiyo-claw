@@ -85,6 +85,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 声明式主题中心支持粘贴 JSON、选择文件或公开 HTTPS 导入，可临时预览、安装、切换和删除；主题只能覆盖受支持的颜色 token，不能运行代码。
 - 提供不可删除的“Yachiyo 浅粉”和“Yachiyo 液态玻璃”两套内置外观；液态玻璃主题使用纯白聊天背景、半透明导航和输入控件，标题行始终保留，Agent 控制与输入工具可独立展开或收起。
 - Android 已开放第三方插件中心、HTTPS/本地 ZIP 安装、声明式页面、设置贡献、Agent 工具贡献、权限管理、健康状态、更新和完整卸载。
+- 官方插件商店会自动加载，并提供由 NewDreamStudio 签名的 Ubuntu 24.04 完整开发环境插件；Ubuntu Base 按 ABI 下载、校验并原子安装，插件提供命令、文件和后台任务工具。
 - 脚本插件运行在不继承应用源站权限的 opaque-origin Worker 中，通过带版本的纯 JSON RPC 调用白名单 Host API；网络、存储、工具等能力按插件摘要绑定授权，运行失败会记录审计并触发超时终止、健康熔断或安装回滚。
 - 已在 Android 实机验证示例插件从本地 FunctionGemma 工具调用、最上层审批、隔离 Worker 执行到结果回填和第二轮模型回答的完整链路。
 
@@ -106,6 +107,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - API Key、登录令牌及敏感设置使用 Android Keystore 支持的加密存储。
 - 可在启动时检查本项目的 GitHub Release；Android 更新器将 APK 下载到应用私有目录，验证 HTTPS 来源、SHA-256、包名、签名链和递增的 `versionCode` 后交给系统安装器，并在升级后自动清理陈旧安装包。
 - 模型、更新、Linux 环境、插件/Skills 包体、远程主题和应用资源共用设置中的下载管理，支持 1-64 个分段、断点续传、代理、仅 Wi-Fi、独立通知和进程重建后的调度恢复。
+- 定时 Agent 可在 Activity/WebView 不存在时由 WorkManager 启动原生 OpenAI-compatible 工具循环；加密运行快照、续租 checkpoint、工具审计和结果均持久化，需交互能力会转前台接管。
 - 下载设置可分别启用 `hf-mirror.com` 与 `ghfast.top`；首次成功识别到中国大陆网络出口时默认开启，用户随后保存的选择不会被自动覆盖。镜像只代理白名单资源，模型摘要与 APK 摘要/签名校验保持不变。
 - Android CI 包含 TypeScript 检查、基础测试、原生日志隐私检查、Gradle 单测和 Debug APK 构建。
 - Yachiyo Claw 自定义的聊天、交互式、Agent、权限、本地模型、下载、主题、插件和工作区页面支持完整英文切换；用户自定义名称和第三方内容保持原文。

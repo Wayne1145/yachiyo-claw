@@ -83,6 +83,7 @@ export function buildPluginToolset(sources: PluginToolsetSources): FeatureToolse
     const tools: ToolSet = {}
     const toolDisplay: Record<string, { label: string }> = {}
     const claimed = new Set<string>()
+    const promptCatalog: string[] = []
     let total = 0
 
     for (const record of records) {
@@ -211,11 +212,21 @@ export function buildPluginToolset(sources: PluginToolsetSources): FeatureToolse
         })
         const shortName = declaration.name.slice(`${record.manifest.id}_`.length).replaceAll('_', ' ')
         toolDisplay[declaration.name] = { label: `${record.manifest.displayName} · ${shortName}` }
+        promptCatalog.push(`- ${declaration.name}: ${declaration.description}`)
       }
     }
 
     if (Object.keys(tools).length === 0) return null
-    return { instructions: '', tools, toolDisplay }
+    return {
+      instructions: [
+        '\n<installed_plugin_tools>',
+        'The following tools come from enabled, capability-approved plugins. Use them when their descriptions match the task; check a runtime status tool before assuming its environment is ready.',
+        ...promptCatalog,
+        '</installed_plugin_tools>\n',
+      ].join('\n'),
+      tools,
+      toolDisplay,
+    }
   }
 }
 

@@ -29,6 +29,15 @@ public final class SecureStorageService {
     private static final byte[] SETTINGS_AAD = "io.github.yachiyoclaw/settings/v1".getBytes(StandardCharsets.UTF_8);
 
     public String encrypt(String plaintext) throws Exception {
+        return encrypt(plaintext, SETTINGS_AAD);
+    }
+
+    public String encrypt(String plaintext, String aadContext) throws Exception {
+        if (aadContext == null || aadContext.isBlank()) throw new IllegalArgumentException("aad_context_required");
+        return encrypt(plaintext, aadContext.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String encrypt(String plaintext, byte[] aad) throws Exception {
         if (plaintext == null) throw new IllegalArgumentException("plaintext_required");
 
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
@@ -36,7 +45,7 @@ public final class SecureStorageService {
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
         byte[] iv = cipher.getIV();
         if (iv == null || iv.length != GCM_IV_BYTES) throw new IllegalStateException("unexpected_gcm_iv");
-        cipher.updateAAD(SETTINGS_AAD);
+        cipher.updateAAD(aad);
         byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
 
         JSONObject payload = new JSONObject();
@@ -48,6 +57,15 @@ public final class SecureStorageService {
     }
 
     public String decrypt(String envelope) throws Exception {
+        return decrypt(envelope, SETTINGS_AAD);
+    }
+
+    public String decrypt(String envelope, String aadContext) throws Exception {
+        if (aadContext == null || aadContext.isBlank()) throw new IllegalArgumentException("aad_context_required");
+        return decrypt(envelope, aadContext.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String decrypt(String envelope, byte[] aad) throws Exception {
         JSONObject payload = parseEnvelope(envelope);
         byte[] iv = Base64.decode(payload.getString("iv"), Base64.NO_WRAP);
         byte[] ciphertext = Base64.decode(payload.getString("ciphertext"), Base64.NO_WRAP);
@@ -57,7 +75,7 @@ public final class SecureStorageService {
 
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
-        cipher.updateAAD(SETTINGS_AAD);
+        cipher.updateAAD(aad);
         return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
     }
 
@@ -101,5 +119,4 @@ public final class SecureStorageService {
         return generator.generateKey();
     }
 }
-
 

@@ -34,7 +34,7 @@ interface ScheduleDrainResult {
 interface ScheduleAcknowledgeResult {
   acknowledged: true
   status: ScheduleRecord['status']
-  headlessExecution: false
+  headlessExecution: boolean
   next?: ScheduleUpsertResult
 }
 
@@ -48,7 +48,7 @@ interface YachiyoSchedulerPlugin {
     schemaVersion: 1
     recoveredLeases: number
     enqueued: number
-    headlessExecution: false
+    headlessExecution: boolean
     pendingState: 'awaiting-foreground'
   }>
   drain(options?: { limit?: number }): Promise<ScheduleDrainResult>

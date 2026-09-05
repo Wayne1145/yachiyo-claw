@@ -35,11 +35,11 @@ powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm exec node 
 
 The private key is read only from the explicit path and is never copied into the package or catalog.
 
-The repository's minimal signed marketplace can be rebuilt with:
+The repository's official marketplace (currently the Ubuntu 24.04 runtime plugin) can be rebuilt with:
 
 ```powershell
-$env:YACHIYO_EXAMPLE_PLUGIN_SIGNING_KEY='D:\\keys\\plugin-publisher-p256.pem'
-powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm exec node scripts/build-example-marketplace.mjs
+$env:YACHIYO_PLUGIN_SIGNING_KEY='D:\\keys\\plugin-publisher-p256.pem'
+powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run plugin:build-marketplace
 ```
 
 Without that environment variable the marketplace build fails. The supplied private key must match
@@ -89,6 +89,10 @@ by a capability it declared and the user granted:
 - `network.fetch`: bounded HTTPS requests to exact manifest domains.
 - `sandbox.readFile`, `sandbox.writeFile`, `sandbox.exec`: a plugin-specific `/workspace` inside the
   Android PRoot environment. Writes and commands pass through the Agent approval policy and audit log.
+- `linux.status`, `linux.install`, `linux.remove`, `linux.exec`, `linux.startJob`, `linux.jobStatus`,
+  `linux.jobOutput`, `linux.stopJob`, `linux.readFile`, `linux.writeFile`: host-managed Ubuntu 24.04
+  lifecycle and tools. This capability is reserved for the `ubuntu-runtime` package and requires an
+  official marketplace signature trusted by the installed app.
 - `device.observe`, `device.find`, `device.click`, `device.setText`, `device.scroll`, `device.launch`,
   `device.keyevent`: accessibility-backed device operations. Device mutations require a parameter-bound,
   single-use native approval nonce.
@@ -101,9 +105,10 @@ sandbox frame. Every supported host call is bound to the currently executing plu
 digest. The host serializes invocations, propagates aborts, enforces per-method schemas and quotas, and
 records privileged work through the Tool Broker. WebView engine vulnerabilities remain a residual risk.
 
-Linux access still shares the installed PRoot system image, although each plugin gets a private
-workspace. PRoot is not a kernel security boundary; commands can use its network and change the shared
-root filesystem. Device access has stricter gates: the package signature must verify against a
+Ordinary plugin Linux access shares the bundled Alpine PRoot image, while the official Ubuntu plugin
+uses its own versioned rootfs; every plugin still gets a private workspace. PRoot is not a kernel
+security boundary: commands can use its network and change their writable root filesystem. Device
+access has stricter gates: the package signature must verify against a
 marketplace trust root bundled in the app, the user must grant `device` separately after installation,
 conversation phone control and the global device gate must both be enabled, and each mutation receives
 a fresh parameter-bound native approval nonce.

@@ -24,6 +24,7 @@ import {
   IconExternalLink,
   IconPuzzle,
   IconRefresh,
+  IconSearch,
   IconTrash,
   IconUpload,
 } from '@tabler/icons-react'
@@ -78,6 +79,7 @@ const CAPABILITY_LABEL_KEYS: Record<string, string> = {
   ui: '插件页面(在 /plugin 内渲染界面)',
   tools: '向 Agent 提供工具',
   sandbox: 'Linux 开发环境脚本（高风险）',
+  'linux-runtime': 'Ubuntu 发行版运行环境（仅官方签名插件）',
   network: '访问声明的网络域名',
   device: '设备控制(高风险)',
 }
@@ -445,6 +447,7 @@ export function PluginCenter() {
   const [marketplaceUrl, setMarketplaceUrl] = useState(readPluginMarketplaceUrl)
   const [marketplace, setMarketplace] = useState<PluginMarketplaceEntry[] | null>(null)
   const [marketLoading, setMarketLoading] = useState(false)
+  const [marketSearch, setMarketSearch] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
   const [availableUpdates, setAvailableUpdates] = useState<Map<string, PluginMarketplaceEntry>>(new Map())
   const [pluginStats, setPluginStats] = useState<Record<string, { dataBytes: number; health: PluginHealth | null }>>({})
@@ -469,6 +472,13 @@ export function PluginCenter() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    // The official store is the primary experience; custom sources remain an advanced option.
+    void openMarketplace()
+    // The catalog URL is intentionally captured once when the page opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -727,6 +737,10 @@ export function PluginCenter() {
   const updating = manifest ? installed.find((record) => record.manifest.id === manifest.id) : undefined
   const updateChanges =
     updating && manifest ? describePluginUpdate(updating, manifest, pendingConsent?.verified.signerKeyId) : null
+  const visibleMarketplace = (marketplace ?? []).filter((entry) => {
+    const query = marketSearch.trim().toLocaleLowerCase()
+    return !query || `${entry.name} ${entry.description} ${entry.id}`.toLocaleLowerCase().includes(query)
+  })
 
   return (
     <main className="local-model-center local-model-download-queue">
@@ -765,7 +779,11 @@ export function PluginCenter() {
 
       <section className="local-model-queue-row">
         <Stack gap="xs">
-          <Text fw={650}>{t('安装插件')}</Text>
+          <details>
+            <summary>
+              <Text span fw={650}>{t('高级与开发者安装')}</Text>
+            </summary>
+            <Stack gap="xs" mt="sm">
           <Group align="flex-end">
             <TextInput
               style={{ flex: '1 1 190px' }}
@@ -820,6 +838,8 @@ export function PluginCenter() {
               {t('恢复默认')}
             </Button>
           </Group>
+            </Stack>
+          </details>
           {error && (
             <Text size="xs" c="red" role="alert">
               {error}
@@ -840,12 +860,19 @@ export function PluginCenter() {
               <Text fw={650}>{t('插件市场')}</Text>
               <Badge variant="light">{marketplace.length}</Badge>
             </Group>
+            <TextInput
+              value={marketSearch}
+              onChange={(event) => setMarketSearch(event.currentTarget.value)}
+              placeholder={t('搜索插件')}
+              leftSection={<IconSearch size={16} />}
+              aria-label={t('搜索插件')}
+            />
             {marketplace.length === 0 && (
               <Text size="sm" c="dimmed">
                 {t('市场暂时没有已验签的插件。')}
               </Text>
             )}
-            {marketplace.map((entry) => (
+            {visibleMarketplace.map((entry) => (
               <Group key={`${entry.id}:${entry.version}`} justify="space-between" align="flex-start" wrap="wrap">
                 <div style={{ flex: '1 1 190px' }}>
                   <Text size="sm" fw={600}>
@@ -862,9 +889,16 @@ export function PluginCenter() {
                   size="compact-sm"
                   leftSection={<IconDownload size={14} />}
                   loading={busy}
+                  disabled={installed.some(
+                    (record) => record.manifest.id === entry.id && record.manifest.version === entry.version,
+                  )}
                   onClick={() => void installMarketplaceEntry(entry, marketplaceUrl)}
                 >
-                  {t('安装')}
+                  {installed.some(
+                    (record) => record.manifest.id === entry.id && record.manifest.version === entry.version,
+                  )
+                    ? t('已安装')
+                    : t('安装')}
                 </Button>
               </Group>
             ))}

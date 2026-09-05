@@ -34,6 +34,11 @@ sensitive records use AES-GCM encryption backed by a non-exportable Android Keys
 backup and device-transfer backup are disabled for the application. A rooted device, compromised OS,
 or unlocked debug build can defeat application-level protections.
 
+Android scheduled Agent tasks store a versioned provider/model snapshot with the task so WorkManager
+can run after the UI process is gone. The API key, prompt, persona/user context, and runtime snapshot
+are encrypted together with schedule-id-bound AES-GCM AAD; WorkManager receives only opaque schedule
+and execution identifiers. Deleting or replacing the schedule replaces that encrypted snapshot.
+
 ## Data sent when a feature is used
 
 Yachiyo Claw makes external requests only for configured or user-invoked functionality, including:

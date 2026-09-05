@@ -10,6 +10,16 @@ import {
 
 export type PluginInstallRecoveryResult = 'none' | 'waiting' | 'restored' | 'failed'
 
+export function pendingPluginIdentityMatches(
+  expected: { id: string; version?: string } | undefined,
+  manifest: { id: string; version: string } | undefined,
+): boolean {
+  if (!expected) return true
+  return Boolean(
+    manifest && manifest.id === expected.id && (expected.version === undefined || manifest.version === expected.version),
+  )
+}
+
 /** Rehydrates a downloaded package into the normal verification and user-consent flow. */
 /** 将已下载的安装包恢复到常规校验与用户确认流程。 */
 export async function resumePendingPluginInstall(): Promise<PluginInstallRecoveryResult> {
@@ -44,10 +54,7 @@ export async function resumePendingPluginInstall(): Promise<PluginInstallRecover
       artifactId: pending.request.id,
     })
     const manifest = usePluginStore.getState().pendingConsent?.verified.manifest
-    if (
-      pending.expectedPlugin &&
-      (!manifest || manifest.id !== pending.expectedPlugin.id || manifest.version !== pending.expectedPlugin.version)
-    ) {
+    if (!pendingPluginIdentityMatches(pending.expectedPlugin, manifest)) {
       await usePluginStore.getState().cancelInstall()
       throw new Error('plugin_marketplace_identity_mismatch')
     }

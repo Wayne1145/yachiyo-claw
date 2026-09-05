@@ -7,9 +7,35 @@ import java.util.List;
 
 /** Builds the fixed PRoot boundary; callers only supply a validated command and workspace. */
 final class SandboxProcessFactory {
+    record RuntimeConfig(String id, String shell, String path, String home) {
+        static RuntimeConfig alpine() {
+            return new RuntimeConfig(
+                "alpine",
+                "/bin/sh",
+                "/opt/android-sdk/cmdline-tools/latest/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/android-sdk/platform-tools",
+                "/root"
+            );
+        }
+
+        static RuntimeConfig ubuntu() {
+            return new RuntimeConfig("ubuntu-24.04", "/bin/bash", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "/root");
+        }
+    }
+
     private SandboxProcessFactory() {}
 
     static ProcessBuilder create(Context context, File rootfs, File runtimeDirectory, File workspace, String command) throws Exception {
+        return create(context, rootfs, runtimeDirectory, workspace, command, RuntimeConfig.alpine());
+    }
+
+    static ProcessBuilder create(
+        Context context,
+        File rootfs,
+        File runtimeDirectory,
+        File workspace,
+        String command,
+        RuntimeConfig config
+    ) throws Exception {
         File nativeDirectory = new File(context.getApplicationInfo().nativeLibraryDir);
         File proot = new File(nativeDirectory, "libyachiyo_proot.so");
         File loader = new File(nativeDirectory, "libyachiyo_proot_loader.so");
@@ -33,14 +59,13 @@ final class SandboxProcessFactory {
         arguments.add("/workspace");
         arguments.add("/usr/bin/env");
         arguments.add("-i");
-        arguments.add("HOME=/root");
-        // Alpine's native tools take precedence over x86-only binaries shipped in Google's platform-tools archive.
-        arguments.add("PATH=/opt/android-sdk/cmdline-tools/latest/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/android-sdk/platform-tools");
+        arguments.add("HOME=" + config.home());
+        arguments.add("PATH=" + config.path());
         arguments.add("ANDROID_HOME=/opt/android-sdk");
         arguments.add("ANDROID_SDK_ROOT=/opt/android-sdk");
         arguments.add("TERM=xterm-256color");
         arguments.add("LANG=C.UTF-8");
-        arguments.add("/bin/sh");
+        arguments.add(config.shell());
         arguments.add("-lc");
         arguments.add(command);
 

@@ -2,6 +2,8 @@ import type { ModelMessage } from 'ai'
 
 export const ANDROID_TOOL_STAGE_INITIAL = [
   'android_device_info',
+  'android_permission_status',
+  'android_app_list',
   'android_observe',
   'android_launch_app',
   'android_run_recipe',

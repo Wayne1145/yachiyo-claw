@@ -97,6 +97,11 @@ const sandboxExecSchema = z
   .strict()
 const sandboxReadSchema = z.object({ path: pluginFilePathSchema }).strict()
 const sandboxWriteSchema = z.object({ path: pluginFilePathSchema, content: z.string().max(4 * 1024 * 1024) }).strict()
+const linuxJobSchema = z.object({ jobId: z.string().regex(/^job_[a-f0-9]{32}$/) }).strict()
+const linuxOutputSchema = linuxJobSchema.extend({
+  stdoutOffset: z.number().int().nonnegative().optional(),
+  stderrOffset: z.number().int().nonnegative().optional(),
+}).strict()
 const selectorFields = {
   packageName: z.string().trim().min(1).max(200).optional(),
   resourceId: z.string().trim().min(1).max(300).optional(),
@@ -466,6 +471,8 @@ async function evaluateHostCallAuthorization(
       ? 'network'
       : method.startsWith('sandbox.')
         ? 'sandbox'
+        : method.startsWith('linux.')
+          ? 'linux-runtime'
         : method.startsWith('device.')
           ? 'device'
           : null
@@ -481,7 +488,7 @@ async function evaluateHostCallAuthorization(
   } catch {
     return { allowed: false, reason: 'plugin_principal_mismatch' }
   }
-  if ((capability === 'sandbox' || capability === 'device') && !Capacitor.isNativePlatform()) {
+  if ((capability === 'sandbox' || capability === 'linux-runtime' || capability === 'device') && !Capacitor.isNativePlatform()) {
     return { allowed: false, reason: 'capability_requires_android' }
   }
   if ((capability === 'sandbox' || capability === 'device') && !context.sessionId) {
@@ -493,6 +500,11 @@ async function evaluateHostCallAuthorization(
     const session = getAgentSessionConfig(context.sessionId)
     if (!session.enabled || !session.deviceControlEnabled || !isAgentFullAccessEnabled()) {
       return { allowed: false, reason: 'device_control_disabled' }
+    }
+  }
+  if (capability === 'linux-runtime') {
+    if (record.manifest.id !== 'ubuntu-runtime' || !record.deviceGrantAllowed) {
+      return { allowed: false, reason: 'linux_runtime_requires_official_signature' }
     }
   }
   const grant = await pluginGrantStore.get(record.manifest.id, capability)
@@ -712,6 +724,190 @@ async function executePluginSandboxHostCall(
     stderr: boundedHostText(result.stderr),
     exitCode: result.exitCode,
   }
+}
+
+async function executePluginLinuxHostCall(
+  record: InstalledPluginRecord,
+  method: string,
+  rawArgs: JsonValue,
+  context: PluginHostCallContext,
+): Promise<JsonValue> {
+  const principal = requirePluginPrincipal(record, context)
+  if (record.manifest.id !== 'ubuntu-runtime' || !record.deviceGrantAllowed) {
+    throw new Error('linux_runtime_requires_official_signature')
+  }
+  const sessionId = context.sessionId || `plugin-ui:${record.manifest.id}`
+  const taskId = context.runId || sessionId
+  const checkpoint = await pluginBrokerCheckpoint(record, method, context)
+
+  if (method === 'linux.status') return (await yachiyoSandboxNative.ubuntuStatus()) as unknown as JsonValue
+  if (method === 'linux.jobStatus') {
+    const args = linuxJobSchema.parse(rawArgs)
+    return (await yachiyoSandboxNative.queryJob(args)) as unknown as JsonValue
+  }
+  if (method === 'linux.jobOutput') {
+    const args = linuxOutputSchema.parse(rawArgs)
+    return (await yachiyoSandboxNative.readJobOutput(args)) as unknown as JsonValue
+  }
+  if (method === 'linux.stopJob') {
+    const args = linuxJobSchema.parse(rawArgs)
+    const authorization = await requestAgentAuthorization({
+      principal,
+      sessionId,
+      runId: context.runId,
+      title: `Ubuntu 24.04 · ${record.manifest.displayName}`,
+      detail: `停止 Ubuntu 后台任务: ${args.jobId}`,
+      risk: 'dangerous',
+      signal: context.signal,
+      rememberConversationApproval: false,
+    })
+    if (authorization.decision === 'deny') throw new Error('ubuntu_user_denied')
+    return (await executeAgentAction({
+      featureId: 'plugins', principal, toolId: 'plugin.ubuntu.stop', backend: 'sandbox',
+      parameters: args, taskId, ...checkpoint, abortSignal: context.signal,
+      approvalDecision: authorization.decision, sideEffect: true,
+      isSuccess: (value) => value.accepted,
+      execute: () => yachiyoSandboxNative.stopJob(args),
+    })) as unknown as JsonValue
+  }
+  if (method === 'linux.readFile') {
+    const args = sandboxReadSchema.parse(rawArgs)
+    const result = await executeAgentAction({
+      featureId: 'plugins', principal, toolId: 'plugin.ubuntu.read', backend: 'sandbox',
+      parameters: args, taskId, ...checkpoint, abortSignal: context.signal, sideEffect: false,
+      isSuccess: (value) => value.success,
+      execute: () => yachiyoSandboxNative.readPluginFile({ pluginId: record.manifest.id, filePath: args.path }),
+    })
+    if (!result.success) throw new Error(result.error || 'ubuntu_read_failed')
+    return { content: boundedHostText(result.content ?? '', 512 * 1024) }
+  }
+
+  const approvalTitle = `Ubuntu 24.04 · ${record.manifest.displayName}`
+  if (method === 'linux.install' || method === 'linux.remove') {
+    const authorization = await requestAgentAuthorization({
+      principal,
+      sessionId,
+      runId: context.runId,
+      title: approvalTitle,
+      detail:
+        method === 'linux.install'
+          ? '下载并安装 Ubuntu 24.04 开发环境。安装完成后插件可以在独立工作区执行 Linux 命令。'
+          : '删除 Ubuntu 24.04 根文件系统。插件工作区中的项目文件会保留。',
+      risk: 'dangerous',
+      signal: context.signal,
+      rememberConversationApproval: false,
+    })
+    if (authorization.decision === 'deny') throw new Error('ubuntu_user_denied')
+    const common = {
+      featureId: 'plugins',
+      principal,
+      backend: 'sandbox' as const,
+      parameters: { runtimeId: 'ubuntu-24.04' } as JsonValue,
+      taskId,
+      ...checkpoint,
+      abortSignal: context.signal,
+      approvalDecision: authorization.decision,
+      sideEffect: true,
+    }
+    if (method === 'linux.install') {
+      return (await executeAgentAction({
+        ...common,
+        toolId: 'plugin.ubuntu.install',
+        isSuccess: (value) => value.accepted,
+        execute: () => yachiyoSandboxNative.installUbuntu(),
+      })) as unknown as JsonValue
+    }
+    return (await executeAgentAction({
+      ...common,
+      toolId: 'plugin.ubuntu.remove',
+      isSuccess: (value) => value.success,
+      execute: () => yachiyoSandboxNative.removeUbuntu(),
+    })) as unknown as JsonValue
+  }
+
+  if (method === 'linux.writeFile') {
+    const args = sandboxWriteSchema.parse(rawArgs)
+    const authorization = await requestAgentAuthorization({
+      principal,
+      sessionId,
+      runId: context.runId,
+      title: approvalTitle,
+      detail: `写入 Ubuntu 插件工作区文件: ${args.path}`,
+      risk: 'dangerous',
+      signal: context.signal,
+      rememberConversationApproval: false,
+    })
+    if (authorization.decision === 'deny') throw new Error('ubuntu_user_denied')
+    const result = await executeAgentAction({
+      featureId: 'plugins', principal, toolId: 'plugin.ubuntu.write', backend: 'sandbox',
+      parameters: args, taskId, ...checkpoint, abortSignal: context.signal,
+      approvalDecision: authorization.decision, sideEffect: true,
+      isSuccess: (value) => value.success,
+      execute: () => yachiyoSandboxNative.writePluginFile({
+        pluginId: record.manifest.id,
+        filePath: args.path,
+        content: args.content,
+      }),
+    })
+    if (!result.success) throw new Error(result.error || 'ubuntu_write_failed')
+    return { ok: true }
+  }
+
+  if (method === 'linux.exec' || method === 'linux.startJob') {
+    const args = sandboxExecSchema.parse(rawArgs)
+    consumeSandboxQuota(record.manifest.id)
+    const authorization = await requestAgentAuthorization({
+      principal,
+      sessionId,
+      runId: context.runId,
+      title: approvalTitle,
+      detail: `命令将在 Ubuntu 插件私有工作区执行。PRoot 不是内核级安全容器。\n\n${args.command.slice(0, 4_000)}`,
+      risk: 'dangerous',
+      signal: context.signal,
+      rememberConversationApproval: false,
+    })
+    if (authorization.decision === 'deny') throw new Error('ubuntu_user_denied')
+    if (method === 'linux.startJob') {
+      return (await executeAgentAction({
+        featureId: 'plugins', principal, toolId: 'plugin.ubuntu.exec', backend: 'sandbox',
+        parameters: args, taskId, ...checkpoint, abortSignal: context.signal,
+        approvalDecision: authorization.decision, sideEffect: true,
+        deadline: Date.now() + (args.timeoutMs ?? 86_400_000) + 10_000,
+        isSuccess: (value) => value.accepted,
+        resultToJson: (value) => ({ jobId: value.jobId }),
+        execute: () => yachiyoSandboxNative.startUbuntuPluginJob({
+          pluginId: 'ubuntu-runtime',
+          command: args.command,
+          timeout: args.timeoutMs ?? 86_400_000,
+        }),
+      })) as unknown as JsonValue
+    }
+    let jobId = ''
+    const result = await executeAgentAction({
+      featureId: 'plugins', principal, toolId: 'plugin.ubuntu.exec', backend: 'sandbox',
+      parameters: args, taskId, ...checkpoint, abortSignal: context.signal,
+      approvalDecision: authorization.decision, sideEffect: true,
+      deadline: Date.now() + (args.timeoutMs ?? 30_000) + 10_000,
+      isSuccess: (value) => value.exitCode === 0,
+      resultToJson: (value) => ({ exitCode: value.exitCode }),
+      onAbort: async () => { if (jobId) await yachiyoSandboxNative.stopJob({ jobId }).catch(() => undefined) },
+      execute: async () => {
+        const started = await yachiyoSandboxNative.startUbuntuPluginJob({
+          pluginId: 'ubuntu-runtime',
+          command: args.command,
+          timeout: args.timeoutMs ?? 30_000,
+        })
+        jobId = started.jobId
+        return waitForPluginSandboxJob(started.jobId, context.signal)
+      },
+    })
+    return {
+      stdout: boundedHostText(result.stdout),
+      stderr: boundedHostText(result.stderr),
+      exitCode: result.exitCode,
+    }
+  }
+  throw new Error('method_not_found')
 }
 
 async function executePluginDeviceHostCall(
@@ -974,6 +1170,26 @@ function buildHostApi(record: InstalledPluginRecord) {
       executePluginSandboxHostCall(record, 'sandbox.readFile', args, context),
     'sandbox.writeFile': (args: JsonValue, context: PluginHostCallContext) =>
       executePluginSandboxHostCall(record, 'sandbox.writeFile', args, context),
+    'linux.status': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.status', args, context),
+    'linux.install': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.install', args, context),
+    'linux.remove': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.remove', args, context),
+    'linux.exec': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.exec', args, context),
+    'linux.startJob': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.startJob', args, context),
+    'linux.jobStatus': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.jobStatus', args, context),
+    'linux.jobOutput': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.jobOutput', args, context),
+    'linux.stopJob': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.stopJob', args, context),
+    'linux.readFile': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.readFile', args, context),
+    'linux.writeFile': (args: JsonValue, context: PluginHostCallContext) =>
+      executePluginLinuxHostCall(record, 'linux.writeFile', args, context),
     'device.observe': (args: JsonValue, context: PluginHostCallContext) =>
       executePluginDeviceHostCall(record, 'device.observe', args, context),
     'device.find': (args: JsonValue, context: PluginHostCallContext) =>

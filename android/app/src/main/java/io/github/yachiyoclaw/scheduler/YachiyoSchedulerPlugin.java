@@ -41,7 +41,7 @@ public final class YachiyoSchedulerPlugin extends Plugin {
                 }
                 result.put("schemaVersion", SchedulerState.SCHEMA_VERSION);
                 result.put("schedules", schedules);
-                result.put("headlessExecution", false);
+                result.put("headlessExecution", true);
                 result.put("pendingState", SchedulerState.AWAITING_FOREGROUND);
                 call.resolve(result);
             } catch (Exception error) {
@@ -74,6 +74,7 @@ public final class YachiyoSchedulerPlugin extends Plugin {
                     exact,
                     requiresNetwork,
                     timezone,
+                    data.optJSONObject("runtime"),
                     System.currentTimeMillis()
                 );
                 resolveSnapshot(call, snapshot);
@@ -222,7 +223,7 @@ public final class YachiyoSchedulerPlugin extends Plugin {
                 JSObject result = new JSObject();
                 result.put("acknowledged", true);
                 result.put("status", status);
-                result.put("headlessExecution", false);
+                result.put("headlessExecution", true);
                 if (next != null) result.put("next", snapshotJson(next));
                 call.resolve(result);
             } catch (Exception error) {
@@ -255,6 +256,7 @@ public final class YachiyoSchedulerPlugin extends Plugin {
                         false,
                         false,
                         "UTC",
+                        null,
                         System.currentTimeMillis()
                     );
                     imported++;
@@ -276,10 +278,10 @@ public final class YachiyoSchedulerPlugin extends Plugin {
         result.put("schemaVersion", SchedulerState.SCHEMA_VERSION);
         result.put("workManager", true);
         result.put("roomStore", true);
-        result.put("executionMode", "foreground-required");
+        result.put("executionMode", "headless-with-foreground-handoff");
         result.put("wakeMode", "workmanager-foreground-service");
-        result.put("headlessExecution", false);
-        result.put("backgroundAgentRuntime", false);
+        result.put("headlessExecution", true);
+        result.put("backgroundAgentRuntime", true);
         result.put("foregroundDrain", true);
         result.put("durableForegroundHandoff", true);
         result.put("bootRecovery", true);
@@ -332,4 +334,3 @@ public final class YachiyoSchedulerPlugin extends Plugin {
         call.reject(message, "SCHEDULER_" + operation.toUpperCase() + "_FAILED");
     }
 }
-

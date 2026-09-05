@@ -90,20 +90,15 @@ public final class GenericDownloadWorker extends Worker {
             DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", existing, total, 0, null);
             setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), id, title, existing, total));
             URL initial = requirePublicHttps(request.getString("url"));
-            DownloadTransfer.download(
-                target,
-                total,
-                digest,
-                YachiyoDownloadSettingsPlugin.threads(getApplicationContext()),
-                YachiyoDownloadSettingsPlugin.retryCount(getApplicationContext()),
-                (start, end) -> open(getApplicationContext(), initial, "GET", start, end),
-                (bytes, expected, speed) -> {
-                    DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", bytes, expected, speed, null);
-                    DownloadNotifications.show(getApplicationContext(), id, title, bytes, expected, speed);
-                    setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), id, title, bytes, expected, speed));
-                },
-                () -> isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), id)
-            );
+            try {
+                transfer(id, kind, title, target, total, digest, initial);
+            } catch (Exception primaryError) {
+                String fallback = request.optString("fallbackUrl", "");
+                if (fallback.isBlank() || isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), id)) throw primaryError;
+                DownloadTransfer.discard(target);
+                DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", 0, total, 0, null);
+                transfer(id, kind, title, target, total, digest, requirePublicHttps(fallback));
+            }
             DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "completed", total, total, 0, null);
             DownloadNotifications.complete(getApplicationContext(), id, title);
             return Result.success();
@@ -123,6 +118,24 @@ public final class GenericDownloadWorker extends Worker {
             else DownloadNotifications.cancel(getApplicationContext(), id);
             return "failed".equals(status) ? Result.failure() : Result.success();
         }
+    }
+
+    private void transfer(String id, String kind, String title, File target, long total, String digest, URL source)
+        throws Exception {
+        DownloadTransfer.download(
+            target,
+            total,
+            digest,
+            YachiyoDownloadSettingsPlugin.threads(getApplicationContext()),
+            YachiyoDownloadSettingsPlugin.retryCount(getApplicationContext()),
+            (start, end) -> open(getApplicationContext(), source, "GET", start, end),
+            (bytes, expected, speed) -> {
+                DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", bytes, expected, speed, null);
+                DownloadNotifications.show(getApplicationContext(), id, title, bytes, expected, speed);
+                setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), id, title, bytes, expected, speed));
+            },
+            () -> isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), id)
+        );
     }
 
     /**

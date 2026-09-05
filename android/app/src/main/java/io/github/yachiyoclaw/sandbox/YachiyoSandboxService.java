@@ -31,6 +31,7 @@ public final class YachiyoSandboxService extends Service {
 
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Map<String, Process> active = new ConcurrentHashMap<>();
+    private final Set<String> launching = ConcurrentHashMap.newKeySet();
     private SandboxJobStore store;
 
     @Override public void onCreate() {
@@ -39,6 +40,7 @@ public final class YachiyoSandboxService extends Service {
         createChannel();
         startForeground(NOTIFICATION_ID, notification("Linux 沙箱后台任务正在运行"));
         try { store.reconcile(System.currentTimeMillis()); } catch (Exception ignored) {}
+        executor.execute(this::recoverQueuedJobs);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -46,7 +48,7 @@ public final class YachiyoSandboxService extends Service {
         String id = intent.getStringExtra(EXTRA_JOB_ID);
         if (id == null || !id.matches("[A-Za-z0-9_-]{8,80}")) return START_STICKY;
         if (ACTION_STOP.equals(intent.getAction())) stopJob(id);
-        else if (ACTION_START.equals(intent.getAction())) executor.execute(() -> runJob(id));
+        else if (ACTION_START.equals(intent.getAction())) scheduleJob(id);
         return START_STICKY;
     }
 
@@ -73,25 +75,38 @@ public final class YachiyoSandboxService extends Service {
             SandboxJobStore.Job job = store.get(id);
             if (job == null || !SandboxJobStore.STATE_QUEUED.equals(job.state)) return;
             File workspace = validateWorkspace(job.workspace);
-            SandboxDistribution.Spec distribution = SandboxDistribution.current(getApplicationInfo().nativeLibraryDir);
-            if (distribution == null) throw new IllegalStateException("sandbox_abi_unsupported");
-            AlpineSandboxInstaller installer = new AlpineSandboxInstaller(this, distribution);
-            if (!installer.isInstalled() || !new File(installer.rootfsDirectory(), ".yachiyo-toolchain-v1").isFile()) {
-                throw new IllegalStateException("sandbox_not_ready");
-            }
-            ProcessBuilder builder = SandboxProcessFactory.create(this, installer.rootfsDirectory(), installer.runtimeDirectory(), workspace, store.decryptCommand(job));
+            RuntimeFiles runtime = resolveRuntime(job.runtimeId);
+            ProcessBuilder builder = SandboxProcessFactory.create(
+                this,
+                runtime.rootfs,
+                runtime.runtimeDirectory,
+                workspace,
+                store.decryptCommand(job),
+                runtime.config
+            );
             builder.redirectOutput(ProcessBuilder.Redirect.appendTo(store.stdout(id)));
             builder.redirectError(ProcessBuilder.Redirect.appendTo(store.stderr(id)));
             Process process = builder.start();
             active.put(id, process);
             long pid = processId(process);
+            SandboxJobStore.Job latestBeforeRun = store.get(id);
+            if (latestBeforeRun == null || !SandboxJobStore.STATE_QUEUED.equals(latestBeforeRun.state)) {
+                killTree(pid, ConcurrentHashMap.newKeySet());
+                process.destroyForcibly();
+                return;
+            }
             store.update(id, SandboxJobStore.STATE_RUNNING, pid, null, System.currentTimeMillis());
             boolean completed = false;
             boolean outputLimitExceeded = false;
+            boolean processDisappeared = false;
             long deadline = System.currentTimeMillis() + job.timeoutMs;
             while (System.currentTimeMillis() < deadline) {
                 if (process.waitFor(Math.min(500L, Math.max(1L, deadline - System.currentTimeMillis())), TimeUnit.MILLISECONDS)) {
                     completed = true;
+                    break;
+                }
+                if (!process.isAlive() || (pid > 0L && !isPidAlive(pid))) {
+                    processDisappeared = true;
                     break;
                 }
                 if (store.outputBytes(id) > SandboxJobStore.MAX_OUTPUT_BYTES_PER_STREAM * 2L) {
@@ -104,8 +119,9 @@ public final class YachiyoSandboxService extends Service {
                 process.destroy();
                 process.destroyForcibly();
             }
-            int exitCode = completed ? process.exitValue() : outputLimitExceeded ? 125 : 124;
+            int exitCode = completed ? process.exitValue() : outputLimitExceeded ? 125 : processDisappeared ? 126 : 124;
             if (outputLimitExceeded) appendError(id, "sandbox_output_limit_exceeded");
+            if (processDisappeared) appendError(id, "sandbox_process_disappeared");
             SandboxJobStore.Job latest = store.get(id);
             if (latest != null && SandboxJobStore.STATE_CANCELLED.equals(latest.state)) return;
             store.update(id, exitCode == 0 ? SandboxJobStore.STATE_SUCCEEDED : SandboxJobStore.STATE_FAILED, pid, exitCode, System.currentTimeMillis());
@@ -114,8 +130,48 @@ public final class YachiyoSandboxService extends Service {
             try { store.update(id, SandboxJobStore.STATE_FAILED, 0L, 1, System.currentTimeMillis()); } catch (Exception ignored) {}
         } finally {
             active.remove(id);
+            launching.remove(id);
             stopIfIdle();
         }
+    }
+
+    private void recoverQueuedJobs() {
+        try {
+            for (SandboxJobStore.Job job : store.list()) {
+                if (SandboxJobStore.STATE_QUEUED.equals(job.state)) scheduleJob(job.id);
+            }
+        } catch (Exception ignored) {
+            // A later explicit START can retry registry access.
+        } finally {
+            stopIfIdle();
+        }
+    }
+
+    private void scheduleJob(String id) {
+        if (!launching.add(id)) return;
+        try {
+            executor.execute(() -> runJob(id));
+        } catch (java.util.concurrent.RejectedExecutionException error) {
+            launching.remove(id);
+            stopIfIdle();
+        }
+    }
+
+    private RuntimeFiles resolveRuntime(String runtimeId) throws Exception {
+        if (UbuntuDistribution.RUNTIME_ID.equals(runtimeId)) {
+            UbuntuDistribution.Spec distribution = UbuntuDistribution.current(getApplicationInfo().nativeLibraryDir);
+            if (distribution == null) throw new IllegalStateException("ubuntu_abi_unsupported");
+            UbuntuDistributionInstaller installer = new UbuntuDistributionInstaller(this, distribution);
+            if (!installer.isInstalled()) throw new IllegalStateException("ubuntu_not_installed");
+            return new RuntimeFiles(installer.rootfsDirectory(), installer.runtimeDirectory(), SandboxProcessFactory.RuntimeConfig.ubuntu());
+        }
+        SandboxDistribution.Spec distribution = SandboxDistribution.current(getApplicationInfo().nativeLibraryDir);
+        if (distribution == null) throw new IllegalStateException("sandbox_abi_unsupported");
+        AlpineSandboxInstaller installer = new AlpineSandboxInstaller(this, distribution);
+        if (!installer.isInstalled() || !new File(installer.rootfsDirectory(), ".yachiyo-toolchain-v1").isFile()) {
+            throw new IllegalStateException("sandbox_not_ready");
+        }
+        return new RuntimeFiles(installer.rootfsDirectory(), installer.runtimeDirectory(), SandboxProcessFactory.RuntimeConfig.alpine());
     }
 
     private void stopJob(String id) {
@@ -139,7 +195,7 @@ public final class YachiyoSandboxService extends Service {
     }
 
     private void stopIfIdle() {
-        if (active.isEmpty()) stopSelf();
+        if (active.isEmpty() && launching.isEmpty()) stopSelf();
     }
 
     private void appendError(String id, String message) {
@@ -172,6 +228,10 @@ public final class YachiyoSandboxService extends Service {
         }
     }
 
+    private static boolean isPidAlive(long pid) {
+        return pid > 0L && new File("/proc/" + pid).isDirectory();
+    }
+
     private void createChannel() {
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Linux 沙箱任务", NotificationManager.IMPORTANCE_LOW);
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
@@ -187,4 +247,6 @@ public final class YachiyoSandboxService extends Service {
             .setContentIntent(pendingIntent)
             .build();
     }
+
+    private record RuntimeFiles(File rootfs, File runtimeDirectory, SandboxProcessFactory.RuntimeConfig config) {}
 }

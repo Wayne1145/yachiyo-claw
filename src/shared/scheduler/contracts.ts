@@ -2,6 +2,20 @@ export const SCHEDULER_SCHEMA_VERSION = 1 as const
 
 export type ScheduleRepeat = 'once' | 'daily' | 'weekly'
 
+export interface HeadlessRuntimeSnapshot {
+  version: 1
+  protocol: 'openai-chat-completions'
+  apiHost: string
+  apiKey: string
+  model: string
+  systemPrompt: string
+  reasoningStrength?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'max'
+  workspaceId: string
+  internalTools: boolean
+  maxSteps: number
+  timeoutMs: number
+}
+
 export type ScheduleStatus =
   | 'scheduled'
   | 'claimed'
@@ -24,9 +38,11 @@ export interface ScheduleSpec {
   exact?: boolean
   requiresNetwork?: boolean
   timezone?: string
+  /** Encrypted by the Android scheduler before this method returns. */
+  runtime?: HeadlessRuntimeSnapshot
 }
 
-export interface ScheduleRecord extends Omit<Required<ScheduleSpec>, 'id'> {
+export interface ScheduleRecord extends Omit<Required<ScheduleSpec>, 'id' | 'runtime'> {
   id: string
   schemaVersion: typeof SCHEDULER_SCHEMA_VERSION
   status: ScheduleStatus
@@ -34,6 +50,8 @@ export interface ScheduleRecord extends Omit<Required<ScheduleSpec>, 'id'> {
   currentExecutionId: string
   createdAt: number
   updatedAt: number
+  lastResult?: string
+  lastError?: string
 }
 
 export interface ScheduleExecution {
@@ -100,7 +118,7 @@ export interface AuditRecord {
 export interface SchedulerListResult {
   schemaVersion: typeof SCHEDULER_SCHEMA_VERSION
   schedules: ScheduleRecord[]
-  headlessExecution: false
+  headlessExecution: boolean
   pendingState: 'awaiting-foreground'
 }
 
@@ -108,10 +126,10 @@ export interface SchedulerCapabilities {
   schemaVersion: typeof SCHEDULER_SCHEMA_VERSION
   workManager: true
   roomStore: true
-  executionMode: 'foreground-required'
+  executionMode: 'headless-with-foreground-handoff'
   wakeMode: 'workmanager-foreground-service'
-  headlessExecution: false
-  backgroundAgentRuntime: false
+  headlessExecution: true
+  backgroundAgentRuntime: true
   foregroundDrain: true
   durableForegroundHandoff: true
   bootRecovery: true
@@ -152,7 +170,9 @@ export function isScheduleRepeat(value: unknown): value is ScheduleRepeat {
   return typeof value === 'string' && REPEATS.includes(value as ScheduleRepeat)
 }
 
-export function normalizeScheduleSpec(input: ScheduleSpec): Required<ScheduleSpec> {
+export function normalizeScheduleSpec(
+  input: ScheduleSpec,
+): Required<Omit<ScheduleSpec, 'runtime'>> & Pick<ScheduleSpec, 'runtime'> {
   const title = input.title.trim()
   const prompt = input.prompt.trim()
   if (!prompt) throw new Error('task_prompt_required')
@@ -168,6 +188,7 @@ export function normalizeScheduleSpec(input: ScheduleSpec): Required<ScheduleSpe
     exact: input.exact ?? false,
     requiresNetwork: input.requiresNetwork ?? false,
     timezone: input.timezone?.trim() || 'UTC',
+    runtime: input.runtime,
   }
 }
 

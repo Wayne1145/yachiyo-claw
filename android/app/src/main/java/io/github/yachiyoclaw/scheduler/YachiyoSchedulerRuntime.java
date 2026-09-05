@@ -50,6 +50,7 @@ public final class YachiyoSchedulerRuntime {
         boolean exact,
         boolean requiresNetwork,
         String timezone,
+        JSONObject headlessRuntime,
         long now
     ) throws Exception {
         ScheduleSnapshot snapshot = store.upsert(
@@ -62,6 +63,7 @@ public final class YachiyoSchedulerRuntime {
             exact,
             requiresNetwork,
             timezone,
+            headlessRuntime,
             now
         );
         if (enabled) enqueue(snapshot, ExistingWorkPolicy.REPLACE, now);
@@ -103,9 +105,9 @@ public final class YachiyoSchedulerRuntime {
         result.put("schemaVersion", SchedulerState.SCHEMA_VERSION);
         result.put("recoveredLeases", recoveredLeases);
         result.put("enqueued", enqueued);
-        result.put("headlessExecution", false);
+        result.put("headlessExecution", true);
         result.put("pendingState", SchedulerState.AWAITING_FOREGROUND);
-        result.put("executionMode", "foreground-required");
+        result.put("executionMode", "headless-with-foreground-handoff");
         return result;
     }
 
@@ -157,6 +159,21 @@ public final class YachiyoSchedulerRuntime {
         return next;
     }
 
+    public void completeHeadless(
+        String scheduleId,
+        String executionId,
+        JSONObject checkpoint,
+        JSONObject result,
+        long now
+    ) throws Exception {
+        ScheduleSnapshot next = store.acknowledge(
+            null, null, scheduleId, executionId, SchedulerState.SUCCEEDED, "",
+            checkpoint == null ? "{}" : checkpoint.toString(),
+            result == null ? "{}" : result.toString(), now
+        );
+        if (next != null) enqueue(next, ExistingWorkPolicy.REPLACE, now);
+    }
+
     public void enqueue(ScheduleSnapshot snapshot, ExistingWorkPolicy policy, long now) {
         long delay = Math.max(0L, snapshot.schedule.nextRunAt - now);
         Constraints constraints = new Constraints.Builder()
@@ -187,4 +204,3 @@ public final class YachiyoSchedulerRuntime {
         return UNIQUE_WORK_PREFIX + scheduleId;
     }
 }
-

@@ -88,6 +88,7 @@ $env:ANDROID_USER_HOME = Join-Path $cacheRoot 'android-user'
 $env:TEMP = Join-Path $cacheRoot 'tmp'
 $env:TMP = $env:TEMP
 $env:JAVA_HOME = $workspaceJdk
+$env:LOCALAPPDATA = Join-Path $cacheRoot 'local-app-data'
 
 @(
   $toolsRoot,
@@ -99,6 +100,7 @@ $env:JAVA_HOME = $workspaceJdk
   $env:GRADLE_USER_HOME,
   $env:ANDROID_USER_HOME,
   $env:TEMP,
+  $env:LOCALAPPDATA,
   $androidSdk
 ) | ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
 

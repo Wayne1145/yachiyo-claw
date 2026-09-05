@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "ubuntu-runtime",
+  "version": "1.0.0",
+  "displayName": "Ubuntu 24.04 开发环境",
+  "description": "为 Yachiyo Claw Agent 提供完整 Ubuntu 24.04、Python、Node.js、Git 与原生构建工具。",
+  "author": { "name": "NewDreamStudio", "url": "https://github.com/Wayne1145/yachiyo-claw" },
+  "license": "GPL-3.0-only",
+  "minAppVersion": "0.0.19",
+  "mode": "script-enabled",
+  "entry": "main.js",
+  "capabilities": [
+    { "name": "ui", "reason": "显示 Ubuntu 下载、安装、运行状态与环境管理操作。" },
+    { "name": "tools", "reason": "向 Agent 提供 Ubuntu 命令、文件和后台任务工具。" },
+    { "name": "linux-runtime", "reason": "管理由宿主校验和隔离的官方 Ubuntu 24.04 根文件系统。" }
+  ],
+  "contributions": {
+    "view": "ui/main.json",
+    "settingsEntries": [
+      {
+        "group": "capability",
+        "label": "Ubuntu 24.04",
+        "detail": "完整 Linux 开发环境",
+        "route": "/plugin/ubuntu-runtime",
+        "order": 120
+      }
+    ],
+    "tools": [
+      {
+        "name": "ubuntu-runtime_status",
+        "description": "检查 Ubuntu 24.04 开发环境是否已安装并可用。执行 apt、deb、glibc、复杂 Python/Node 或原生构建任务前先调用。",
+        "parameters": { "type": "object", "properties": {}, "additionalProperties": false },
+        "riskLevel": "read"
+      },
+      {
+        "name": "ubuntu-runtime_exec",
+        "description": "在 Ubuntu 24.04 插件私有工作区执行一个有界命令并等待结果。每次显式传入 cwd 或在单条命令中 cd。",
+        "parameters": { "type": "object", "properties": { "command": { "type": "string" }, "timeoutMs": { "type": "number" } }, "required": ["command"], "additionalProperties": false },
+        "riskLevel": "act"
+      },
+      {
+        "name": "ubuntu-runtime_start_job",
+        "description": "在 Ubuntu 24.04 中启动长时间后台任务，返回 jobId；随后使用 job_status 和 job_output 跟踪。",
+        "parameters": { "type": "object", "properties": { "command": { "type": "string" }, "timeoutMs": { "type": "number" } }, "required": ["command"], "additionalProperties": false },
+        "riskLevel": "act"
+      },
+      {
+        "name": "ubuntu-runtime_job_status",
+        "description": "查询 Ubuntu 后台任务状态。",
+        "parameters": { "type": "object", "properties": { "jobId": { "type": "string" } }, "required": ["jobId"], "additionalProperties": false },
+        "riskLevel": "read"
+      },
+      {
+        "name": "ubuntu-runtime_job_output",
+        "description": "增量读取 Ubuntu 后台任务的标准输出和错误输出。",
+        "parameters": { "type": "object", "properties": { "jobId": { "type": "string" }, "stdoutOffset": { "type": "number" }, "stderrOffset": { "type": "number" } }, "required": ["jobId"], "additionalProperties": false },
+        "riskLevel": "read"
+      },
+      {
+        "name": "ubuntu-runtime_stop_job",
+        "description": "停止指定 Ubuntu 后台任务。",
+        "parameters": { "type": "object", "properties": { "jobId": { "type": "string" } }, "required": ["jobId"], "additionalProperties": false },
+        "riskLevel": "act"
+      },
+      {
+        "name": "ubuntu-runtime_read_file",
+        "description": "读取 Ubuntu 插件工作区中的 UTF-8 文本文件。路径相对于工作区。",
+        "parameters": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false },
+        "riskLevel": "read"
+      },
+      {
+        "name": "ubuntu-runtime_write_file",
+        "description": "写入 Ubuntu 插件工作区中的 UTF-8 文本文件。路径相对于工作区。",
+        "parameters": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"], "additionalProperties": false },
+        "riskLevel": "act"
+      }
+    ]
+  }
+}
