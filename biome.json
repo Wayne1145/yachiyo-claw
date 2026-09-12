@@ -6,7 +6,17 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!.tools/**",
+      "!.cache/**",
+      "!.research/**",
+      "!.models/**",
+      "!android/**",
+      "!dist/**",
+      "!node_modules/**"
+    ]
   },
   "formatter": {
     "enabled": true,
