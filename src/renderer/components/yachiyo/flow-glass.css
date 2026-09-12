@@ -1290,14 +1290,14 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='fu
 }
 
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='full'] .yachiyo-chat-composer-surface {
-  backdrop-filter: url('#yachiyo-flow-composer-refraction') blur(28px) saturate(1.48);
-  -webkit-backdrop-filter: url('#yachiyo-flow-composer-refraction') blur(28px) saturate(1.48);
+  backdrop-filter: url('#yachiyo-flow-composer-refraction') blur(18px) saturate(1.38);
+  -webkit-backdrop-filter: url('#yachiyo-flow-composer-refraction') blur(18px) saturate(1.38);
 }
 
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='full']
   :is(.mantine-Menu-dropdown, .mantine-Popover-dropdown, .mantine-Combobox-dropdown) {
-  backdrop-filter: url('#yachiyo-flow-popover-refraction') blur(32px) saturate(1.42);
-  -webkit-backdrop-filter: url('#yachiyo-flow-popover-refraction') blur(32px) saturate(1.42);
+  backdrop-filter: url('#yachiyo-flow-popover-refraction') blur(20px) saturate(1.36);
+  -webkit-backdrop-filter: url('#yachiyo-flow-popover-refraction') blur(20px) saturate(1.36);
 }
 
 /* Balanced retains stable blur; reduced keeps translucent layering without expensive blur. */
@@ -1411,6 +1411,15 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   filter: none !important;
   transform: none !important;
   will-change: auto;
+}
+
+/* Even a reduced glass surface must not ask WebView to blur a full-screen
+   bitmap. Custom environments remain visible, but their expensive image
+   filter is disabled until the user explicitly chooses a higher quality. */
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced']
+  .yachiyo-flow-environment-image {
+  filter: none !important;
+  transform: none !important;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {

@@ -269,6 +269,25 @@ describe('Flow Glass visual contracts', () => {
       /\[data-yachiyo-liquid-glass-quality=['"]reduced['"]\]\s*\.yachiyo-bottom-nav-lens-inner\s*\{[^}]*background:\s*var\(--flow-control-fill\) !important;/s
     )
     expect(reducedStyles).not.toMatch(/url\(["']#yachiyo-flow-/)
+    expect(reducedStyles).toMatch(
+      /\.yachiyo-flow-environment-image\s*\{[^}]*filter:\s*none !important;[^}]*transform:\s*none !important;/s
+    )
+  })
+
+  it('keeps portrait and landscape layouts within the safe-area chrome contract', () => {
+    const landscapeStart = flowStyles.indexOf('@media (orientation: landscape)')
+    const landscapeStyles = flowStyles.slice(landscapeStart)
+    expect(landscapeStart).toBeGreaterThanOrEqual(0)
+    expect(landscapeStyles).toContain('.yachiyo-bottom-nav')
+    expect(landscapeStyles).toContain('right: max(0px, var(--mobile-safe-area-inset-right, 0px))')
+    expect(landscapeStyles).toContain('left: max(0px, var(--mobile-safe-area-inset-left, 0px))')
+    // The tall portrait target (1440×3200) uses the same absolute content
+    // contract; this prevents the fixed chrome from participating in layout
+    // regardless of viewport height.
+    expect(flowStyles).toMatch(
+      /\.yachiyo-mobile-content\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0;[^}]*left:\s*0;/s
+    )
+    expect(flowStyles).toMatch(/@media \(orientation: landscape\) and \(max-height: 540px\)/)
   })
 
   it('lets transparency, contrast, and forced-color preferences override full-quality refraction', () => {
