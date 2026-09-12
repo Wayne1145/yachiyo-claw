@@ -27,7 +27,7 @@
   display: grid;
   place-items: center;
   border: 2px solid var(--yachiyo-surface, #fff);
-  border-radius: 6px;
+  border-radius: var(--yachiyo-r-xs);
   color: #fff;
   background: var(--yachiyo-accent, #d8648e);
   font-size: 9px;
@@ -52,7 +52,7 @@
   min-height: 240px;
   overflow: hidden;
   border: 1px solid var(--yachiyo-border, #dde3e6);
-  border-radius: 18px;
+  border-radius: var(--yachiyo-r-surface);
   background: var(--yachiyo-surface, rgba(255, 255, 255, 0.9));
 }
 .local-model-row {
@@ -83,7 +83,7 @@
 .local-model-source-mark {
   width: 48px;
   height: 48px;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   display: grid;
   place-items: center;
   color: var(--yachiyo-text, #202124);
@@ -135,7 +135,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border: 1px solid var(--yachiyo-border, #dde3e6);
-  border-radius: 16px;
+  border-radius: var(--yachiyo-r-control);
   overflow: hidden;
   background: var(--yachiyo-surface, #fff);
 }
@@ -162,7 +162,7 @@
 .local-model-download-state {
   padding: 18px;
   border: 1px solid var(--yachiyo-border, #dde3e6);
-  border-radius: 16px;
+  border-radius: var(--yachiyo-r-control);
   background: var(--yachiyo-surface, rgba(255, 255, 255, 0.92));
 }
 .local-model-compatibility[data-status='supported'] {
@@ -221,7 +221,7 @@
   align-content: center;
   gap: 8px;
   border: 1px dashed var(--yachiyo-border, #ccd6da);
-  border-radius: 16px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--yachiyo-text-muted, #7b878d);
   text-align: center;
   background: var(--yachiyo-surface, rgba(255, 255, 255, 0.6));
@@ -240,7 +240,7 @@
   display: grid;
   gap: 12px;
   border: 1px solid var(--yachiyo-border, #dde3e6);
-  border-radius: 16px;
+  border-radius: var(--yachiyo-r-control);
   background: var(--yachiyo-surface, rgba(255, 255, 255, 0.94));
 }
 .local-model-installed-heading {
@@ -274,7 +274,7 @@
   display: grid;
   gap: 6px;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--yachiyo-r-sm);
   background: color-mix(in srgb, var(--mantine-color-pink-1) 48%, transparent);
 }
 .local-model-acceleration {
@@ -307,9 +307,49 @@
   overflow-wrap: anywhere;
   font-size: 13px;
 }
+.local-model-acceleration-metrics strong[data-backend='npu'],
+.local-model-available-backends strong[data-backend='npu'] {
+  color: #7048a8;
+}
+.local-model-acceleration-metrics strong[data-backend='gpu'],
+.local-model-available-backends strong[data-backend='gpu'] {
+  color: #1971c2;
+}
+.local-model-acceleration-metrics strong[data-backend='cpu'],
+.local-model-available-backends strong[data-backend='cpu'] {
+  color: #5c6770;
+}
+.local-model-acceleration-metrics strong[data-thermal='severe'] {
+  color: #e03131;
+}
+.local-model-acceleration-metrics strong[data-thermal='elevated'] {
+  color: #e8590c;
+}
+.local-model-available-backends {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+.local-model-available-backends small {
+  color: var(--yachiyo-text-muted, #758187);
+}
+.local-model-available-backends > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.local-model-available-backends strong {
+  padding: 1px 8px;
+  border-radius: var(--yachiyo-r-pill);
+  background: var(--yachiyo-surface-muted, #f2f4f5);
+  font-size: 11px;
+  font-weight: 800;
+}
 .local-model-installed-meta span {
   padding: 4px 9px;
-  border-radius: 8px;
+  border-radius: var(--yachiyo-r-sm);
   color: var(--yachiyo-text-muted, #626d73);
   background: var(--yachiyo-surface-muted, #f2f4f5);
   font-size: 12px;
@@ -320,7 +360,7 @@
   display: grid;
   gap: 11px;
   border: 1px solid var(--yachiyo-border, #dde3e6);
-  border-radius: 16px;
+  border-radius: var(--yachiyo-r-control);
   background: var(--yachiyo-surface, rgba(255, 255, 255, 0.94));
 }
 .local-model-queue-row[data-status='downloading'] {
@@ -367,7 +407,7 @@
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   background: var(--yachiyo-surface-muted, rgba(242, 244, 245, 0.88));
 }
 .yachiyo-download-part {

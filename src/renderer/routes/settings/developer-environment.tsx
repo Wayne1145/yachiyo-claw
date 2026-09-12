@@ -288,7 +288,7 @@ function DeveloperEnvironmentPage() {
             {jobs.slice(0, 12).map((job) => {
               const active = job.state === 'queued' || job.state === 'running'
               return (
-                <Box key={job.id} p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}>
+                <Box key={job.id} p="sm" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 'var(--yachiyo-r-sm)' }}>
                   <Flex justify="space-between" align="center" gap="sm">
                     <div style={{ minWidth: 0 }}>
                       <Text size="sm" fw={600} truncate>{job.id}</Text>

@@ -122,6 +122,7 @@ html[data-theme="dark"] {
   border: 2px solid #1976d2;
   border-bottom-color: transparent;
   border-radius: 50%;
+  corner-shape: round;
   display: inline-block;
   box-sizing: border-box;
   animation: loadingrotation 0.4s linear infinite;

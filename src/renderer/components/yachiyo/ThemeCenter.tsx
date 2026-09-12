@@ -32,7 +32,7 @@ import type { TFunction } from 'i18next'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { router } from '@/router'
-import { BUILT_IN_LIQUID_GLASS_THEME_ID, useThemeStore } from '@/stores/themeStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
@@ -275,36 +275,6 @@ export function ThemeCenter() {
         <Text className="yachiyo-section-label">{t('主题库')}</Text>
         <div className="yachiyo-theme-grid">
           <article className="yachiyo-theme-card" data-active={activeThemeId === null ? 'true' : 'false'}>
-            <div className="yachiyo-theme-card-preview yachiyo-theme-card-preview-default">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="yachiyo-theme-card-heading">
-              <div>
-                <Text fw={650}>{t('Yachiyo 浅粉')}</Text>
-                <Text size="xs" c="dimmed">
-                  {t('内置 · 浅色')}
-                </Text>
-              </div>
-              {activeThemeId === null && !previewingTheme && (
-                <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
-                  {t('使用中')}
-                </Badge>
-              )}
-            </div>
-            {activeThemeId !== null && (
-              <Button size="compact-sm" variant="default" onClick={() => setActive(null)}>
-                {t('恢复默认')}
-              </Button>
-            )}
-          </article>
-
-          <article
-            className="yachiyo-theme-card"
-            data-active={activeThemeId === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'true' : 'false'}
-          >
             <div className="yachiyo-theme-card-preview yachiyo-theme-card-preview-liquid">
               <span />
               <span />
@@ -318,15 +288,15 @@ export function ThemeCenter() {
                   {t('内置 · Apple 式连续圆角、共享透镜与分层玻璃材质')}
                 </Text>
               </div>
-              {activeThemeId === BUILT_IN_LIQUID_GLASS_THEME_ID && !previewingTheme && (
+              {activeThemeId === null && !previewingTheme && (
                 <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
                   {t('使用中')}
                 </Badge>
               )}
             </div>
-            {activeThemeId !== BUILT_IN_LIQUID_GLASS_THEME_ID && (
-              <Button size="compact-sm" onClick={() => setActive(BUILT_IN_LIQUID_GLASS_THEME_ID)}>
-                {t('使用')}
+            {activeThemeId !== null && (
+              <Button size="compact-sm" variant="default" onClick={() => setActive(null)}>
+                {t('恢复默认')}
               </Button>
             )}
           </article>
@@ -489,7 +459,7 @@ export function ThemeCenter() {
           <Text size="sm">{t('确定删除主题“{{name}}”？此操作无法撤销。', { name: removeTarget?.name ?? '' })}</Text>
           {removeTarget && activeThemeId === removeTarget.id && (
             <Text size="xs" c="dimmed">
-              {t('当前正在使用此主题，删除后将恢复 Yachiyo 浅粉主题。')}
+              {t('当前正在使用此主题，删除后将恢复内置的 Yachiyo 流光玻璃主题。')}
             </Text>
           )}
           <Group justify="flex-end" gap="xs">

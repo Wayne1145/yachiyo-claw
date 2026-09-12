@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { parseThemeManifest, resolveThemeVariables, ThemeManifestError, type ThemeManifest } from '@shared/themes/theme'
-import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { uiStore } from './uiStore'
 
 /**
@@ -13,7 +12,7 @@ import { uiStore } from './uiStore'
 
 const STORAGE_INSTALLED = 'yachiyo:themes:installed:v1'
 const STORAGE_ACTIVE = 'yachiyo:themes:active:v1'
-const STORAGE_ANDROID_FLOW_GLASS_MIGRATION = 'yachiyo:appearance:flow-glass:migration:v2'
+/** Kept so persisted selections from the two-built-in era resolve back to the default (`null`). */
 export const BUILT_IN_LIQUID_GLASS_THEME_ID = 'yachiyo-liquid-glass'
 
 export const BUILT_IN_LIQUID_GLASS_THEME: ThemeManifest = parseThemeManifest({
@@ -88,25 +87,6 @@ function isBuiltInThemeId(id: string | null | undefined): id is typeof BUILT_IN_
   return id === BUILT_IN_LIQUID_GLASS_THEME_ID
 }
 
-// Android's built-in palette is the base layer. Third-party themes override only the tokens they
-// declare, so a small accent-only theme never falls back to Chatbox's blue defaults.
-const BUILT_IN_ANDROID_BRAND_VARIABLES: Record<string, string> = {
-  '--chatbox-tint-brand': '#d87597',
-  '--chatbox-border-brand': '#e68eaa',
-  '--chatbox-background-brand-primary': '#e68eaa',
-  '--chatbox-background-brand-primary-hover': '#d87597',
-  '--chatbox-background-brand-secondary': 'rgba(230, 142, 170, 0.14)',
-  '--chatbox-background-brand-secondary-hover': 'rgba(230, 142, 170, 0.22)',
-}
-
-const BUILT_IN_ANDROID_LIGHT_VARIABLES: Record<string, string> = {
-  '--chatbox-background-primary': '#ffffff',
-  '--chatbox-background-primary-hover': '#f7f9fa',
-  '--chatbox-background-secondary': '#eef3f4',
-  '--chatbox-background-secondary-hover': '#e5ecee',
-  '--chatbox-border-primary': '#dbe4e7',
-}
-
 function loadInstalled(): ThemeManifest[] {
   try {
     const raw = localStorage.getItem(STORAGE_INSTALLED)
@@ -128,18 +108,13 @@ function loadInstalled(): ThemeManifest[] {
   }
 }
 
-export function migrateAndroidFlowGlassAppearance(
-  buildPlatform: string = CHATBOX_BUILD_PLATFORM,
-  storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage
-): string | null {
+/** Reads the persisted selection; the retired built-in id means "default" and is normalised to `null`. */
+function loadActiveThemeId(): string | null {
   try {
-    const storedActive = storage.getItem(STORAGE_ACTIVE) || null
-    if (buildPlatform !== 'android') return storedActive
-    if (storage.getItem(STORAGE_ANDROID_FLOW_GLASS_MIGRATION) === '2.0.0') return storedActive
-
-    storage.setItem(STORAGE_ACTIVE, BUILT_IN_LIQUID_GLASS_THEME_ID)
-    storage.setItem(STORAGE_ANDROID_FLOW_GLASS_MIGRATION, '2.0.0')
-    return BUILT_IN_LIQUID_GLASS_THEME_ID
+    const stored = localStorage.getItem(STORAGE_ACTIVE) || null
+    if (!isBuiltInThemeId(stored)) return stored
+    localStorage.removeItem(STORAGE_ACTIVE)
+    return null
   } catch {
     return null
   }
@@ -184,11 +159,10 @@ interface ThemeStoreState {
 }
 
 const initialInstalled = loadInstalled()
-const storedActiveThemeId = migrateAndroidFlowGlassAppearance()
-const initialActiveThemeId =
-  isBuiltInThemeId(storedActiveThemeId) || initialInstalled.some((theme) => theme.id === storedActiveThemeId)
-    ? storedActiveThemeId
-    : null
+const storedActiveThemeId = loadActiveThemeId()
+const initialActiveThemeId = initialInstalled.some((theme) => theme.id === storedActiveThemeId)
+  ? storedActiveThemeId
+  : null
 if (storedActiveThemeId && !initialActiveThemeId) persistActive(null)
 
 export const useThemeStore = create<ThemeStoreState>((set, get) => ({
@@ -216,9 +190,11 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     applyActiveTheme()
   },
   setActive(id) {
-    if (id && !isBuiltInThemeId(id) && !get().installed.some((existing) => existing.id === id)) return
-    persistActive(id)
-    set({ activeThemeId: id, previewingTheme: null })
+    // The built-in flow-glass theme is the `null` default; its legacy id is accepted as an alias.
+    const nextId = isBuiltInThemeId(id) ? null : id
+    if (nextId && !get().installed.some((existing) => existing.id === nextId)) return
+    persistActive(nextId)
+    set({ activeThemeId: nextId, previewingTheme: null })
     applyActiveTheme()
   },
   preview(json) {
@@ -267,31 +243,23 @@ function resolveAndroidThemeVariables(theme: ThemeManifest): Record<string, stri
   return variables
 }
 
-/** Applies the active theme's variables for the current light/dark scheme, or clears them. */
+/**
+ * Applies the flow-glass base palette for the current light/dark scheme, then any third-party theme
+ * that supports that scheme on top of it. The glass material itself is always on; themes only recolor.
+ */
 export function applyActiveTheme(): void {
   const { activeThemeId, installed, previewingTheme } = useThemeStore.getState()
-  const theme = isBuiltInThemeId(activeThemeId)
-    ? BUILT_IN_LIQUID_GLASS_THEME
-    : activeThemeId
-      ? installed.find((existing) => existing.id === activeThemeId)
-      : undefined
-  const selectedTheme = previewingTheme ?? theme
+  const installedTheme = activeThemeId ? installed.find((existing) => existing.id === activeThemeId) : undefined
+  const selectedTheme = previewingTheme ?? installedTheme
   const scheme = currentScheme()
   const themeSupportsScheme = selectedTheme?.mode === 'both' || selectedTheme?.mode === scheme
-  const selectedVariables = isBuiltInThemeId(selectedTheme?.id)
-    ? scheme === 'dark'
-      ? BUILT_IN_FLOW_GLASS_DARK_VARIABLES
-      : BUILT_IN_FLOW_GLASS_LIGHT_VARIABLES
-    : selectedTheme && themeSupportsScheme
+  const selectedVariables =
+    selectedTheme && !isBuiltInThemeId(selectedTheme.id) && themeSupportsScheme
       ? resolveAndroidThemeVariables(selectedTheme)
       : {}
-  if (typeof document !== 'undefined') {
-    document.documentElement.dataset.yachiyoAppearance =
-      selectedTheme?.id === BUILT_IN_LIQUID_GLASS_THEME_ID ? 'flow-glass' : 'default'
-  }
+  if (typeof document !== 'undefined') document.documentElement.dataset.yachiyoAppearance = 'flow-glass'
   applyVariables({
-    ...BUILT_IN_ANDROID_BRAND_VARIABLES,
-    ...(scheme === 'light' ? BUILT_IN_ANDROID_LIGHT_VARIABLES : {}),
+    ...(scheme === 'dark' ? BUILT_IN_FLOW_GLASS_DARK_VARIABLES : BUILT_IN_FLOW_GLASS_LIGHT_VARIABLES),
     ...selectedVariables,
   })
 }

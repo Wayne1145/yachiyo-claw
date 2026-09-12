@@ -128,7 +128,7 @@ function UserMemorySettingsPage() {
           </ActionIcon>
         </Group>
         {lastDeleted && (
-          <Group justify="space-between" p="sm" style={{ borderRadius: 12, background: '#fff2f6' }}>
+          <Group justify="space-between" p="sm" style={{ borderRadius: 'var(--yachiyo-r-sm)', background: 'var(--chatbox-background-brand-secondary)' }}>
             <Text size="sm">{t('已删除一条记忆')}</Text>
             <Button size="compact-sm" variant="subtle" color="chatbox-brand" onClick={() => void undoDelete()}>
               {t('撤销')}
@@ -147,7 +147,7 @@ function UserMemorySettingsPage() {
         ) : (
           <Stack gap="sm">
             {records.map((record) => (
-              <section key={record.id} style={{ border: '1px solid #e4e7e9', borderRadius: 14, padding: 14 }}>
+              <section key={record.id} style={{ border: '1px solid var(--chatbox-border-primary)', borderRadius: 'var(--yachiyo-r-control)', padding: 14 }}>
                 <Group justify="space-between" mb="xs">
                   <Group gap={6}>
                     <Badge color="chatbox-brand" variant="light">{record.kind}</Badge>

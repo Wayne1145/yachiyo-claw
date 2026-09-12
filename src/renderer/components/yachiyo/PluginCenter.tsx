@@ -271,7 +271,7 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
           <div
             key={grant.capability}
             style={
-              isDevice ? { border: '1px solid var(--mantine-color-red-4)', borderRadius: 8, padding: 8 } : undefined
+              isDevice ? { border: '1px solid var(--mantine-color-red-4)', borderRadius: 'var(--yachiyo-r-sm)', padding: 8 } : undefined
             }
           >
             <Group justify="space-between" align="flex-start">

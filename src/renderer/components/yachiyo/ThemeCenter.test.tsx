@@ -50,13 +50,19 @@ function renderCenter() {
 }
 
 describe('ThemeCenter', () => {
-  it('offers the built-in liquid-glass theme without adding it to removable installs', () => {
+  it('offers the built-in flow-glass theme as the non-removable default', () => {
+    useThemeStore.getState().install(JSON.parse(validTheme))
+    useThemeStore.getState().setActive('sakura-test')
     renderCenter()
-    fireEvent.click(screen.getByRole('button', { name: '使用' }))
 
     expect(screen.getByText('Yachiyo 流光玻璃')).toBeTruthy()
+    expect(screen.queryByText('Yachiyo 浅粉')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认' }))
+
+    expect(useThemeStore.getState().activeThemeId).toBeNull()
     expect(document.documentElement.dataset.yachiyoAppearance).toBe('flow-glass')
-    expect(useThemeStore.getState().installed).toHaveLength(0)
+    expect(document.documentElement.style.getPropertyValue('--chatbox-tint-brand')).toBe('#007aff')
+    expect(useThemeStore.getState().installed).toHaveLength(1)
   })
 
   it('previews safely without persisting, then installs and activates explicitly', () => {

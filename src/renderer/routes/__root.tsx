@@ -198,16 +198,14 @@ function Root() {
   const { setColorScheme } = useMantineColorScheme()
   // biome-ignore lint/correctness/useExhaustiveDependencies: setColorScheme is stable
   useEffect(() => {
-    if (useAndroidAppShell) {
-      setColorScheme('light')
-    } else if (_theme === Theme.Dark) {
+    if (_theme === Theme.Dark) {
       setColorScheme('dark')
     } else if (_theme === Theme.Light) {
       setColorScheme('light')
     } else {
       setColorScheme('auto')
     }
-  }, [_theme, useAndroidAppShell])
+  }, [_theme])
 
   useEffect(() => {
     ;(() => {
@@ -388,13 +386,14 @@ const creteMantineTheme = (scale = 1) =>
       lg: '1.5555555556', // 28px
       xl: '1.6', // 32px
     },
+    // One corner scale for the whole app (see --yachiyo-r-* in globals.css).
     radius: {
-      xs: 'calc(0.125rem * var(--mantine-scale))',
-      sm: 'calc(0.25rem * var(--mantine-scale))',
-      md: 'calc(0.5rem * var(--mantine-scale))',
-      lg: 'calc(1rem * var(--mantine-scale))',
-      xl: 'calc(1.5rem * var(--mantine-scale))',
-      xxl: 'calc(2rem * var(--mantine-scale))',
+      xs: 'var(--yachiyo-r-xs)',
+      sm: 'var(--yachiyo-r-sm)',
+      md: 'var(--yachiyo-r-control)',
+      lg: 'var(--yachiyo-r-surface)',
+      xl: 'var(--yachiyo-r-shell)',
+      xxl: 'var(--yachiyo-r-shell)',
     },
     spacing: {
       '3xs': 'calc(0.125rem * var(--mantine-scale))',
@@ -615,8 +614,7 @@ export const Route = createRootRoute({
     useI18nEffect()
     useSystemLanguageWhenInit()
     useShortcut()
-    const useAndroidLightTheme = shouldUseAndroidAppShell(platform.type, CHATBOX_BUILD_PLATFORM)
-    const theme = useAppTheme(useAndroidLightTheme)
+    const theme = useAppTheme()
     const _theme = useTheme()
     const fontSize = useSettingsStore((state) => state.fontSize)
     useEffect(() => {
@@ -627,7 +625,6 @@ export const Route = createRootRoute({
     return (
       <MantineProvider
         theme={mantineTheme}
-        forceColorScheme={useAndroidLightTheme ? 'light' : undefined}
         defaultColorScheme={_theme === Theme.Dark ? 'dark' : _theme === Theme.Light ? 'light' : 'auto'}
       >
         <ThemeProvider theme={theme}>

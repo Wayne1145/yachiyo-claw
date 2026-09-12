@@ -1,13 +1,13 @@
 html[data-yachiyo-appearance='flow-glass'] {
-  --flow-r-nav: 24px;
-  --flow-r-lens: 18px;
-  --flow-r-composer: 24px;
-  --flow-r-sheet: 24px;
-  --flow-r-popover: 18px;
-  --flow-r-panel: 18px;
-  --flow-r-content: 14px;
-  --flow-r-control: 14px;
-  --flow-blue: #007aff;
+  --flow-r-nav: var(--yachiyo-r-shell);
+  --flow-r-lens: var(--yachiyo-r-surface);
+  --flow-r-composer: var(--yachiyo-r-shell);
+  --flow-r-sheet: var(--yachiyo-r-shell);
+  --flow-r-popover: var(--yachiyo-r-surface);
+  --flow-r-panel: var(--yachiyo-r-surface);
+  --flow-r-content: var(--yachiyo-r-control);
+  --flow-r-control: var(--yachiyo-r-control);
+  --flow-blue: var(--chatbox-tint-brand, #007aff);
   --flow-nav-active-label: #0064c8;
   --flow-green: #248a3d;
   --flow-orange: #c93400;
@@ -33,7 +33,7 @@ html[data-yachiyo-appearance='flow-glass'] {
 }
 
 html[data-yachiyo-appearance='flow-glass'][data-theme='dark'] {
-  --flow-blue: #0a84ff;
+  --flow-blue: var(--chatbox-tint-brand, #0a84ff);
   --flow-nav-active-label: #409cff;
   --flow-green: #30d158;
   --flow-orange: #ff9f0a;
@@ -397,7 +397,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-header-more-menu {
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-header-more-menu .mantine-Menu-item {
   min-height: 44px;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--flow-text);
 }
 
@@ -672,7 +672,7 @@ html[data-yachiyo-appearance='flow-glass']
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .mantine-Textarea-input,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .mantine-Input-input {
   border-color: transparent;
-  border-radius: calc(var(--flow-r-composer) - 12px);
+  border-radius: calc(var(--flow-r-composer) - var(--yachiyo-r-sm));
   color: var(--flow-text);
   background: transparent;
   box-shadow: none;
@@ -1021,7 +1021,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
   margin-block: 2px;
   padding: 9px 10px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   corner-shape: squircle;
   color: var(--flow-text);
   background: transparent;
@@ -1087,7 +1087,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
 
 html[data-yachiyo-appearance='flow-glass'] .mantine-Tooltip-tooltip {
   border: 1px solid var(--flow-edge-mid);
-  border-radius: 12px;
+  border-radius: var(--yachiyo-r-sm);
   color: var(--flow-text);
   background: var(--flow-popover-fill);
   box-shadow:
@@ -1742,7 +1742,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
 .yachiyo-glass-quality-panel .mantine-SegmentedControl-root {
   max-width: 100%;
   overflow-x: auto;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   scrollbar-width: none;
 }
 
@@ -1803,13 +1803,14 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   display: flex;
   justify-content: flex-end;
   gap: 3px;
-  border-radius: 13px;
+  border-radius: var(--yachiyo-r-sm);
 }
 
 .yachiyo-theme-preview-chrome span {
   width: 17px;
   height: 17px;
   border-radius: 50%;
+  corner-shape: round;
   background: rgba(255, 255, 255, 0.54);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
@@ -1845,7 +1846,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   height: 20px;
   margin-left: auto;
   border: 1px solid rgba(0, 122, 255, 0.16);
-  border-radius: 10px;
+  border-radius: var(--yachiyo-r-sm);
   background: rgba(226, 241, 255, 0.58);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
@@ -1856,7 +1857,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
-  border-radius: 17px;
+  border-radius: var(--yachiyo-r-control);
 }
 
 .yachiyo-theme-preview-nav i {
@@ -1865,6 +1866,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   height: 6px;
   margin: auto;
   border-radius: 50%;
+  corner-shape: round;
   background: rgba(48, 65, 82, 0.54);
 }
 
@@ -1875,7 +1877,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   left: 3px;
   width: calc((100% - 6px) / 4);
   border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   background: rgba(235, 247, 255, 0.6);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
@@ -1926,7 +1928,7 @@ html[data-yachiyo-appearance='flow-glass']
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-character-selector,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-interactive-llm-selector {
   position: relative;
-  border-radius: 22px;
+  border-radius: var(--yachiyo-r-surface);
   corner-shape: squircle;
 }
 
@@ -1943,7 +1945,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control.man
   padding: 3px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 72%, transparent);
-  border-radius: 24px;
+  border-radius: var(--yachiyo-r-shell);
   corner-shape: squircle;
   color: var(--flow-text-secondary);
   background:
@@ -1962,7 +1964,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .ma
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-indicator {
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 58%, var(--flow-edge-mid));
-  border-radius: 20px;
+  border-radius: var(--yachiyo-r-surface);
   corner-shape: squircle;
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--flow-edge-light) 46%, transparent), transparent 46%),
@@ -2049,14 +2051,14 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-model-row {
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-round-button {
   min-width: 52px;
   min-height: 52px;
-  border-radius: 26px;
+  border-radius: var(--yachiyo-r-shell);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-llm-selector,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-live-transcript,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-notice {
   min-height: 44px;
-  border-radius: 22px;
+  border-radius: var(--yachiyo-r-surface);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-model-row {
@@ -2134,7 +2136,7 @@ html[data-yachiyo-appearance='flow-glass']
   :is(.yachiyo-live2d-import-button, .yachiyo-live2d-background-button).mantine-Button-root {
   min-height: 48px;
   border: 1px solid var(--flow-edge-mid);
-  border-radius: 24px;
+  border-radius: var(--yachiyo-r-shell);
   corner-shape: squircle;
   color: var(--flow-text);
   box-shadow:

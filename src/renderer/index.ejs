@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self' data: blob: capacitor: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src * data: blob: ws: wss:; img-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
@@ -31,6 +32,7 @@
     -->
     <title>Yachiyo Claw</title>
     <script>
+      document.documentElement.setAttribute("data-yachiyo-appearance", "flow-glass");
       var initialTheme = localStorage.getItem("initial-theme");
       if (initialTheme === "light" || initialTheme === "dark") {
         document.documentElement.setAttribute("data-theme", initialTheme);
@@ -42,7 +44,7 @@
     </script>
     <style>
       html[data-theme="dark"] {
-        background-color: #242424;
+        background-color: #181d24;
       }
 
       .splash-screen {
@@ -61,7 +63,7 @@
         overflow: hidden;
       }
       html[data-theme="dark"] .splash-screen {
-        background-color: #242424;
+        background-color: #181d24;
       }
 
       .splash-screen-top {

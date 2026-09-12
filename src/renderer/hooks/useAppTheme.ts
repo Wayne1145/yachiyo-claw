@@ -57,7 +57,7 @@ export default function useAppTheme(forceLight = false) {
 export function getThemeDesign(realTheme: 'light' | 'dark', language: Language): ThemeOptions {
   return {
     shape: {
-      borderRadius: 18,
+      borderRadius: 14,
     },
     palette: {
       mode: realTheme,
@@ -66,8 +66,8 @@ export function getThemeDesign(realTheme: 'light' | 'dark', language: Language):
         : {
             // MUI 内部无法处理 css 变量，需要使用具体颜色值
             background: {
-              default: '#242424',
-              paper: '#242424',
+              default: '#181d24',
+              paper: '#181d24',
             },
           }),
     },
@@ -84,7 +84,7 @@ export function getThemeDesign(realTheme: 'light' | 'dark', language: Language):
       MuiPaper: {
         styleOverrides: {
           rounded: {
-            borderRadius: 22,
+            borderRadius: 18,
           },
         },
       },

@@ -3,14 +3,22 @@
 @tailwind utilities;
 
 :root {
-  /* radius */
+  /* Corner radius ("R角"): one scale for every surface. Continuity (squircle) is applied globally below. */
+  --yachiyo-r-xs: 6px;
+  --yachiyo-r-sm: 10px;
+  --yachiyo-r-control: 14px;
+  --yachiyo-r-surface: 18px;
+  --yachiyo-r-shell: 24px;
+  --yachiyo-r-pill: 9999px;
+
+  /* radius (legacy Chatbox names, mapped onto the scale above) */
   --chatbox-radius-none: 0rem;
-  --chatbox-radius-xs: 0.125rem;
-  --chatbox-radius-sm: 0.25rem;
-  --chatbox-radius-md: 0.5rem;
-  --chatbox-radius-lg: 1rem;
-  --chatbox-radius-xl: 1.5rem;
-  --chatbox-radius-xxl: 2rem;
+  --chatbox-radius-xs: var(--yachiyo-r-xs);
+  --chatbox-radius-sm: var(--yachiyo-r-sm);
+  --chatbox-radius-md: var(--yachiyo-r-control);
+  --chatbox-radius-lg: var(--yachiyo-r-surface);
+  --chatbox-radius-xl: var(--yachiyo-r-shell);
+  --chatbox-radius-xxl: var(--yachiyo-r-shell);
 
   /* spacing */
   --chatbox-spacing-none: 0rem;
@@ -309,4 +317,33 @@ div[data-vaul-overlay] {
 }
 div[data-vaul-drawer] {
   z-index: 2000;
+}
+
+/* Continuous (superellipse) corners wherever the engine supports them; genuine circles opt back out. */
+@supports (corner-shape: squircle) {
+  *,
+  ::before,
+  ::after {
+    corner-shape: squircle;
+  }
+
+  .yachiyo-round,
+  .rounded-full,
+  .mantine-Avatar-root,
+  .mantine-Avatar-image,
+  .mantine-Avatar-placeholder,
+  .mantine-Switch-track,
+  .mantine-Switch-thumb,
+  .mantine-Radio-radio,
+  .mantine-Radio-icon,
+  .mantine-Loader-root,
+  .mantine-Indicator-indicator,
+  .mantine-ColorSwatch-root,
+  .mantine-Progress-root,
+  .mantine-Progress-section,
+  .mantine-Slider-thumb,
+  .mantine-Slider-track,
+  .mantine-Slider-bar {
+    corner-shape: round;
+  }
 }

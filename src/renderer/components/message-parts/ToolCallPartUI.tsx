@@ -576,6 +576,7 @@ export const ReasoningContentUI: FC<{
             <Box
               w={6}
               h={6}
+              className="yachiyo-round"
               style={{
                 borderRadius: '50%',
                 backgroundColor: 'var(--chatbox-tint-brand)',

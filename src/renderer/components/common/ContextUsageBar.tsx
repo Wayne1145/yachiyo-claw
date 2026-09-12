@@ -4,7 +4,7 @@ export function ContextUsageBar({ used, limit }: { used: number; limit?: number 
   if (!limit || limit <= 0) return null
   const percentage = Math.max(0, Math.round((used / limit) * 100))
   const width = Math.min(100, percentage)
-  const color = percentage >= 90 ? '#d9485f' : percentage >= 75 ? '#e09143' : '#e68eaa'
+  const color = percentage >= 90 ? '#d9485f' : percentage >= 75 ? '#e09143' : 'var(--chatbox-tint-brand)'
   return (
     <div
       className="yachiyo-context-progress"

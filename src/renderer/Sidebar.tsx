@@ -438,7 +438,7 @@ function AboutNavLink({
       label={
         <Flex align="center" gap={6}>
           <span>{`${t('About')} ${/\d/.test(versionHook.version) ? `(${versionHook.version})` : ''}`}</span>
-          {showDot && <Box w={8} h={8} miw={8} bg="chatbox-brand" style={{ borderRadius: '50%' }} />}
+          {showDot && <Box w={8} h={8} miw={8} bg="chatbox-brand" className="yachiyo-round" style={{ borderRadius: '50%' }} />}
         </Flex>
       }
       leftSection={<ScalableIcon icon={IconInfoCircle} size={20} />}
@@ -477,7 +477,7 @@ function SmallScreenAboutIcon({
         <ScalableIcon icon={IconInfoCircle} size={20} />
       </ActionIcon>
       {showDot && (
-        <Box w={8} h={8} bg="chatbox-brand" className="absolute -top-0.5 -right-0.5" style={{ borderRadius: '50%' }} />
+        <Box w={8} h={8} bg="chatbox-brand" className="absolute -top-0.5 -right-0.5 yachiyo-round" style={{ borderRadius: '50%' }} />
       )}
     </Box>
   )

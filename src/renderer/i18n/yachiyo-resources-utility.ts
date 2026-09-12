@@ -165,8 +165,6 @@ export const yachiyoUtilityEnglish: Record<string, string> = {
   结束: 'Stop',
   已安装主题: 'Installed themes',
   主题库: 'Theme library',
-  'Yachiyo 浅粉': 'Yachiyo Light Pink',
-  '内置 · 浅色': 'Built in · Light',
   使用中: 'Active',
   恢复默认: 'Restore default',
   浅色: 'Light',
@@ -178,8 +176,8 @@ export const yachiyoUtilityEnglish: Record<string, string> = {
   尚未安装第三方主题: 'No third-party themes installed',
   删除主题: 'Delete theme',
   '确定删除主题“{{name}}”？此操作无法撤销。': 'Delete “{{name}}”? This action cannot be undone.',
-  '当前正在使用此主题，删除后将恢复 Yachiyo 浅粉主题。':
-    'This theme is currently active. Deleting it will restore Yachiyo Light Pink.',
+  '当前正在使用此主题，删除后将恢复内置的 Yachiyo 流光玻璃主题。':
+    'This theme is currently active. Deleting it will restore the built-in Yachiyo Flow Glass theme.',
   取消: 'Cancel',
   确认删除: 'Delete',
 }
@@ -341,8 +339,6 @@ export const yachiyoUtilityTraditionalChinese: Record<string, string> = {
   结束: '結束',
   已安装主题: '已安裝主題',
   主题库: '主題庫',
-  'Yachiyo 浅粉': 'Yachiyo 淺粉',
-  '内置 · 浅色': '內建 · 淺色',
   使用中: '使用中',
   恢复默认: '恢復預設',
   浅色: '淺色',
@@ -354,7 +350,7 @@ export const yachiyoUtilityTraditionalChinese: Record<string, string> = {
   尚未安装第三方主题: '尚未安裝第三方主題',
   删除主题: '刪除主題',
   '确定删除主题“{{name}}”？此操作无法撤销。': '確定刪除主題「{{name}}」？此操作無法復原。',
-  '当前正在使用此主题，删除后将恢复 Yachiyo 浅粉主题。': '目前正在使用此主題，刪除後將恢復 Yachiyo 淺粉主題。',
+  '当前正在使用此主题，删除后将恢复内置的 Yachiyo 流光玻璃主题。': '目前正在使用此主題，刪除後將恢復內建的 Yachiyo 流光玻璃主題。',
   取消: '取消',
   确认删除: '確認刪除',
 }

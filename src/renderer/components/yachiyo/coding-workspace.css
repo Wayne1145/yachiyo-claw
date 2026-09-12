@@ -32,7 +32,7 @@
 .coding-capability-band {
   padding: 14px;
   border: 1px solid var(--chatbox-border-primary);
-  border-radius: 8px;
+  border-radius: var(--yachiyo-r-sm);
   background: var(--chatbox-background-secondary);
 }
 
@@ -57,7 +57,7 @@
   min-height: 64px;
   padding: 12px;
   border: 1px solid var(--chatbox-border-primary);
-  border-radius: 8px;
+  border-radius: var(--yachiyo-r-sm);
   color: inherit;
   background: var(--chatbox-background-primary);
   text-align: left;
@@ -139,7 +139,7 @@
   max-width: 88%;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--yachiyo-r-sm);
   background: var(--chatbox-background-secondary);
 }
 
@@ -159,7 +159,7 @@
 .coding-project-pane aside {
   overflow: auto;
   border: 1px solid var(--chatbox-border-primary);
-  border-radius: 8px;
+  border-radius: var(--yachiyo-r-sm);
 }
 
 .coding-project-pane aside button {
@@ -195,7 +195,7 @@
 .coding-change {
   padding: 12px;
   border: 1px solid var(--chatbox-border-primary);
-  border-radius: 8px;
+  border-radius: var(--yachiyo-r-sm);
 }
 
 .coding-diff,
@@ -305,7 +305,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-refresh-control.mantine-Butto
   min-height: 44px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--flow-r-control, 14px);
+  border-radius: var(--yachiyo-r-control);
   corner-shape: squircle;
   color: var(--flow-blue);
   background: transparent;
@@ -324,7 +324,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-capability-status .mantine-Ba
   min-height: 28px;
   padding-inline: 12px;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent);
   backdrop-filter: blur(10px) saturate(1.2);
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
@@ -428,12 +428,12 @@ html[data-yachiyo-appearance="flow-glass"] .coding-project-pane aside button:act
 html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-list {
   padding: 4px;
   border-bottom: 1px solid var(--flow-divider);
-  border-radius: 18px;
+  border-radius: var(--yachiyo-r-surface);
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-tab {
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--flow-text-secondary);
 }
 
@@ -467,12 +467,12 @@ html[data-yachiyo-appearance="flow-glass"] :is(
 }
 
 html[data-yachiyo-appearance="flow-glass"] :is(.coding-home, .coding-workspace) .mantine-Button-root:not(.coding-home-action, .coding-refresh-control, .coding-environment-action) {
-  border-radius: 16px;
+  border-radius: var(--yachiyo-r-control);
 }
 
 html[data-yachiyo-appearance="flow-glass"] :is(.coding-diff, .coding-log) {
   border: 1px solid var(--flow-divider);
-  border-radius: 12px;
+  border-radius: var(--yachiyo-r-sm);
   color: var(--flow-text);
   background: var(--flow-content-fill);
 }

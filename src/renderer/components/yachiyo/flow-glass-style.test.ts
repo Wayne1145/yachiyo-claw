@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const flowStyles = fs.readFileSync(path.join(__dirname, 'flow-glass.css'), 'utf8')
 const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'), 'utf8')
+const globalStyles = fs.readFileSync(path.join(__dirname, '../../static/globals.css'), 'utf8')
 const workspaceSource = fs.readFileSync(path.join(__dirname, 'AndroidWorkspaceHome.tsx'), 'utf8')
 const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
 const viteConfigSource = fs.readFileSync(path.join(__dirname, '../../../../electron.vite.config.ts'), 'utf8')
@@ -98,17 +99,27 @@ function sectionBetween(start: string, end: string) {
 
 describe('Flow Glass visual contracts', () => {
   it('keeps the continuous corner scale and concentric navigation geometry', () => {
-    expect(flowStyles).toContain('--flow-r-nav: 24px')
-    expect(flowStyles).toContain('--flow-r-lens: 18px')
-    expect(flowStyles).toContain('--flow-r-composer: 24px')
-    expect(flowStyles).toContain('--flow-r-sheet: 24px')
-    expect(flowStyles).toContain('--flow-r-popover: 18px')
-    expect(flowStyles).toContain('--flow-r-panel: 18px')
-    expect(flowStyles).toContain('--flow-r-content: 14px')
-    expect(flowStyles).toContain('--flow-r-control: 14px')
-    expect(shellStyles).toContain('--yachiyo-r-shell: 24px')
-    expect(shellStyles).toContain('--yachiyo-r-surface: 18px')
-    expect(shellStyles).toContain('--yachiyo-r-control: 14px')
+    expect(globalStyles).toContain('--yachiyo-r-xs: 6px')
+    expect(globalStyles).toContain('--yachiyo-r-sm: 10px')
+    expect(globalStyles).toContain('--yachiyo-r-control: 14px')
+    expect(globalStyles).toContain('--yachiyo-r-surface: 18px')
+    expect(globalStyles).toContain('--yachiyo-r-shell: 24px')
+    expect(globalStyles).toMatch(/@supports \(corner-shape: squircle\)\s*\{\s*\*,\s*::before,\s*::after\s*\{\s*corner-shape: squircle;/)
+    expect(flowStyles).toContain('--flow-r-nav: var(--yachiyo-r-shell)')
+    expect(flowStyles).toContain('--flow-r-lens: var(--yachiyo-r-surface)')
+    expect(flowStyles).toContain('--flow-r-composer: var(--yachiyo-r-shell)')
+    expect(flowStyles).toContain('--flow-r-sheet: var(--yachiyo-r-shell)')
+    expect(flowStyles).toContain('--flow-r-popover: var(--yachiyo-r-surface)')
+    expect(flowStyles).toContain('--flow-r-panel: var(--yachiyo-r-surface)')
+    expect(flowStyles).toContain('--flow-r-content: var(--yachiyo-r-control)')
+    expect(flowStyles).toContain('--flow-r-control: var(--yachiyo-r-control)')
+    // Every shell radius is on the shared scale; only hairline (<= 4px) literals remain.
+    for (const styles of [shellStyles, flowStyles]) {
+      for (const match of styles.matchAll(/border-radius:\s*([^;]+);/g)) {
+        if (match[1].includes('calc(')) continue // concentric insets like calc(var(--flow-r-popover) - 5px)
+        for (const px of match[1].matchAll(/(\d+)px/g)) expect(Number(px[1])).toBeLessThanOrEqual(4)
+      }
+    }
     expect(shellStyles).not.toMatch(/border-radius:\s*999px/)
     expect(shellStyles).not.toMatch(/\.yachiyo-bottom-nav-item:active\s*\{[^}]*transform:\s*scale/s)
     expect(flowStyles).not.toMatch(/\.yachiyo-bottom-nav-item:active[^\{]*\{[^}]*transform:\s*scale/s)
@@ -222,7 +233,7 @@ describe('Flow Glass visual contracts', () => {
     expect(releaseAction).toContain('<IconExternalLink')
     expect(releaseAction).toContain('needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL')
     expect(shellStyles).toMatch(
-      /\.yachiyo-status-value \.yachiyo-about-release-action\s*{[^}]*min-height:\s*44px;[^}]*border-radius:\s*16px;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
+      /\.yachiyo-status-value \.yachiyo-about-release-action\s*{[^}]*min-height:\s*44px;[^}]*border-radius:\s*var\(--yachiyo-r-control\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
     )
     expect(flowStyles).toMatch(
       /\.yachiyo-about-release-action\s*{[^}]*color:\s*var\(--flow-blue\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s

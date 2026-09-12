@@ -37,7 +37,7 @@ html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog-content.MuiDia
 
 html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command {
   overflow: hidden;
-  border-radius: calc(var(--flow-r-popover) - 10px);
+  border-radius: calc(var(--flow-r-popover) - var(--yachiyo-r-sm));
   color: var(--flow-text);
   background: transparent;
 }
@@ -117,7 +117,7 @@ html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-item {
   margin: 2px 0;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: var(--yachiyo-r-control);
   corner-shape: squircle;
   color: var(--flow-text);
   background: transparent !important;

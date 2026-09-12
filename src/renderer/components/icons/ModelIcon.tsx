@@ -52,7 +52,7 @@ export function ModelIcon({ modelId, providerId, size = 16, className }: ModelIc
   const firstLetter = modelId.charAt(0).toUpperCase()
   return (
     <div
-      className={className}
+      className={className ? `yachiyo-round ${className}` : 'yachiyo-round'}
       style={{
         width: size,
         height: size,
