@@ -154,6 +154,21 @@ function backendLabel(t: Translate, backend?: string): string {
   return backend
 }
 
+function backendKindOf(backend?: string): 'npu' | 'gpu' | 'cpu' | 'unknown' {
+  const value = (backend || '').toLowerCase()
+  if (value.includes('npu')) return 'npu'
+  if (value.includes('gpu') || value.includes('vulkan')) return 'gpu'
+  if (value.includes('cpu')) return 'cpu'
+  return 'unknown'
+}
+
+function thermalKindOf(status?: number): 'normal' | 'elevated' | 'severe' | 'unknown' {
+  if (status === undefined || !Number.isFinite(status)) return 'unknown'
+  if (status >= 4) return 'severe'
+  if (status >= 3) return 'elevated'
+  return 'normal'
+}
+
 function formatRate(value?: number): string {
   return value && Number.isFinite(value) ? `${value.toFixed(1)} tok/s` : '--'
 }
@@ -304,24 +319,35 @@ export function LocalModelCenter() {
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
+    // The subscription resolves asynchronously; track disposal so a listener registered after
+    // unmount is removed instead of leaking.
+    let disposed = false
     let handle: { remove: () => Promise<void> } | undefined
     void subscribeNativeModelLoadProgress((event: NativeModelLoadProgressEvent) => {
-      setRuntimeByModelId((current) => ({
-        ...current,
-        [event.modelId]: {
-          ...(current[event.modelId] || { loaded: false, loading: true, percent: 0 }),
-          loading: event.stage !== 'ready' && event.stage !== 'idle',
-          loaded: event.stage === 'ready' || current[event.modelId]?.loaded === true,
-          stage: event.stage,
-          percent: event.stage === 'benchmarking' ? 0 : Math.max(0, Math.min(100, event.percent)),
-          indeterminate: event.stage === 'benchmarking',
-          error: undefined,
-        },
-      }))
+      setRuntimeByModelId((current) => {
+        const previous = current[event.modelId]
+        const loading = event.stage !== 'ready' && event.stage !== 'idle'
+        return {
+          ...current,
+          [event.modelId]: {
+            ...(previous || { loaded: false, loading: true, percent: 0 }),
+            loading,
+            loaded: event.stage === 'ready' || previous?.loaded === true,
+            stage: event.stage,
+            percent: event.stage === 'benchmarking' ? 0 : Math.max(0, Math.min(100, event.percent)),
+            indeterminate: loading && (event.indeterminate === true || event.stage === 'benchmarking'),
+            error: undefined,
+          },
+        }
+      })
     }).then((listener) => {
-      handle = listener
+      if (disposed) void listener.remove()
+      else handle = listener
     })
-    return () => void handle?.remove()
+    return () => {
+      disposed = true
+      void handle?.remove()
+    }
   }, [])
 
   const search = useCallback(
@@ -367,6 +393,7 @@ export function LocalModelCenter() {
 
   useEffect(() => () => searchAbortRef.current?.abort(), [])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only trigger; re-runs are user-driven
   useEffect(() => {
     void search()
   }, [])
@@ -452,9 +479,10 @@ export function LocalModelCenter() {
   }, [jobs])
   const installedJobsRef = useRef(installedJobs)
   installedJobsRef.current = installedJobs
-  const installedRuntimeKey = installedJobs.map((job) => `${job.id}:${job.updatedAt}`).join('|')
 
   useEffect(() => {
+    // Read the latest snapshot through the ref so the health/runtime probe only
+    // re-runs when the installed set or the visible view actually changes.
     const installedSnapshot = installedJobsRef.current
     if (!Capacitor.isNativePlatform() || view !== 'installed' || installedSnapshot.length === 0) return
     let active = true
@@ -509,7 +537,7 @@ export function LocalModelCenter() {
     return () => {
       active = false
     }
-  }, [installedRuntimeKey, t, view])
+  }, [t, view])
 
   const enqueueDownload = async () => {
     if (!selectedLocalModel || !profile || !artifact || artifactGroup.length === 0) return
@@ -565,19 +593,31 @@ export function LocalModelCenter() {
   }
 
   const loadIntoMemory = async (modelId: string) => {
+    // Keep other models' state intact until the load succeeds: the runtime only hosts one model,
+    // and a failed attempt must not make a still-resident model look unloaded.
     setRuntimeByModelId((current) => ({
-      ...Object.fromEntries(Object.entries(current).map(([id, state]) => [id, { ...state, loaded: false }])),
-      [modelId]: { loaded: false, loading: true, stage: 'starting', percent: 0 },
+      ...current,
+      [modelId]: {
+        ...(current[modelId] || { loaded: false }),
+        loading: true,
+        stage: 'starting',
+        percent: 0,
+        indeterminate: false,
+        error: undefined,
+      },
     }))
     try {
       const result = await loadNativeModel(modelId)
       setRuntimeByModelId((current) => ({
-        ...Object.fromEntries(Object.entries(current).map(([id, state]) => [id, { ...state, loaded: false }])),
+        ...Object.fromEntries(
+          Object.entries(current).map(([id, state]) => [id, id === modelId ? state : { ...state, loaded: false }]),
+        ),
         [modelId]: {
           loaded: result.loaded,
           loading: false,
           stage: result.loaded ? 'ready' : 'idle',
           percent: result.loaded ? 100 : 0,
+          indeterminate: false,
           runtime: result.runtime,
           eager: result.eager,
           modelBytes: result.modelBytes,
@@ -587,17 +627,18 @@ export function LocalModelCenter() {
         },
       }))
     } catch (cause) {
+      // The row renders its own error; rethrowing would duplicate it in the shared queue banner.
       setRuntimeByModelId((current) => ({
         ...current,
         [modelId]: {
-          loaded: false,
+          ...(current[modelId] || { loaded: false }),
           loading: false,
           stage: 'idle',
           percent: 0,
+          indeterminate: false,
           error: cause instanceof Error ? cause.message : t('模型加载失败'),
         },
       }))
-      throw cause
     }
   }
 
@@ -607,7 +648,7 @@ export function LocalModelCenter() {
       Object.fromEntries(
         Object.entries(current).map(([id, state]) => [
           id,
-          { ...state, loaded: false, loading: false, stage: 'idle', percent: 0 },
+          { ...state, loaded: false, loading: false, stage: 'idle', percent: 0, indeterminate: false },
         ])
       )
     )
@@ -655,7 +696,13 @@ export function LocalModelCenter() {
       setAccelerationProfileByModelId((values) => ({ ...values, [modelId]: profile }))
       setRuntimeByModelId((values) => ({
         ...values,
-        [modelId]: { ...(values[modelId] || { loaded: false }), loading: false, stage: 'idle', percent: 0 },
+        [modelId]: {
+          ...(values[modelId] || { loaded: false }),
+          loading: false,
+          stage: 'idle',
+          percent: 0,
+          indeterminate: false,
+        },
       }))
     } catch (cause) {
       const rawMessage = cause instanceof Error ? cause.message : ''
@@ -670,6 +717,7 @@ export function LocalModelCenter() {
           loading: false,
           stage: 'idle',
           percent: 0,
+          indeterminate: false,
           error: message,
         },
       }))
@@ -750,6 +798,17 @@ export function LocalModelCenter() {
               }
               const accelerationProfile = accelerationProfileByModelId[job.modelId]
               const acceleration = runtimeState?.acceleration
+              // Successful calibration runs prove which backends actually work on this device.
+              const availableBackends = [
+                ...new Set(
+                  (accelerationProfile?.benchmarks || [])
+                    .filter((item) => !item.failureReason && item.backend)
+                    .map((item) => String(item.backend)),
+                ),
+              ]
+              const activeBackendValue = acceleration?.activeBackend || accelerationProfile?.selectedBackend
+              const backendKind = backendKindOf(activeBackendValue)
+              const thermalValue = acceleration?.thermalStatus ?? accelerationProfile?.thermalStatus
               const fullyPreloaded = Boolean(runtimeState?.loaded && runtimeState.eager)
               const supportsDefaultSelection = !job.artifacts.some((item) => item.format === 'tflite')
               const loadLabel = String(
@@ -955,8 +1014,8 @@ export function LocalModelCenter() {
                       <div className="local-model-acceleration-metrics">
                         <span>
                           <small>{acceleration?.activeBackend ? t('实际后端') : t('校准后端')}</small>
-                          <strong>
-                            {backendLabel(t, acceleration?.activeBackend || accelerationProfile?.selectedBackend)}
+                          <strong className="local-model-backend-value" data-backend={backendKind}>
+                            {backendLabel(t, activeBackendValue)}
                           </strong>
                         </span>
                         <span>
@@ -1008,11 +1067,23 @@ export function LocalModelCenter() {
                         </span>
                         <span>
                           <small>{t('温控')}</small>
-                          <strong>
-                            {thermalLabel(t, acceleration?.thermalStatus ?? accelerationProfile?.thermalStatus)}
+                          <strong data-thermal={thermalKindOf(thermalValue)}>
+                            {thermalLabel(t, thermalValue)}
                           </strong>
                         </span>
                       </div>
+                      {availableBackends.length > 0 && (
+                        <div className="local-model-available-backends">
+                          <small>{t('可用后端')}</small>
+                          <span>
+                            {availableBackends.map((backend) => (
+                              <strong key={backend} data-backend={backendKindOf(backend)}>
+                                {backendLabel(t, backend)}
+                              </strong>
+                            ))}
+                          </span>
+                        </div>
+                      )}
                       {(acceleration?.modelVariant || accelerationProfile?.modelVariant) && (
                         <Text size="xs" c="dimmed">
                           {t('模型变体')}: {acceleration?.modelVariant || accelerationProfile?.modelVariant}
@@ -1783,7 +1854,7 @@ export function LocalModelCenter() {
                   {downloadableBytes === undefined ? (
                     <Loader size={13} color="gray" />
                   ) : downloadableBytes === null ? (
-                    t('Unavailable')
+                    t('暂时无法获取')
                   ) : (
                     formatBytes(t, downloadableBytes)
                   )}

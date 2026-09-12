@@ -203,6 +203,7 @@ tmp-*.md
 # Android machine-specific configuration and generated packages
 /android/local.properties
 /android/.gradle/
+/android/.kotlin/
 /android/app/build/
 *.apk
 *.aab

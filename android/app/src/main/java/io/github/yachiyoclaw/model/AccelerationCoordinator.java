@@ -274,9 +274,12 @@ final class AccelerationCoordinator {
         List<JSONObject> requests = new ArrayList<>();
         int defaultThreads = AccelerationRuntimeSupport.preferredCpuThreads();
         boolean deep = AccelerationPolicy.MODE_EXTREME.equals(AccelerationPolicy.normalizeMode(mode));
-        List<String> backends = npuCompatible
-            ? List.of(AccelerationPolicy.BACKEND_NPU)
-            : List.of(AccelerationPolicy.BACKEND_CPU, AccelerationPolicy.BACKEND_GPU);
+        // Always benchmark a measured fallback chain. An NPU-only profile would leave
+        // quarantineAndFallback with no candidate if the accelerator later fails at runtime.
+        List<String> backends = new ArrayList<>();
+        if (npuCompatible) backends.add(AccelerationPolicy.BACKEND_NPU);
+        backends.add(AccelerationPolicy.BACKEND_CPU);
+        backends.add(AccelerationPolicy.BACKEND_GPU);
         for (String backend : backends) {
             if (AccelerationPolicy.BACKEND_CPU.equals(backend)) {
                 int[] candidates = AccelerationRuntimeSupport.cpuThreadCandidates();

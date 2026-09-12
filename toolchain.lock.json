@@ -41,7 +41,7 @@
       "sha1": "B9862337A13E2809A5159DC3A08D058091BD59F6",
       "sha256": "90AE805D20434428BFFCB699C290860F19BB5F66A67E6B330067E3DE801FB04A"
     },
-    "platformTools": "37.0.0",
+    "platformTools": "37.0.1",
     "minSdk": 30,
     "compileSdk": 35,
     "targetSdk": 35,

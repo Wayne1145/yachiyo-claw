@@ -28,6 +28,7 @@ export interface NativeModelLoadProgressEvent {
   modelId: string
   stage: 'starting' | 'loading' | 'generating' | 'embedding' | 'ready' | 'idle' | string
   percent: number
+  indeterminate?: boolean
 }
 
 export type NativeAccelerationMode = 'auto' | 'extreme'

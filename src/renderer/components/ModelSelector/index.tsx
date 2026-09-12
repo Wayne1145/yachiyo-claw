@@ -39,7 +39,7 @@ export const ModelSelector = forwardRef<HTMLDivElement, ModelSelectorProps>(
     },
     ref
   ) => {
-    const { providers, isFavoritedModel } = useProviders()
+    const { providers } = useProviders()
     const [activeTab, setActiveTab] = useState<string | null>('all')
     const [search, setSearch] = useState('')
 
@@ -61,7 +61,7 @@ export const ModelSelector = forwardRef<HTMLDivElement, ModelSelectorProps>(
       })
 
       return filtered
-    }, [providers, search, modelFilter, activeTab, isFavoritedModel])
+    }, [providers, search, modelFilter])
 
     const handleOptionSubmit = (val: string) => {
       if (!val) {

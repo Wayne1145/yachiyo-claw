@@ -67,7 +67,13 @@ i18n.use(initReactI18next).init({
     },
   },
 
-  fallbackLng: 'en',
+  fallbackLng: {
+    default: ['en'],
+    // Yachiyo 自定义页面文案只提供中英两种资源。中文 key 的值在 zh-Hans 下是原文（恒等映射），
+    // 若把 zh-Hans 加入回退链会命中中文值；非中英语言必须直接回退到英文，否则这些页面
+    // 在日语等语言下仍显示中文原文（issue #6：切换语言后仅设置菜单变化）。
+    'zh-Hant': ['en', 'zh-Hans'],
+  },
 
   interpolation: {
     escapeValue: false,

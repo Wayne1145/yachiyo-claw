@@ -235,7 +235,9 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         String requestId = call.getString("requestId", "");
         JSArray messages = call.getArray("messages", new JSArray());
         JSObject tools = call.getObject("tools", new JSObject());
-        int maxTokens = call.getInt("maxTokens", 128);
+        // Must match the service default; a smaller value silently truncates chat output when the
+        // caller omits maxTokens.
+        int maxTokens = call.getInt("maxTokens", 2048);
         inferenceExecutor.execute(() -> {
             try {
                 JSONObject job = store.findCompletedModel(modelId);

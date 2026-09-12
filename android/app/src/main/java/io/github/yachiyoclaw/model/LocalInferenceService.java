@@ -134,13 +134,34 @@ public final class LocalInferenceService extends Service {
         File heartbeatFile = new File(requestFile.getPath() + ".heartbeat");
         File progressFile = new File(requestFile.getPath() + ".progress");
         AtomicReference<String> stage = new AtomicReference<>("starting");
+        final long opStartedAt = SystemClock.elapsedRealtime();
         ScheduledFuture<?> monitor = monitorExecutor.scheduleAtFixedRate(() -> {
             try {
                 Files.write(heartbeatFile.toPath(), Long.toString(System.currentTimeMillis()).getBytes(StandardCharsets.US_ASCII));
-                int percent = "llama.cpp".equals(activeRuntime)
-                    ? Math.round(GgufRunner.loadProgress() * 100.0F)
-                    : ("ready".equals(stage.get()) || "generating".equals(stage.get()) ? 100 : 15);
-                JSONObject progress = new JSONObject().put("stage", stage.get()).put("percent", Math.max(0, Math.min(100, percent)));
+                String currentStage = stage.get();
+                boolean indeterminate = false;
+                int percent;
+                if ("llama.cpp".equals(activeRuntime)) {
+                    percent = Math.round(GgufRunner.loadProgress() * 100.0F);
+                    // mmap loads report no callback progress until weights are touched.
+                    indeterminate = "loading".equals(currentStage) && percent <= 0;
+                } else if ("ready".equals(currentStage) || "generating".equals(currentStage)) {
+                    percent = 100;
+                } else {
+                    percent = 15;
+                }
+                if ("litert-lm".equals(activeRuntime) && "loading".equals(currentStage)) {
+                    // LiteRT-LM engine initialization (NPU graph compile in particular) exposes no
+                    // progress callback. Report an indeterminate state with a slow bounded creep so
+                    // the UI never shows a frozen bar.
+                    indeterminate = true;
+                    long elapsedSeconds = (SystemClock.elapsedRealtime() - opStartedAt) / 1000L;
+                    percent = (int) Math.min(90L, 15L + elapsedSeconds / 2L);
+                }
+                JSONObject progress = new JSONObject()
+                    .put("stage", currentStage)
+                    .put("percent", Math.max(0, Math.min(100, percent)))
+                    .put("indeterminate", indeterminate);
                 Files.write(progressFile.toPath(), progress.toString().getBytes(StandardCharsets.UTF_8));
             } catch (Throwable ignored) {
                 // The caller also has an overall timeout; progress reporting must never abort inference.

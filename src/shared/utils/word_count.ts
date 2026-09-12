@@ -31,7 +31,7 @@ export function countWord(data: string): number {
       }
     }
     return count
-  } catch (e) {
+  } catch {
     // 在共享层不使用 Sentry，简单返回 -1 表示错误
     return -1
   }

@@ -31,7 +31,7 @@ describe('miscellaneous Yachiyo component translations', () => {
 
   it('covers map-backed feature labels and descriptions', () => {
     const source = fs.readFileSync(path.join(componentDirectory, 'FeatureManager.tsx'), 'utf8')
-    const mapBlocks = [...source.matchAll(/const FEATURE_(?:LABELS|DETAILS):[^=]+\= \{([\s\S]*?)\n\}/g)]
+    const mapBlocks = [...source.matchAll(/const FEATURE_(?:LABELS|DETAILS):[^=]+= \{([\s\S]*?)\n\}/g)]
     const keys = mapBlocks.flatMap((block) => [...block[1].matchAll(/:\s*'([^']+)'/g)].map((match) => match[1]))
 
     expect(mapBlocks).toHaveLength(2)

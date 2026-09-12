@@ -40,6 +40,8 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   重新优化: 'Optimize again',
   实际后端: 'Active backend',
   校准后端: 'Calibrated backend',
+  可用后端: 'Available backends',
+  暂时无法获取: 'Temporarily unavailable',
   卸载层数: 'Offloaded layers',
   'CPU 线程': 'CPU threads',
   运行内存: 'Runtime memory',

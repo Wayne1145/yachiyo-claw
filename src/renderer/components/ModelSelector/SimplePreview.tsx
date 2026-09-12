@@ -103,7 +103,7 @@ export function SimplePreview() {
                 <Text size="sm" fw={500} mb="xs">
                   Search Position: Top
                 </Text>
-                <ModelSelector showAuto={true} searchPosition="top" onSelect={(provider, model) => {}}>
+                <ModelSelector showAuto searchPosition="top" onSelect={() => {}}>
                   <Button
                     variant="light"
                     fullWidth
@@ -125,7 +125,7 @@ export function SimplePreview() {
                 <Text size="sm" fw={500} mb="xs">
                   Without Auto Option
                 </Text>
-                <ModelSelector showAuto={false} searchPosition="bottom" onSelect={(provider, model) => {}}>
+                <ModelSelector showAuto={false} searchPosition="bottom" onSelect={() => {}}>
                   <Button
                     variant="light"
                     fullWidth
@@ -147,7 +147,7 @@ export function SimplePreview() {
                 <Text size="sm" fw={500} mb="xs">
                   Custom Button Style
                 </Text>
-                <ModelSelector showAuto={true} onSelect={(provider, model) => {}}>
+                <ModelSelector showAuto onSelect={() => {}}>
                   <Button
                     variant="gradient"
                     gradient={{ from: 'blue', to: 'cyan' }}

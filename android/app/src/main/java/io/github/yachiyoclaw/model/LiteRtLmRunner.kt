@@ -192,11 +192,24 @@ object LiteRtLmRunner {
     if (normalizedBackend != AccelerationPolicy.BACKEND_CPU) candidates += AccelerationPolicy.BACKEND_CPU
     val failures = mutableListOf<String>()
     for (candidate in candidates.distinct()) {
-      val engine = Engine(EngineConfig(
-        modelPath = path,
-        backend = createBackend(context, path, candidate, declaredNpuCompatible, cpuThreads),
-        maxNumTokens = maxTokens,
-      ))
+      // Backend construction can fail before Engine.initialize() (missing NPU driver, GPU delegate
+      // probe). It must fall through to the next candidate instead of aborting the whole load.
+      val engine = try {
+        Engine(EngineConfig(
+          modelPath = path,
+          backend = createBackend(context, path, candidate, declaredNpuCompatible, cpuThreads),
+          maxNumTokens = maxTokens,
+        ))
+      } catch (error: Throwable) {
+        if (error is VirtualMachineError || error is ThreadDeath) throw error
+        val reason = error.message
+        failures += if (!reason.isNullOrBlank() && reason.matches(Regex("[A-Za-z0-9._-]{1,120}"))) {
+          reason
+        } else {
+          "${candidate}_backend_unavailable"
+        }
+        continue
+      }
       try {
         engine.initialize()
         loaded = LoadedEngine(
