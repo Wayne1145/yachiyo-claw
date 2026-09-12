@@ -168,7 +168,10 @@ public final class YachiyoSandboxService extends Service {
         SandboxDistribution.Spec distribution = SandboxDistribution.current(getApplicationInfo().nativeLibraryDir);
         if (distribution == null) throw new IllegalStateException("sandbox_abi_unsupported");
         AlpineSandboxInstaller installer = new AlpineSandboxInstaller(this, distribution);
-        if (!installer.isInstalled() || !new File(installer.rootfsDirectory(), ".yachiyo-toolchain-v1").isFile()) {
+        // Background jobs only require the bundled Alpine rootfs. The optional
+        // developer toolchain adds Node/Python/Git but must not gate BusyBox,
+        // file operations, or static preview servers.
+        if (!installer.isInstalled()) {
             throw new IllegalStateException("sandbox_not_ready");
         }
         return new RuntimeFiles(installer.rootfsDirectory(), installer.runtimeDirectory(), SandboxProcessFactory.RuntimeConfig.alpine());

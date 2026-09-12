@@ -26,6 +26,26 @@ import type { PluginInvocationContext } from './plugin-runtime'
  */
 
 export const PLUGIN_TOOL_LIMITS = { maxToolsPerPlugin: 8, maxToolsTotal: 32, timeoutMs: 20_000 } as const
+const OFFICIAL_UBUNTU_MAX_TOOL_TIMEOUT_MS = 135_000
+
+function isAgentToolSession(context: Parameters<FeatureToolsetFactory>[0]): boolean {
+  const coreAgent = context.featureOptions['core-agent'] as { agentMode?: boolean } | undefined
+  return coreAgent?.agentMode === true
+}
+
+function invocationTimeout(record: InstalledPluginRecord, args: unknown): number {
+  if (record.manifest.id !== 'ubuntu-runtime' || !record.signatureVerified || !record.deviceGrantAllowed) {
+    return PLUGIN_TOOL_LIMITS.timeoutMs
+  }
+  const requested =
+    args && typeof args === 'object' && typeof (args as { timeoutMs?: unknown }).timeoutMs === 'number'
+      ? Math.max(0, Math.floor((args as { timeoutMs: number }).timeoutMs))
+      : 0
+  return Math.min(
+    OFFICIAL_UBUNTU_MAX_TOOL_TIMEOUT_MS,
+    Math.max(PLUGIN_TOOL_LIMITS.timeoutMs, requested + 15_000),
+  )
+}
 
 export interface PluginToolRuntimePort {
   /** Invoke a named tool inside the plugin's isolate. Must reject on timeout. */
@@ -76,6 +96,8 @@ export const pluginToolRejections: RejectedPluginTool[] = []
 
 export function buildPluginToolset(sources: PluginToolsetSources): FeatureToolsetFactory {
   return async (context) => {
+    // Plugin tools belong to the internal Agent surface and must never leak into ordinary chat.
+    if (!isAgentToolSession(context) || !context.model.isSupportToolUse()) return null
     const records = await sources.listPlugins()
     if (records.length === 0) return null
 
@@ -175,7 +197,7 @@ export function buildPluginToolset(sources: PluginToolsetSources): FeatureToolse
                 pluginId,
                 declaration.name,
                 args,
-                PLUGIN_TOOL_LIMITS.timeoutMs,
+                invocationTimeout(record, args),
                 {
                   principal: { kind: 'plugin', pluginId, entrySha256 },
                   sessionId: context.approvalSessionId || context.agentRunId,

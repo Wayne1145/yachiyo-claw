@@ -82,6 +82,7 @@ describe('Yachiyo provider', () => {
       apiHost: YACHIYO_API_HOST,
       model: { modelId: YACHIYO_DEFAULT_MODEL },
     })
+    expect(model.isSupportToolUse()).toBe(true)
   })
 
   it('ignores a stored host override for the product service', () => {

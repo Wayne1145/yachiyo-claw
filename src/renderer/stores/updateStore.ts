@@ -75,7 +75,9 @@ export async function requestInstallUpdate() {
 export async function openUpdateInstallPermissionSettings() {
   try {
     await platform.openUpdateInstallPermissionSettings?.()
-    useUpdateStore.setState({ status: 'downloaded', error: null })
+    // Keep this state while Android Settings is in front. The visibility
+    // listener below retries installation as soon as the user returns.
+    useUpdateStore.setState({ status: 'permission-required', error: null })
   } catch {
     useUpdateStore.setState({ status: 'error', error: t('Update failed') })
   }
@@ -279,6 +281,14 @@ export function initUpdateListeners() {
     platform.onUpdaterError((data) => {
       stopUpdateDownloadMonitor()
       useUpdateStore.setState({ status: 'error', error: data.message, progress: 0 })
+    })
+  }
+
+  if (platform.type === 'mobile' && typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && useUpdateStore.getState().status === 'permission-required') {
+        void requestInstallUpdate()
+      }
     })
   }
 

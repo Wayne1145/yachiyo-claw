@@ -268,7 +268,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
         String requested = call.getString("workingDirectory", "default");
         executor.execute(() -> {
             try {
-                ensureInstalled();
+                ensureRootfsInstalled();
                 workspace = workspaceFor(requested);
                 if (!workspace.isDirectory() && !workspace.mkdirs()) throw new IOException("sandbox_workspace_unavailable");
                 call.resolve(new JSObject().put("success", true).put("workingDirectory", workspace.getAbsolutePath()));
@@ -649,9 +649,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
     }
 
     private void ensureInstalled() throws Exception {
-        state = "installing";
-        lastError = null;
-        installer.install(this::emitProgress);
+        ensureRootfsInstalled();
         if (!toolchainMarker().isFile()) {
             state = "installing_toolchain";
             emitProgress("installing_toolchain", 0, 0, 0);
@@ -671,6 +669,19 @@ public final class YachiyoSandboxPlugin extends Plugin {
         }
         state = "ready";
         emitProgress("ready", 100, 1, 1);
+    }
+
+    /**
+     * Makes the bundled offline Alpine runtime usable without coupling every
+     * Agent request to the optional network-installed developer toolchain.
+     */
+    private void ensureRootfsInstalled() throws Exception {
+        lastError = null;
+        if (!installer.isInstalled()) state = "installing";
+        // install() is idempotent and always restores the small PRoot runtime
+        // dependencies under code_cache, which Android may clear on an update.
+        installer.install(this::emitProgress);
+        state = toolchainMarker().isFile() ? "ready" : "rootfs_ready";
     }
 
     private CommandResult runGuestCommand(String command, int timeoutMs) throws Exception {
@@ -867,7 +878,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
     }
 
     private void requireReady() throws IOException {
-        if (installer == null || !installer.isInstalled() || !toolchainMarker().isFile()) throw new IOException("sandbox_not_ready");
+        if (installer == null || !installer.isInstalled()) throw new IOException("sandbox_not_ready");
         if (workspace == null) throw new IOException("sandbox_not_initialized");
     }
 

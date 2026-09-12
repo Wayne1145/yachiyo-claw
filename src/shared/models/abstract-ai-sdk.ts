@@ -15,6 +15,7 @@ import {
   stepCountIs,
   streamText,
   type TextStreamPart,
+  type ToolCallRepairFunction,
   type ToolSet,
   type TypedToolCall,
   type TypedToolError,
@@ -41,13 +42,49 @@ import type {
   ModelStatus,
   ModelStreamPart,
 } from './types'
-import { selectAndroidActiveTools } from '../agent/android-tool-stages'
+import { resolveAgentActiveTools } from '../agent/android-tool-stages'
 
 const RETRY_CONFIG = {
   MAX_ATTEMPTS: 5,
   INITIAL_DELAY_MS: 1000,
   BACKOFF_FACTOR: 2,
 } as const
+
+export const repairWrappedToolCall: ToolCallRepairFunction<ToolSet> = async ({
+  toolCall,
+  tools,
+  inputSchema,
+}) => {
+  if (!tools[toolCall.toolName]) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(toolCall.input)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+
+  const entries = Object.entries(parsed)
+  if (entries.length !== 1 || (entries[0][0] !== 'arguments' && entries[0][0] !== 'input')) return null
+
+  const [wrapper, rawInner] = entries[0]
+  const schema = await inputSchema({ toolName: toolCall.toolName })
+  const properties = schema && typeof schema === 'object' ? schema.properties : undefined
+  if (properties && wrapper in properties) return null
+
+  let inner = rawInner
+  if (typeof inner === 'string') {
+    try {
+      inner = JSON.parse(inner)
+    } catch {
+      return null
+    }
+  }
+  if (!inner || typeof inner !== 'object' || Array.isArray(inner)) return null
+
+  return { ...toolCall, input: JSON.stringify(inner) }
+}
 
 function resolveMaxSteps(options: { maxSteps?: number; maxModelRequests?: number; agentMode?: boolean }): number {
   if (!options.agentMode) {
@@ -87,7 +124,15 @@ function createAgentStepHook(options: {
       messages,
       toolCalls: [{ type: 'before-last-2-messages', tools: [...ANDROID_PRUNABLE_TOOL_RESULTS] }],
     })
-    const activeTools = selectAndroidActiveTools(stepNumber, messages, options.activeTools)
+    // `undefined` means every registered tool is initially visible. Route from
+    // the real tool names instead of manufacturing Android tools that may not
+    // exist when phone control is disabled.
+    const activeTools = resolveAgentActiveTools(
+      stepNumber,
+      messages,
+      options.activeTools,
+      options.tools ? Object.keys(options.tools) : undefined,
+    )
     await options.onAgentRequest?.(stepNumber)
     await options.beforeRequest?.({
       stepNumber,
@@ -131,6 +176,23 @@ function isRetryableStatusError(error: unknown): boolean {
     }
   }
   return false
+}
+
+function describeUnknownError(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    const direct = [record.message, record.error, record.detail, record.code].find(
+      (value) => typeof value === 'string' && value.trim(),
+    )
+    if (typeof direct === 'string') return direct
+    try {
+      return JSON.stringify(error, Object.getOwnPropertyNames(error))
+    } catch {
+      return Object.prototype.toString.call(error)
+    }
+  }
+  return String(error)
 }
 
 class StatusQueue {
@@ -307,9 +369,9 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       return undefined
     }
 
-    const model = options.agentMode
-      ? baseModel
-      : createRetryable({
+    // This wrapper retries only 429/5xx failures that arrive before a usable
+    // stream. Agent follow-up requests need that protection as much as chat.
+    const model = createRetryable({
           model: baseModel,
           retries: [retryableStatusAttempt],
           onError: (context) => {
@@ -352,6 +414,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       }),
       activeTools: options.activeTools,
       tools: options.tools as T | undefined,
+      experimental_repairToolCall: repairWrappedToolCall as ToolCallRepairFunction<T>,
       abortSignal: options.signal,
       ...applyAgentCallLimits(callSettings, options),
       // Billable POST retries are handled explicitly by the `ai-retry` wrapper above
@@ -713,7 +776,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
     if (error instanceof ChatboxAIAPIError) {
       throw error
     }
-    throw new ApiError(`Error from ${this.name}${context}: ${error}`)
+    throw new ApiError(`Error from ${this.name}${context}: ${describeUnknownError(error)}`)
   }
 
   /**
@@ -786,6 +849,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
       }),
       activeTools: options.activeTools,
       tools: options.tools,
+      experimental_repairToolCall: repairWrappedToolCall as ToolCallRepairFunction<T>,
       abortSignal: options.signal,
       ...applyAgentCallLimits(callSettings, options),
       // Billable POST retries are handled explicitly by the `ai-retry` wrapper in

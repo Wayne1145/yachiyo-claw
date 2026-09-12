@@ -253,9 +253,7 @@ describe('Flow Glass visual contracts', () => {
     expect(reducedStyles).toMatch(/backdrop-filter:\s*none !important;/)
     expect(reducedStyles).toMatch(/-webkit-backdrop-filter:\s*none !important;/)
     expect(reducedStyles).toMatch(/filter:\s*none !important;/)
-    expect(reducedStyles).toMatch(
-      /\[data-yachiyo-liquid-glass-quality=['"]reduced['"]\]\s+body \*\s*\{[^}]*backdrop-filter:\s*none !important;[^}]*-webkit-backdrop-filter:\s*none !important;/s
-    )
+    expect(reducedStyles).not.toMatch(/\[data-yachiyo-liquid-glass-quality=['"]reduced['"]\]\s+body \*/)
     expect(reducedStyles).toMatch(
       /\[data-yachiyo-liquid-glass-quality=['"]reduced['"]\]\s*\.yachiyo-bottom-nav-lens-inner\s*\{[^}]*background:\s*var\(--flow-control-fill\) !important;/s
     )

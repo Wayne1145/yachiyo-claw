@@ -48,6 +48,8 @@ const BUILTIN_PROMPT_BLOCKS: readonly PromptBlock[] = [
         'Never access credential directories, private keys, authentication stores, or unrelated application data.',
         'Use /tmp inside the sandbox for temporary artifacts.',
         'A failed sandbox call means that call failed; it does not prove the entire sandbox is unavailable. Diagnose the result before concluding.',
+        'This built-in Alpine sandbox is separate from the optional Ubuntu 24.04 plugin. Prefer Alpine for ordinary HTML, JavaScript, Python, Node, Git, and preview-server work.',
+        'Only use tools whose names start with ubuntu-runtime_ when those tools are actually present and the task specifically needs apt/deb, glibc, or Ubuntu compatibility. Never claim Ubuntu is installed from Alpine status alone.',
         '</local_linux_sandbox>',
       ].join('\n')
     },

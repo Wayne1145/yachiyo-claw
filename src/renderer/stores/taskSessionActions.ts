@@ -44,9 +44,13 @@ import { settingsStore } from './settingsStore'
 import { getTaskSession, TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
 import { buildTaskSystemPrompt } from './taskSystemPrompt'
 import { uiStore } from './uiStore'
+import { AGENT_TRANSIENT_STREAM_RETRIES, isTransientAgentStreamError } from './agent-stream-retry'
+import { selectAndroidActiveTools } from '@shared/agent/android-tool-stages'
 
 const log = getLogger('task-session-actions')
-const AGENT_STREAM_IDLE_TIMEOUT_MS = 180_000
+// iterator.next() also waits for tool execution. Keep this above every bounded
+// foreground tool timeout so a valid build/install cannot abort the whole run.
+const AGENT_STREAM_IDLE_TIMEOUT_MS = 10 * 60_000
 
 // Note: Using a single module-level AbortController means only one task can generate at a time.
 // This is intentional — prevents resource contention in the sandbox environment.
@@ -231,6 +235,7 @@ async function generateTaskResponse(
   targetMsg: Message,
   contextMessages: Message[],
   recovery?: AgentRunCheckpoint,
+  transientRetryCount = 0,
 ): Promise<void> {
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   const abortController = new AbortController()
@@ -252,6 +257,8 @@ async function generateTaskResponse(
   let settlePendingUsage: (usage?: unknown, result?: unknown) => Promise<void> = async () => undefined
   let removeApprovalLifecycleListener: (() => void) | undefined
   let lastDraftPersistedAt = 0
+  let completedModelSteps = 0
+  let retryTransientStream = false
 
   try {
     await runCheckpointStore.put({
@@ -389,6 +396,13 @@ async function generateTaskResponse(
         mcp: { agentSessionId: deviceAgent ? agentRunId : taskId },
       },
     })
+    log.info('Agent toolset prepared', JSON.stringify({
+      modelId,
+      supportsTools: model.isSupportToolUse(),
+      enabledFeatureIds: [...enabledFeatureIds],
+      toolCount: Object.keys(tools).length,
+      activeToolCount: activeTools?.length ?? Object.keys(tools).length,
+    }))
 
     const runtimeInstructions = sandboxUnavailableReason
       ? `${instructions}\n<sandbox_status>The local Linux sandbox is unavailable for this turn (${sandboxUnavailableReason}). Do not claim to run sandbox commands or skill scripts. Continue with other available tools and explain the limitation only when it affects the request.</sandbox_status>`
@@ -411,6 +425,8 @@ async function generateTaskResponse(
       modelSupportVision: model.isSupportVision(),
       preserveReasoning: provider === ModelProviderEnum.DeepSeek,
     })
+    const firstStepTools = selectAndroidActiveTools(0, coreMessages, activeTools ?? Object.keys(tools))
+    log.info('Agent first-step tools', JSON.stringify(firstStepTools))
 
     targetMsg = {
       ...targetMsg,
@@ -453,6 +469,7 @@ async function generateTaskResponse(
           usageReservations.set(stepNumber, reservation.reservationId)
         },
         onStepFinish: async ({ stepNumber, usage, result }) => {
+          completedModelSteps += 1
           await runCheckpointStore.addStepResult(agentRunId, stepNumber, result)
           const reservationId = usageReservations.get(stepNumber)
           if (reservationId) {
@@ -584,9 +601,21 @@ async function generateTaskResponse(
     if (!abortController.signal.aborted) {
       log.error('Task generation failed:', err)
     }
+    retryTransientStream =
+      !abortController.signal.aborted &&
+      completedModelSteps === 0 &&
+      transientRetryCount < AGENT_TRANSIENT_STREAM_RETRIES &&
+      isTransientAgentStreamError(err)
+    if (retryTransientStream) {
+      log.warn(
+        `Retrying Agent stream after a transient first-step failure (${transientRetryCount + 1}/${AGENT_TRANSIENT_STREAM_RETRIES})`,
+      )
+    }
     const loopError = err instanceof AgentLoopStoppedError ? err : detectedLoopStop
     const error =
-      loopError
+      retryTransientStream
+        ? undefined
+        : loopError
         ? `Agent 已停止：${loopError.warning.detail}`
         : abortController.signal.aborted
           ? undefined
@@ -595,8 +624,9 @@ async function generateTaskResponse(
             : String(err)
     targetMsg = {
       ...targetMsg,
-      generating: false,
+      generating: retryTransientStream,
       cancel: undefined,
+      ...(retryTransientStream ? { contentParts: [], status: [] } : {}),
       error,
     }
     const currentSession = queryClient.getQueryData<TaskSession>(queryKey)
@@ -609,7 +639,9 @@ async function generateTaskResponse(
         await syncTaskSessionToChat(persisted)
       }
     }
-    await runCheckpointStore.finish(agentRunId, 'failed').catch(() => undefined)
+    if (!retryTransientStream) {
+      await runCheckpointStore.finish(agentRunId, 'failed').catch(() => undefined)
+    }
   } finally {
     if (currentAbortController === abortController) currentAbortController = null
     if (currentAgentRunId === agentRunId) currentAgentRunId = null
@@ -628,6 +660,9 @@ async function generateTaskResponse(
       }
     }
     await settlePendingUsage().catch(() => undefined)
+    if (retryTransientStream) {
+      await generateTaskResponse(taskId, targetMsg, contextMessages, recovery, transientRetryCount + 1)
+    }
   }
 }
 

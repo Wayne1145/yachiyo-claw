@@ -3,7 +3,7 @@ import { defineProvider } from '../registry'
 import Claude from './models/claude'
 import OpenAI from './models/openai'
 import OpenAIResponses from './models/openai-responses'
-import { YACHIYO_GPT_CHAT_CAPABILITIES } from './yachiyo-models'
+import { normalizeYachiyoModel, YACHIYO_GPT_CHAT_CAPABILITIES } from './yachiyo-models'
 
 export const YACHIYO_API_HOST = 'https://api.yachiyo8000.cn/v1'
 export const YACHIYO_DEFAULT_MODEL = 'gpt-5.6'
@@ -29,13 +29,17 @@ export const yachiyoProvider = defineProvider({
     ],
   },
   createModel: (config) => {
-    if (config.model.apiStyle === 'openai-responses') {
+    // Dynamic /models entries and older persisted settings may not contain
+    // capability metadata. Normalize again at the provider boundary so Agent
+    // tools cannot silently disappear from an otherwise capable GPT model.
+    const model = normalizeYachiyoModel(config.model)
+    if (model.apiStyle === 'openai-responses') {
       return new OpenAIResponses(
         {
           apiKey: config.effectiveApiKey,
           apiHost: YACHIYO_API_HOST,
           apiPath: '/responses',
-          model: config.model,
+          model,
           temperature: config.settings.temperature,
           topP: config.settings.topP,
           maxOutputTokens: config.settings.maxTokens,
@@ -47,12 +51,12 @@ export const yachiyoProvider = defineProvider({
       )
     }
 
-    if (config.model.apiStyle === 'anthropic') {
+    if (model.apiStyle === 'anthropic') {
       return new Claude(
         {
           claudeApiKey: config.effectiveApiKey,
           claudeApiHost: YACHIYO_API_HOST,
-          model: config.model,
+          model,
           temperature: config.settings.temperature,
           topP: config.settings.topP,
           maxOutputTokens: config.settings.maxTokens,
@@ -67,7 +71,7 @@ export const yachiyoProvider = defineProvider({
         apiKey: config.effectiveApiKey,
         // This product endpoint is intentionally fixed in source configuration.
         apiHost: YACHIYO_API_HOST,
-        model: config.model,
+        model,
         dalleStyle: config.settings.dalleStyle || 'vivid',
         temperature: config.settings.temperature,
         topP: config.settings.topP,

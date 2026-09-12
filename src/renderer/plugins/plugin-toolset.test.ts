@@ -68,7 +68,12 @@ function makeSources(
   return { sources, audits, terminated }
 }
 
-const context: ToolsetContext = { model: {} as never, messages: [], platformType: 'mobile', featureOptions: {} }
+const context: ToolsetContext = {
+  model: { isSupportToolUse: () => true } as never,
+  messages: [],
+  platformType: 'mobile',
+  featureOptions: { 'core-agent': { agentMode: true } },
+}
 
 const run = async (sources: PluginToolsetSources, name: string, args: unknown = {}) => {
   const contribution = await buildPluginToolset(sources)(context)
@@ -83,6 +88,26 @@ afterEach(() => {
 })
 
 describe('buildPluginToolset registration gates', () => {
+  it('does not expose plugin tools outside an Agent tool session', async () => {
+    const { sources } = makeSources()
+    expect(
+      await buildPluginToolset(sources)({
+        ...context,
+        featureOptions: { 'core-agent': { agentMode: false } },
+      }),
+    ).toBeNull()
+  })
+
+  it('does not expose plugin tools to a model without tool calling support', async () => {
+    const { sources } = makeSources()
+    expect(
+      await buildPluginToolset(sources)({
+        ...context,
+        model: { isSupportToolUse: () => false } as never,
+      }),
+    ).toBeNull()
+  })
+
   it('skips tools when the tools capability is not granted, with a visible reason', async () => {
     const { sources } = makeSources({ granted: false })
     expect(await buildPluginToolset(sources)(context)).toBeNull()
@@ -202,6 +227,23 @@ describe('buildPluginToolset execution policy', () => {
     expect(await run(sources, 'demo_echo')).toEqual({ error: 'plugin_tool_timeout' })
     expect(terminated).toEqual(['demo'])
     expect(audits.at(-1)).toEqual({ toolName: 'demo_echo', status: 'timeout' })
+  })
+
+  it('honors a longer bounded timeout only for the signed official Ubuntu runtime', async () => {
+    const ubuntu = record({ id: 'ubuntu-runtime' })
+    ubuntu.signatureVerified = true
+    ubuntu.deviceGrantAllowed = true
+    const invoke = vi.fn(async () => ({ ok: true }))
+    const { sources } = makeSources({ records: [ubuntu], runtime: { invoke, terminate: () => {} } })
+
+    await run(sources, 'ubuntu-runtime_echo', { timeoutMs: 60_000 })
+    expect(invoke).toHaveBeenCalledWith(
+      'ubuntu-runtime',
+      'ubuntu-runtime_echo',
+      { timeoutMs: 60_000 },
+      75_000,
+      expect.any(Object),
+    )
   })
 
   it('fails closed when the grant is revoked mid-session', async () => {

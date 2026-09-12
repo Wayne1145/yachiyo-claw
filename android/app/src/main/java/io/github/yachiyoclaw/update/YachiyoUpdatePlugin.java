@@ -1,5 +1,6 @@
 package io.github.yachiyoclaw.update;
 
+import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Settings;
@@ -286,11 +287,20 @@ public final class YachiyoUpdatePlugin extends Plugin {
                 File apk = loadAndVerifyPersistedFile();
                 UpdatePackageVerifier.requireTrusted(getContext(), apk);
                 Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
-                Intent install = new Intent(Intent.ACTION_VIEW);
+                Intent install = new Intent(Intent.ACTION_INSTALL_PACKAGE);
                 install.setDataAndType(uri, APK_MIME);
+                install.setClipData(ClipData.newRawUri("Yachiyo Claw update", uri));
                 install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                for (android.content.pm.ResolveInfo handler : getContext().getPackageManager().queryIntentActivities(install, 0)) {
+                    getContext().grantUriPermission(
+                        handler.activityInfo.packageName,
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    );
+                }
                 // Android PackageManager performs the final package signature and signing-lineage verification.
-                getContext().startActivity(install);
+                if (getActivity() != null) getActivity().startActivity(install);
+                else getContext().startActivity(install);
                 JSObject result = new JSObject();
                 result.put("permissionRequired", false);
                 call.resolve(result);

@@ -71,9 +71,10 @@ export function resolveLiquidGlassQualityDecision(
     return { quality: 'reduced', reason: 'hardware-concurrency' }
   if (capabilities.prefersReducedMotion) return { quality: 'balanced', reason: 'reduced-motion' }
   if (!capabilities.supportsSvgDisplacement) return { quality: 'balanced', reason: 'missing-svg-displacement' }
-  // Android WebViews can advertise SVG backdrop filters while rendering them inconsistently.
-  // Auto stays on the stable blur path; Full remains available as an explicit choice.
-  if (capabilities.androidMajorVersion !== undefined) return { quality: 'balanced', reason: 'android-version' }
+  // Android WebViews can advertise backdrop filters while exhausting the GPU
+  // tile budget during rapid streamed DOM updates. Auto uses the translucent,
+  // no-filter path; Balanced and Full remain explicit choices.
+  if (capabilities.androidMajorVersion !== undefined) return { quality: 'reduced', reason: 'android-version' }
   if (capabilities.hardwareConcurrency === undefined || capabilities.deviceMemoryGb === undefined)
     return { quality: 'balanced', reason: 'unknown-hardware' }
   if (capabilities.hardwareConcurrency < 6) return { quality: 'balanced', reason: 'hardware-concurrency' }

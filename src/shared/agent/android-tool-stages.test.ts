@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
-import { selectAndroidActiveTools, selectAndroidToolStage } from './android-tool-stages'
+import { resolveAgentActiveTools, selectAndroidActiveTools, selectAndroidToolStage } from './android-tool-stages'
 
 function message(role: ModelMessage['role'], text: string): ModelMessage {
   return { role, content: [{ type: 'text', text }] } as ModelMessage
@@ -46,5 +46,59 @@ describe('Android tool stages', () => {
       'load_skill',
       'android_observe',
     ])
+  })
+
+  it('focuses coding turns on sandbox and preview tools without leaking the Ubuntu plugin', () => {
+    const requested = [
+      'agent_environment_status',
+      'agent_complete',
+      'sandbox_write',
+      'workspace_preview',
+      'web_search',
+      'load_skill',
+      'random_mcp_tool',
+      'ubuntu-runtime_exec',
+    ]
+    const active = selectAndroidActiveTools(
+      0,
+      [message('user', '用 html 写一个小游戏，部署到本地 8080 端口')],
+      requested,
+    )
+
+    expect(active).toEqual(
+      expect.arrayContaining([
+        'agent_environment_status',
+        'agent_complete',
+        'sandbox_write',
+        'workspace_preview',
+      ]),
+    )
+    expect(active).not.toContain('web_search')
+    expect(active).not.toContain('load_skill')
+    expect(active).not.toContain('random_mcp_tool')
+    expect(active).not.toContain('ubuntu-runtime_exec')
+  })
+
+  it('exposes the Ubuntu plugin only when a coding task explicitly needs Ubuntu compatibility', () => {
+    const requested = ['agent_complete', 'sandbox_bash', 'ubuntu-runtime_exec']
+    const active = selectAndroidActiveTools(
+      0,
+      [message('user', '在 Ubuntu 里用 apt 安装依赖并运行 Python 项目')],
+      requested,
+    )
+
+    expect(active).toContain('ubuntu-runtime_exec')
+  })
+
+  it('routes from registered internal tools when no staged list was supplied', () => {
+    const active = resolveAgentActiveTools(
+      0,
+      [message('user', '写一个 html 页面')],
+      undefined,
+      ['agent_complete', 'sandbox_write'],
+    )
+
+    expect(active).toEqual(['agent_complete', 'sandbox_write'])
+    expect(active).not.toContain('android_observe')
   })
 })

@@ -60,7 +60,11 @@ const sandboxLifecycle: FeatureLifecycle = {
     if (typeof workingDirectory === 'string' && workingDirectory && platform.sandboxInit) {
       try {
         const status = platform.type === 'mobile' ? await platform.sandboxStatus?.() : undefined
-        if (status && status.state !== 'ready') {
+        // The bundled Alpine rootfs is deliberately lazy-installed on first use. A
+        // non-ready status is not an unavailable runtime: sandboxInit() copies the
+        // bundled rootfs and installs its small toolchain before returning. Only an
+        // explicitly unsupported/error status should prevent this Agent run.
+        if (status?.state === 'unsupported' || status?.state === 'error') {
           state.enabled = false
           state.unavailableReason = `sandbox_${status.state}`
         } else {
