@@ -25,6 +25,7 @@
       "test/integration/**/*.ts",
       "test/e2e/**/*.ts",
       "!src/main/mcp/shell-env.cjs",
+      "!src/renderer/public/**",
       "!src/renderer/components/icons/**",
       "biome.json",
       "*.config.js",
@@ -41,7 +42,9 @@
       "correctness": {
         "useExhaustiveDependencies": "warn",
         "noUnusedFunctionParameters": "warn",
-        "noUnusedImports": "warn"
+        "noUnusedImports": "warn",
+        "noUnknownProperty": "warn",
+        "noUnknownMediaFeatureName": "warn"
       },
       "style": {
         "useNodejsImportProtocol": "warn",
@@ -56,10 +59,13 @@
           "options": {
             "allow": ["assert", "error", "info", "warn"]
           }
-        }
+        },
+        "noDuplicateProperties": "warn",
+        "noShorthandPropertyOverrides": "warn"
       },
       "nursery": {
-        "noFloatingPromises": "warn"
+        "noFloatingPromises": "warn",
+        "useUniqueElementIds": "off"
       }
     },
     "includes": [
@@ -67,6 +73,7 @@
       "test/integration/**/*.ts",
       "test/e2e/**/*.ts",
       "!src/main/mcp/shell-env.cjs",
+      "!src/renderer/public/**",
       "!src/renderer/components/icons/**",
       "biome.json",
       "*.config.js",

@@ -620,7 +620,10 @@ describe('plugin manager security integration', () => {
     mocks.currentRecord = record
     let release: (tools: Array<{ name: string }>) => void = () => undefined
     mocks.runtimeLoad.mockImplementationOnce(
-      () => new Promise<Array<{ name: string }>>((resolve) => (release = resolve))
+      () =>
+        new Promise<Array<{ name: string }>>((resolve) => {
+          release = resolve
+        })
     )
 
     const first = loadPluginForPage(record.manifest.id)

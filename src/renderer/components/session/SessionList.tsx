@@ -34,6 +34,12 @@ export interface Props {
   sessionListViewportRef: MutableRefObject<HTMLDivElement | null>
 }
 
+const SessionListLoadingFooter = () => (
+  <Flex justify="center" py="xs">
+    <IconLoader2 size={16} className="animate-spin" style={{ color: 'var(--mantine-color-dimmed)' }} />
+  </Flex>
+)
+
 export default function SessionList(props: Props) {
   const { t } = useTranslation()
   const { sessionMetaList: sortedSessions, fetchNextPage, hasNextPage, isFetchingNextPage } = useSessionList()
@@ -91,19 +97,7 @@ export default function SessionList(props: Props) {
       fetchNextPage()
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-  const virtuosoComponents = useMemo(
-    () =>
-      hasNextPage
-        ? {
-            Footer: () => (
-              <Flex justify="center" py="xs">
-                <IconLoader2 size={16} className="animate-spin" style={{ color: 'var(--mantine-color-dimmed)' }} />
-              </Flex>
-            ),
-          }
-        : {},
-    [hasNextPage]
-  )
+  const virtuosoComponents = useMemo(() => (hasNextPage ? { Footer: SessionListLoadingFooter } : {}), [hasNextPage])
 
   return (
     <>

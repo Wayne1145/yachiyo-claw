@@ -192,6 +192,7 @@ function decodeEnvelope<T>(raw: string | null): T | null {
 
 function normalizeText(value: string): string {
   return value
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping NUL bytes from extracted document text is intentional
     .replace(/\u0000/g, '')
     .replace(/\r\n?/g, '\n')
     .normalize('NFKC')

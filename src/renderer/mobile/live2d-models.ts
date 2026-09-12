@@ -131,11 +131,12 @@ export function parseLive2DActionMarkers(text: string, actions: Live2DAction[]) 
   const actionMap = new Map(actions.map((action) => [action.token.toLocaleLowerCase(), action]))
   const events: Array<{ action: Live2DAction; index: number; marker: string }> = []
   const markerPattern = /\[([^\]\r\n]{1,80})\]/g
-  let match: RegExpExecArray | null
+  let match = markerPattern.exec(text)
 
-  while ((match = markerPattern.exec(text))) {
+  while (match) {
     const action = actionMap.get(match[1].trim().toLocaleLowerCase())
     if (action) events.push({ action, index: match.index, marker: match[0] })
+    match = markerPattern.exec(text)
   }
 
   return events

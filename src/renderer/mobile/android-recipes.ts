@@ -534,7 +534,7 @@ export class AndroidRecipeRunner {
           case 'clickNode':
             lastResult = await this.host.clickNode(step.selector, context)
             break
-          case 'setNodeText':
+          case 'setNodeText': {
             // Empty text denotes a redacted persisted secret. It must be supplied
             // by a caller at runtime, otherwise refuse rather than typing nothing.
             const runtimeText =
@@ -550,6 +550,7 @@ export class AndroidRecipeRunner {
             }
             lastResult = await this.host.setNodeText(step.selector, runtimeText || '', context)
             break
+          }
           case 'scrollNode':
             lastResult = await this.host.scrollNode(step.selector, step.direction, context)
             break

@@ -273,8 +273,15 @@ jobs:
       - name: Type-check
         run: pnpm check
 
-      - name: Test Android security and request foundations
-        run: pnpm test:android-foundation
+      - name: Lint
+        run: pnpm lint
+
+      # Full Vitest suite, not the hand-maintained `test:android-foundation` subset: new test files
+      # are picked up automatically. `test/integration/model-provider` is excluded in
+      # vitest.config.ts and API-key gated cases self-skip, so no network or credentials are used.
+      # The release-validation tests need aapt2/android.jar from the SDK installed above.
+      - name: Run unit tests
+        run: pnpm test
 
       - name: Sync Android project
         run: pnpm mobile:sync:android

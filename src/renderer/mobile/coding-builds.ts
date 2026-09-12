@@ -10,6 +10,7 @@ export function artifactPathMatches(path: string, patterns: readonly string[]): 
   return patterns.some((pattern) => {
     const normalizedPattern = pattern.replace(/\\/g, '/').replace(/^\.\//, '')
     const escaped = normalizedPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: NUL is a deliberate placeholder for ** while single * is expanded
     const regex = escaped.replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')
     return new RegExp(`^${regex}$`).test(normalized)
   })

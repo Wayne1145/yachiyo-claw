@@ -855,7 +855,7 @@ export function CodingProjectWorkspace() {
     await codingProjectStorage.put('projects', { ...project, dirtyExternalSync: false, updatedAt: Date.now() })
     await refetch()
   }
-  const useProject = async () => {
+  const activateProject = async () => {
     setAgentWorkingDirectory(project.workspaceKey)
     saveAgentSessionConfig(project.taskId, {
       enabled: true,
@@ -878,7 +878,7 @@ export function CodingProjectWorkspace() {
         </div>
         <Group gap="xs" wrap="wrap" justify="flex-end">
           <Badge>{t(supportLabelKey(project.supportLevel))}</Badge>
-          <Button size="compact-sm" leftSection={<IconRobot size={16} />} onClick={() => void useProject()}>
+          <Button size="compact-sm" leftSection={<IconRobot size={16} />} onClick={() => void activateProject()}>
             {t('使用此项目')}
           </Button>
         </Group>

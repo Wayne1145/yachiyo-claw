@@ -198,9 +198,9 @@ describe('Flow Glass visual contracts', () => {
     const mainTabPageRule = shellStyles.match(/\.yachiyo-main-tab-page\s*\{([^}]*)\}/s)?.[1] ?? ''
     const bottomNavRule = flowStyles.match(/\.yachiyo-bottom-nav\s*\{([^}]*)\}/s)?.[1] ?? ''
 
-    expect(mobileContentRule).toMatch(/top:\s*0;[^]*right:\s*0;[^]*bottom:\s*0;[^]*left:\s*0;/)
-    expect(mainTabPageRule).toMatch(/top:\s*0;[^]*right:\s*0;[^]*bottom:\s*0;[^]*left:\s*0;/)
-    expect(bottomNavRule).toMatch(/top:\s*auto;[^]*right:\s*0;[^]*bottom:\s*0;[^]*left:\s*0;/)
+    expect(mobileContentRule).toMatch(/top:\s*0;[\s\S]*right:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;/)
+    expect(mainTabPageRule).toMatch(/top:\s*0;[\s\S]*right:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;/)
+    expect(bottomNavRule).toMatch(/top:\s*auto;[\s\S]*right:\s*0;[\s\S]*bottom:\s*0;[\s\S]*left:\s*0;/)
     expect(mobileContentRule).not.toMatch(/(?:^|\s)inset\s*:/)
     expect(mainTabPageRule).not.toMatch(/(?:^|\s)inset\s*:/)
     expect(bottomNavRule).not.toMatch(/(?:^|\s)inset\s*:/)
