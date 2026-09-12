@@ -1404,6 +1404,15 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   background: var(--flow-control-fill);
 }
 
+/* Android WebView resolves Auto to Reduced. Per-grapheme filters can exhaust
+   its tile budget during long streams even when the surrounding glass is flat. */
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] .yachiyo-stream-token {
+  animation: none !important;
+  filter: none !important;
+  transform: none !important;
+  will-change: auto;
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   html[data-yachiyo-appearance='flow-glass'] {
     --flow-chrome-fill: rgba(248, 251, 254, 0.9);

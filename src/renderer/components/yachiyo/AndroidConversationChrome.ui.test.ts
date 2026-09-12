@@ -95,6 +95,12 @@ describe('Android conversation chrome UI contract', () => {
     expect(shellSource).toContain('onClick={() => setConversationHeaderCollapsed((value) => !value)}')
   })
 
+  it('disables per-token GPU effects in reduced liquid-glass quality', () => {
+    expect(flowStyles).toMatch(
+      /data-yachiyo-liquid-glass-quality=['"]reduced['"][\s\S]*?\.yachiyo-stream-token\s*\{[^}]*animation:\s*none !important;[^}]*filter:\s*none !important;[^}]*transform:\s*none !important;[^}]*will-change:\s*auto;/s,
+    )
+  })
+
   it('uses one compact mobile composer with tools in a menu and one stateful primary action', () => {
     expect(inputBoxSource).toContain('className="yachiyo-mobile-composer-row"')
     expect(inputBoxSource).toContain('className="yachiyo-composer-add"')
