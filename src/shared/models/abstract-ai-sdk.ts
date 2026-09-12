@@ -458,6 +458,8 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
           nextChunk.then((iteration) => ({ type: 'chunk' as const, iteration })),
           statusWait.promise.then(() => ({ type: 'status' as const })),
         ])
+      } catch (error) {
+        this.handleError(error, ' while streaming')
       } finally {
         statusWait.cancel()
       }

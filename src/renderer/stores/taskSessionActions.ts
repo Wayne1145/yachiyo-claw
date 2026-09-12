@@ -44,7 +44,14 @@ import { settingsStore } from './settingsStore'
 import { getTaskSession, TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
 import { buildTaskSystemPrompt } from './taskSystemPrompt'
 import { uiStore } from './uiStore'
-import { AGENT_TRANSIENT_STREAM_RETRIES, isTransientAgentStreamError } from './agent-stream-retry'
+import {
+  AGENT_TRANSIENT_STREAM_RETRIES,
+  buildAgentRecoveryContext,
+  canResumeAgentStreamAfterTools,
+  describeAgentStreamError,
+  getAgentRetryDelayMs,
+  isTransientAgentStreamError,
+} from './agent-stream-retry'
 import { selectAndroidActiveTools } from '@shared/agent/android-tool-stages'
 
 const log = getLogger('task-session-actions')
@@ -236,6 +243,7 @@ async function generateTaskResponse(
   contextMessages: Message[],
   recovery?: AgentRunCheckpoint,
   transientRetryCount = 0,
+  resumeFromPartial = false,
 ): Promise<void> {
   const queryKey = [TASK_SESSION_QUERY_KEY, taskId]
   const abortController = new AbortController()
@@ -259,6 +267,8 @@ async function generateTaskResponse(
   let lastDraftPersistedAt = 0
   let completedModelSteps = 0
   let retryTransientStream = false
+  let retryContextMessages = contextMessages
+  let retryFromPartial = false
 
   try {
     await runCheckpointStore.put({
@@ -516,7 +526,7 @@ async function generateTaskResponse(
 
     const stream = model.chatStream(coreMessages, chatOptions) as AsyncGenerator<ModelStreamPart<ToolSet>>
 
-    let processorState = createInitialState()
+    let processorState = createInitialState(resumeFromPartial ? targetMsg.contentParts : undefined)
     let lastOverlayUpdate = 0
 
     const streamCallbacks = {
@@ -599,13 +609,18 @@ async function generateTaskResponse(
     await runCheckpointStore.finish(agentRunId, 'completed')
   } catch (err) {
     if (!abortController.signal.aborted) {
-      log.error('Task generation failed:', err)
+      log.error('Task generation failed:', describeAgentStreamError(err))
     }
+    retryFromPartial = canResumeAgentStreamAfterTools(completedModelSteps, targetMsg)
     retryTransientStream =
       !abortController.signal.aborted &&
-      completedModelSteps === 0 &&
+      (completedModelSteps === 0 || retryFromPartial) &&
       transientRetryCount < AGENT_TRANSIENT_STREAM_RETRIES &&
       isTransientAgentStreamError(err)
+    if (retryTransientStream && retryFromPartial) {
+      const partial = { ...targetMsg, generating: false, cancel: undefined, error: undefined }
+      retryContextMessages = buildAgentRecoveryContext(contextMessages, partial)
+    }
     if (retryTransientStream) {
       log.warn(
         `Retrying Agent stream after a transient first-step failure (${transientRetryCount + 1}/${AGENT_TRANSIENT_STREAM_RETRIES})`,
@@ -621,12 +636,12 @@ async function generateTaskResponse(
           ? undefined
           : err instanceof Error
             ? err.message
-            : String(err)
+            : describeAgentStreamError(err)
     targetMsg = {
       ...targetMsg,
       generating: retryTransientStream,
       cancel: undefined,
-      ...(retryTransientStream ? { contentParts: [], status: [] } : {}),
+      ...(retryTransientStream && !retryFromPartial ? { contentParts: [], status: [] } : {}),
       error,
     }
     const currentSession = queryClient.getQueryData<TaskSession>(queryKey)
@@ -661,7 +676,15 @@ async function generateTaskResponse(
     }
     await settlePendingUsage().catch(() => undefined)
     if (retryTransientStream) {
-      await generateTaskResponse(taskId, targetMsg, contextMessages, recovery, transientRetryCount + 1)
+      await new Promise((resolve) => setTimeout(resolve, getAgentRetryDelayMs(transientRetryCount)))
+      await generateTaskResponse(
+        taskId,
+        targetMsg,
+        retryContextMessages,
+        recovery,
+        transientRetryCount + 1,
+        retryFromPartial,
+      )
     }
   }
 }
