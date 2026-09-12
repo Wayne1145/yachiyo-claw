@@ -30,7 +30,7 @@ export async function parsePdfFileLocally(file: File): Promise<string> {
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs')
   if (typeof Worker === 'undefined') {
     const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
-    ;(globalThis as typeof globalThis & { pdfjsWorker?: unknown }).pdfjsWorker = workerModule
+    Object.assign(globalThis, { pdfjsWorker: workerModule })
   } else {
     GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default
   }

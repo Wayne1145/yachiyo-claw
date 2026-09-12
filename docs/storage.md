@@ -6,7 +6,6 @@ Chatbox 跨平台存储方案和版本迁移机制说明。
 
 ### 存储类型
 
-- **DESKTOP_FILE**: 桌面端文件存储（通过 IPC）
 - **INDEXEDDB**: IndexedDB（通过 localforage）
 - **LOCAL_STORAGE**: localStorage（已弃用）
 - **MOBILE_SQLITE**: SQLite 数据库（通过 Capacitor）
@@ -46,7 +45,7 @@ const [oldConfigVersion, oldStorage] = await findNewestStorage(getOldVersionStor
 
 // 2. 判断是否需要迁移数据
 if (
-  (oldConfigVersion > configVersion || platform.type === 'desktop') &&
+  oldConfigVersion > configVersion &&
   oldStorage &&
   oldStorage.getStorageType() !== storage.getStorageType()  // 存储类型不同
 ) {
@@ -145,8 +144,8 @@ if (type === 'MOBILE_SQLITE') {
 **4. 使用真实 Platform 实例**
 ```typescript
 beforeAll(async () => {
-  const { default: DesktopPlatformClass } = await import('@/platform/desktop_platform')
-  desktopPlatform = new DesktopPlatformClass(window.electronAPI)
+  const { default: MobilePlatformClass } = await import('@/platform/mobile_platform')
+  mobilePlatform = new MobilePlatformClass()
 })
 ```
 

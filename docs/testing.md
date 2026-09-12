@@ -18,7 +18,7 @@ export default defineConfig({
       NODE_ENV: 'test',
     },
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', 'dist', 'release', '.erb'],
+    exclude: ['node_modules', 'dist', 'test/integration/model-provider'],
   }
 })
 ```

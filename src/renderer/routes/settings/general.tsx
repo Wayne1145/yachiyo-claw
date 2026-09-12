@@ -166,42 +166,6 @@ export function RouteComponent() {
       {/* Export Logs */}
       <ExportLogsSection />
 
-      {/* others */}
-      {platform.type === 'desktop' && (
-        <>
-          <Divider />
-
-          <Stack gap="xl">
-            <Switch
-              label={t('Launch at system startup')}
-              checked={settings.autoLaunch}
-              onChange={(e) =>
-                setSettings({
-                  autoLaunch: e.currentTarget.checked,
-                })
-              }
-            />
-            <Switch
-              label={t('Automatic updates')}
-              checked={settings.autoUpdate}
-              onChange={(e) =>
-                setSettings({
-                  autoUpdate: e.currentTarget.checked,
-                })
-              }
-            />
-            <Switch
-              label={t('Beta updates')}
-              checked={settings.betaUpdate}
-              onChange={(e) =>
-                setSettings({
-                  betaUpdate: e.currentTarget.checked,
-                })
-              }
-            />
-          </Stack>
-        </>
-      )}
     </Stack>
   )
 }

@@ -89,7 +89,7 @@ function RouteComponent() {
  * Mobile: "New version available" hint linking to app store.
  */
 function UpdateSection({ needCheckUpdate }: { needCheckUpdate: boolean }) {
-  if (platform.type === 'desktop' || platform.type === 'mobile') {
+  if (platform.type === 'mobile') {
     return <DesktopUpdateSection />
   }
 

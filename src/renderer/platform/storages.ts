@@ -27,40 +27,6 @@ export function isProtectedMobileSettingsError(error: unknown): error is Protect
   return error instanceof ProtectedMobileSettingsError
 }
 
-export class DesktopFileStorage implements Storage {
-  public ipc = window.electronAPI
-
-  public getStorageType(): string {
-    return 'DESKTOP_FILE'
-  }
-
-  public async setStoreValue(key: string, value: any) {
-    // 为什么要序列化？
-    // 为了实现进程通信，electron invoke 会自动对传输数据进行序列化，
-    // 但如果数据包含无法被序列化的类型（比如 message 中常带有的 cancel 函数）将直接报错：
-    // Uncaught (in promise) Error: An object could not be cloned.
-    // 因此对于数据类型不容易控制的场景，应该提前 JSON.stringify，这种序列化方式会自动处理异常类型。
-    const valueJson = JSON.stringify(value)
-    return this.ipc.invoke('setStoreValue', key, valueJson)
-  }
-  public async getStoreValue(key: string) {
-    return this.ipc.invoke('getStoreValue', key)
-  }
-  public delStoreValue(key: string) {
-    return this.ipc.invoke('delStoreValue', key)
-  }
-  public async getAllStoreValues(): Promise<{ [key: string]: any }> {
-    const json = await this.ipc.invoke('getAllStoreValues')
-    return JSON.parse(json)
-  }
-  public async getAllStoreKeys(): Promise<string[]> {
-    return this.ipc.invoke('getAllStoreKeys')
-  }
-  public async setAllStoreValues(data: { [key: string]: any }) {
-    await this.ipc.invoke('setAllStoreValues', JSON.stringify(data))
-  }
-}
-
 export class LocalStorage implements Storage {
   // 使用LocalStorage存储的最后一个版本是ConfigVersion=6，当时只有这些key
   validStorageKeys: string[] = [
@@ -408,9 +374,7 @@ export class IndexedDBStorage implements Storage {
 }
 
 export function getOldVersionStorages(): Storage[] {
-  if (platform.type === 'desktop') {
-    return [new DesktopFileStorage()]
-  } else if (platform.type === 'mobile') {
+  if (platform.type === 'mobile') {
     return [new IndexedDBStorage(), new MobileSQLiteStorage(), new LocalStorage()]
   }
   return [new LocalStorage()]

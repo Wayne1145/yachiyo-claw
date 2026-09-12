@@ -7,7 +7,7 @@ const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'
 const globalStyles = fs.readFileSync(path.join(__dirname, '../../static/globals.css'), 'utf8')
 const workspaceSource = fs.readFileSync(path.join(__dirname, 'AndroidWorkspaceHome.tsx'), 'utf8')
 const inputBoxSource = fs.readFileSync(path.join(__dirname, '../InputBox/InputBox.tsx'), 'utf8')
-const viteConfigSource = fs.readFileSync(path.join(__dirname, '../../../../electron.vite.config.ts'), 'utf8')
+const viteConfigSource = fs.readFileSync(path.join(__dirname, '../../../../vite.config.mts'), 'utf8')
 const assetRoot = path.join(__dirname, '../../public/liquid-glass')
 
 function readHexToken(styles: string, selector: string, property: string): string {

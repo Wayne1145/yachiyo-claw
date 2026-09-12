@@ -24,7 +24,7 @@ import { getSessionWebBrowsing } from './utils'
 const log = getLogger('session-messages')
 
 async function attachLargeFileRagMetadata(sessionId: string, message: Message): Promise<Message> {
-  if (platform.type !== 'desktop' || !message.files?.length) {
+  if (platform.type !== 'mobile' || !message.files?.length) {
     return message
   }
 
@@ -164,7 +164,7 @@ export async function persistStreamingMessage(
  * @param messageId
  */
 export async function removeMessage(sessionId: string, messageId: string) {
-  if (platform.type === 'desktop') {
+  if (platform.type === 'mobile') {
     try {
       await platform.getSessionAttachmentRagController().deleteMessageAttachments(messageId)
     } catch (error) {

@@ -19,13 +19,9 @@ import { mergeProviderSettings, type ProviderSettingsUpdate } from './providerSe
 const log = getLogger('settings-store')
 const SETTINGS_STORAGE_VERSION = 8
 
-/**
- * Returns platform-specific default document parser configuration.
- * - Desktop: 'local' (has full Node.js environment for local parsing)
- * - Mobile/Web: 'none' (only basic text file support by default)
- */
+/** Default document parser: basic text support only, until the user configures a parser. */
 export function getPlatformDefaultDocumentParser(): DocumentParserConfig {
-  return platform.type === 'desktop' ? { type: 'local' } : { type: 'none' }
+  return { type: 'none' }
 }
 
 type Action = {

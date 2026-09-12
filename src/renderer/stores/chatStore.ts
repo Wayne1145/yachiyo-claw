@@ -310,7 +310,7 @@ export async function updateSessionCache(sessionId: string, updater: Updater<Ses
 
 export async function deleteSession(id: string) {
   console.debug('chatStore', 'deleteSession', id)
-  if (platform.type === 'desktop') {
+  if (platform.type === 'mobile') {
     try {
       await platform.getSessionAttachmentRagController().deleteSessionAttachments(id)
     } catch (error) {
@@ -334,7 +334,7 @@ export async function deleteSessions(ids: string[]) {
   const uniqueIds = [...new Set(ids)]
   if (uniqueIds.length === 0) return
 
-  if (platform.type === 'desktop') {
+  if (platform.type === 'mobile') {
     await runInChunks(uniqueIds, 10, async (id) => {
       try {
         await platform.getSessionAttachmentRagController().deleteSessionAttachments(id)

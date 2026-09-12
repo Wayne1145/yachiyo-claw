@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm install --
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm check
-powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm test:android-foundation
+powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm test
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run mobile:sync:android
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 gradle testDebugUnitTest --no-daemon --max-workers=1 --no-watch-fs
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 gradle assembleDebug --no-daemon --max-workers=1 --no-watch-fs
@@ -131,14 +131,14 @@ powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run mobile
 | 命令 | 基线结果 | 说明 |
 | --- | --- | --- |
 | `pnpm check` | 通过 | 先生成被 Git 忽略的 `routeTree.gen.ts`，再运行 TypeScript 检查 |
-| `pnpm test:android-foundation` | 37 个文件、222 项通过 | Android 共用契约、原生桥、移动端 UI 和关键生命周期 |
+| `pnpm lint` | 通过 | Biome 检查，0 error |
 | `pnpm run check:android-native-logs` | 通过，扫描 109 个源文件 | 阻止原生日志泄露令牌、凭据和敏感请求内容 |
-| `pnpm test` | 271 个文件、2025 项通过，54 项跳过 | 全量 Vitest；无失败或收集错误 |
-| `pnpm build:web` | 通过 | Web bundle 与 sourcemap 清理均成功 |
+| `pnpm test` | 全量 Vitest；无失败或收集错误 |
+| `pnpm build:web` | 通过 | Web bundle 构建成功，产物不含 sourcemap |
 | `gradle testDebugUnitTest` | 34 个 suite、107 项通过 | Android/JVM 单元测试；无失败或错误 |
 | `gradle assembleDebug` | 通过 | 生成可安装的 Debug APK |
 
-Android 主机门禁是 `pnpm check`、`test:android-foundation`、`mobile:sync:android`、`testDebugUnitTest`、`assembleDebug` 和 APK 审计。共享 Provider/会话层里程碑及公开发布还必须运行 `pnpm test` 和 `pnpm build:web`；已知上游失败需要记录精确用例、基线提交和跟踪项，不能被当成通过。桌面 Electron 测试失败也不能混入 Android 回归统计。
+Android 主机门禁是 `pnpm check`、`pnpm lint`、`pnpm test`（全量）、`mobile:sync:android`、`testDebugUnitTest`、`assembleDebug` 和 APK 审计，与 CI 一致。已知失败需要记录精确用例、基线提交和跟踪项，不能被当成通过。
 
 ## Windows Gradle 文件占用
 

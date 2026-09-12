@@ -534,12 +534,12 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
         ...preprocessedSessionAttachmentIds.sort((a, b) => a - b),
       ],
       queryFn: () => {
-        if (platform.type !== 'desktop' || preprocessedSessionAttachmentIds.length === 0) {
+        if (platform.type !== 'mobile' || preprocessedSessionAttachmentIds.length === 0) {
           return []
         }
         return platform.getSessionAttachmentRagController().getAttachments(preprocessedSessionAttachmentIds)
       },
-      enabled: platform.type === 'desktop' && preprocessedSessionAttachmentIds.length > 0,
+      enabled: platform.type === 'mobile' && preprocessedSessionAttachmentIds.length > 0,
       refetchInterval: (query): number | false => {
         const attachments = (query.state.data as SessionAttachment[] | undefined) ?? []
         return attachments.some(
@@ -829,7 +829,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
             preprocessedFilesForSubmit.flatMap((file) => (file.sessionAttachmentId ? [file.sessionAttachmentId] : [])),
           ),
         )
-        if (platform.type === 'desktop' && submitSessionAttachmentIds.length > 0) {
+        if (platform.type === 'mobile' && submitSessionAttachmentIds.length > 0) {
           const latestAttachmentStates = await platform
             .getSessionAttachmentRagController()
             .getAttachments(submitSessionAttachmentIds)
@@ -1044,7 +1044,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
           }
 
           let nextPreprocessedFile: PreprocessedFile = { ...preprocessedFile, inputFileKey: fileKey }
-          if (platform.type === 'desktop') {
+          if (platform.type === 'mobile') {
             const draftMessageId = draftMessageIdRef.current || uuidv4()
             const indexedFile = await startPreparedSessionAttachmentIndexing({
               file,
@@ -1802,7 +1802,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                             // Ignore cancellation errors
                           })
                         }
-                        if (platform.type === 'desktop' && preprocessedFile?.sessionAttachmentId) {
+                        if (platform.type === 'mobile' && preprocessedFile?.sessionAttachmentId) {
                           void platform
                             .getSessionAttachmentRagController()
                             .deleteAttachment(preprocessedFile.sessionAttachmentId)

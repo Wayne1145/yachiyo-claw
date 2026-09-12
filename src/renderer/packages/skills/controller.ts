@@ -758,6 +758,9 @@ interface SkillScriptResult {
   exitCode: number | null
 }
 
+/** Skills need the Android app's sandbox; the browser preview has no host for them. */
+const SKILLS_UNAVAILABLE = 'skills_require_the_android_app'
+
 interface SkillInstallResult {
   success: boolean
   skillName: string
@@ -804,7 +807,7 @@ export const skillsController = {
           signatureVerified: skill.installRecord?.signatureVerified,
         }))
     }
-    return window.electronAPI.invoke('skills:discover')
+    return []
   },
 
   async loadSkill(name: string): Promise<{ metadata: SkillMetadata; body: string } | null> {
@@ -812,17 +815,16 @@ export const skillsController = {
       const skill = (await readMobileSkills()).find((candidate) => candidate.metadata.name === name)
       return skill ? { metadata: skill.metadata, body: skill.body } : null
     }
-    return window.electronAPI.invoke('skills:load', name)
+    return null
   },
 
   getSkillsDirectory(): Promise<string> {
     if (platform.type === 'mobile') return Promise.resolve('Yachiyo Claw / Skills')
-    return window.electronAPI.invoke('skills:get-directory')
+    return Promise.resolve('Yachiyo Claw / Skills')
   },
 
   async openSkillsDirectory(): Promise<void> {
-    if (platform.type === 'mobile') return
-    await window.electronAPI.invoke('skills:open-directory')
+    // Skills live in app-private storage; there is no directory to reveal.
   },
 
   async executeScript(
@@ -857,7 +859,7 @@ export const skillsController = {
         }
       }
     }
-    return window.electronAPI.invoke('skills:execute-script', { skillName, scriptName, args })
+    return { success: false, stdout: '', stderr: SKILLS_UNAVAILABLE, exitCode: 127 }
   },
 
   async configureScriptExecution(
@@ -895,7 +897,7 @@ export const skillsController = {
 
   installSkill(owner: string, repo: string, skillPath: string): Promise<SkillInstallResult> {
     if (platform.type === 'mobile') return installMobileGitHubSkill(owner, repo, skillPath)
-    return window.electronAPI.invoke('skills:install', { owner, repo, skillPath })
+    return Promise.resolve({ success: false, skillName: skillPath, error: SKILLS_UNAVAILABLE })
   },
 
   async installMarketplaceSkill(skill: MarketplaceSkill): Promise<SkillInstallResult> {
@@ -916,7 +918,7 @@ export const skillsController = {
         return { success: false, skillName: skill.name, error: error instanceof Error ? error.message : String(error) }
       }
     }
-    return window.electronAPI.invoke('skills:install-marketplace', skill)
+    return { success: false, skillName: skill.name, error: SKILLS_UNAVAILABLE }
   },
 
   async deleteSkill(name: string): Promise<{ success: boolean; error?: string }> {
@@ -924,19 +926,19 @@ export const skillsController = {
       await writeMobileSkills((await readMobileSkills()).filter((skill) => skill.metadata.name !== name))
       return { success: true }
     }
-    return window.electronAPI.invoke('skills:delete', name)
+    return { success: false, error: SKILLS_UNAVAILABLE }
   },
 
   scanRepo(owner: string, repo: string): Promise<Array<{ name: string; path: string; description?: string }>> {
     if (platform.type === 'mobile') {
       return scanMobileGitHubRepo(owner, repo)
     }
-    return window.electronAPI.invoke('skills:scan-repo', owner, repo)
+    return Promise.resolve([])
   },
 
   checkForUpdate(name: string): Promise<SkillUpdateResult> {
     if (platform.type === 'mobile') return checkMobileSkillUpdate(name)
-    return window.electronAPI.invoke('skills:check-update', name)
+    return Promise.resolve({ hasUpdate: false, error: SKILLS_UNAVAILABLE })
   },
 
   async checkForUpdatesBatch(): Promise<Record<string, { hasUpdate: boolean; error?: string }>> {
@@ -945,6 +947,6 @@ export const skillsController = {
       for (const skill of await readMobileSkills()) result[skill.metadata.name] = await checkMobileSkillUpdate(skill.metadata.name)
       return result
     }
-    return window.electronAPI.invoke('skills:check-updates-batch')
+    return {}
   },
 }

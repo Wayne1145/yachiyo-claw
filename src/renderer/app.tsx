@@ -203,12 +203,10 @@ async function startApp() {
   })
 
   await i18n.changeLanguage(settings.language)
-  // Update listeners are shared; Android performs a delayed startup check when enabled.
-  if (platform.type === 'desktop' || platform.type === 'mobile') {
+  // Android performs a delayed startup update check when enabled.
+  if (platform.type === 'mobile') {
     initUpdateListeners()
-    if (platform.type === 'mobile') scheduleStartupUpdateCheck(settings.autoUpdate)
-  }
-  if (platform.type === 'desktop') {
+    scheduleStartupUpdateCheck(settings.autoUpdate)
     initSessionAttachmentRagMaintenance()
   }
   // Cleanup is intentionally not captured — listeners persist for the app lifetime

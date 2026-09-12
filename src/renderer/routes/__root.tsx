@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import Toasts from '@/components/common/Toasts'
 import DesktopDownloadReminder from '@/components/layout/DesktopDownloadReminder'
-import ExitFullscreenButton from '@/components/layout/ExitFullscreenButton'
 import { AndroidAppShell } from '@/components/yachiyo/AndroidAppShell'
 import { MobileUpdateDialog } from '@/components/yachiyo/MobileUpdateDialog'
 import useAppTheme from '@/hooks/useAppTheme'
@@ -50,7 +49,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import { shouldUseAndroidAppShell } from '@/mobile/android-app-shell'
 import SettingsModal, { navigateToSettings } from '@/modals/Settings'
 import { prefetchModelRegistry } from '@/packages/model-registry'
-import { getOS } from '@/packages/navigator'
 import PictureDialog from '@/pages/PictureDialog'
 import RemoteDialogWindow from '@/pages/RemoteDialogWindow'
 import SearchDialog from '@/pages/SearchDialog'
@@ -263,7 +261,6 @@ function Root() {
   return (
     <Box className="box-border App relative" spellCheck={spellCheck} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {!useAndroidAppShell && <BackgroundImageOverlay />}
-      {platform.type === 'desktop' && (getOS() === 'Windows' || getOS() === 'Linux') && <ExitFullscreenButton />}
       {useAndroidAppShell ? (
         <AndroidAppShell>
           <ErrorBoundary name="main">

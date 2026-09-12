@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => ({
       NODE_ENV: 'test',
     },
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'test/integration/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', 'dist', 'release', '.erb', 'test/integration/model-provider'],
+    exclude: ['node_modules', 'dist', 'test/integration/model-provider'],
     setupFiles: [],
     testTimeout: 10000,
     hookTimeout: 10000,

@@ -244,7 +244,7 @@ export async function clear(sessionId: string) {
   if (!session) {
     return
   }
-  if (platform.type === 'desktop') {
+  if (platform.type === 'mobile') {
     try {
       await platform.getSessionAttachmentRagController().deleteSessionAttachments(sessionId)
     } catch (error) {

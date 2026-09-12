@@ -42,12 +42,7 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
   const [connectionResult, setConnectionResult] = useState<boolean | undefined>()
 
   const parserOptions = useMemo(() => {
-    const isDesktop = platform.type === 'desktop'
-    return ALL_PARSER_OPTIONS.filter((opt) => {
-      if (opt.desktopOnly && !isDesktop) return false
-      if (opt.mobileWebOnly && isDesktop) return false
-      return true
-    })
+    return ALL_PARSER_OPTIONS.filter((opt) => !opt.desktopOnly)
   }, [])
 
   const currentParserType = documentParser?.type || getPlatformDefaultDocumentParser().type

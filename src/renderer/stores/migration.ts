@@ -26,7 +26,6 @@ import {
 import platform from '@/platform'
 import type { Storage } from '@/platform/interfaces'
 import { getOldVersionStorages } from '@/platform/storages'
-import WebPlatform from '@/platform/web_platform'
 import { initData } from '@/setup/init_data'
 import storage, { StorageKey } from '@/storage'
 import { StorageKeyGenerator } from '@/storage/StoreStorage'
@@ -78,21 +77,6 @@ async function doMigrateStorage(oldStorage: Storage) {
         log.info(`migrateStorage: failed to migrate ${key}`)
       }
     }
-  } else if (platform.type === 'desktop') {
-    // for desktop copy all except settings, configs and configVersion, then delete old key
-    const kvs = await oldStorage.getAllStoreValues()
-    const keys = Object.keys(kvs).filter((k) => !['settings', 'configs', 'configVersion'].includes(k))
-    for (let index = 0; index < keys.length; index++) {
-      const key = keys[index]
-      try {
-        const val = kvs[key]
-        await storage.setItemNow(key, val)
-        await oldStorage.delStoreValue(key)
-        log.info(`migrateStorage: ${index + 1} / ${keys.length} migrated`)
-      } catch {
-        log.info(`migrateStorage: failed to migrate ${key}`)
-      }
-    }
   } else {
     // no migration for web platform yet
   }
@@ -137,15 +121,6 @@ async function migrateStorage() {
 
   let needMigration = false
 
-  const latestDesktopMigratedVersion = 12 // desktop 端最新的迁移版本是 11 到 12
-
-  // 桌面端的configVersion一直在config file storage中，不存在不同storage间不同的情况
-  if (platform.type === 'desktop' && configVersion > 0 && configVersion < latestDesktopMigratedVersion) {
-    log.info(
-      `migrateStorage: desktop platform needs migration, config version ${configVersion} < latest migrated version ${latestDesktopMigratedVersion}`
-    )
-    needMigration = true
-  }
 
   const [oldConfigVersion, oldStorage] = await findNewestStorage(getOldVersionStorages())
 
@@ -155,7 +130,6 @@ async function migrateStorage() {
     )
 
     if (
-      platform.type !== 'desktop' &&
       oldConfigVersion > configVersion &&
       oldStorage &&
       oldStorage.getStorageType() !== storage.getStorageType()
@@ -248,24 +222,8 @@ async function migrate_1_to_2(dataStore: MigrateStore) {
   }
 }
 
-async function migrate_2_to_3(dataStore: MigrateStore) {
-  // 原来 Electron 应用存储图片 base64 数据到 IndexedDB，现在改成本地文件存储
-  if (!dataStore.setBlob) {
-    return
-  }
-  if (platform.type !== 'desktop') {
-    return
-  }
-  const ws = new WebPlatform()
-  const blobKeys = await ws.listStoreBlobKeys()
-  for (const key of blobKeys) {
-    const value = await ws.getStoreBlob(key)
-    if (!value) {
-      continue
-    }
-    await dataStore.setBlob(key, value)
-    await ws.delStoreBlob(key)
-  }
+async function migrate_2_to_3(_dataStore: MigrateStore) {
+  // Moved Electron's IndexedDB image blobs onto the desktop filesystem; retired with that target.
 }
 
 async function migrate_3_to_4(dataStore: MigrateStore) {

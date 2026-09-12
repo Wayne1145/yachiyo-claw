@@ -21,7 +21,8 @@ Run the smallest relevant check after each change. The Android host gate before 
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm check
-powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm test:android-foundation
+powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm test
+powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm lint
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run check:android-native-logs
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 pnpm run mobile:sync:android
 powershell -ExecutionPolicy Bypass -File scripts/yachiyo-env.ps1 gradle testDebugUnitTest

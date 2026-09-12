@@ -38,7 +38,7 @@ import {
 const log = getLogger('session-orchestration')
 
 async function refreshSessionAttachmentStatuses(messages: Message[]): Promise<Message[]> {
-  if (platform.type !== 'desktop') {
+  if (platform.type !== 'mobile') {
     return messages
   }
 

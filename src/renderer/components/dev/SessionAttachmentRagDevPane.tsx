@@ -28,8 +28,8 @@ export function SessionAttachmentRagDevPane({ opened, onClose }: { opened: boole
   const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
-    if (platform.type !== 'desktop') {
-      setError('Session-RAG debug pane is only available on desktop')
+    if (platform.type !== 'mobile') {
+      setError('Session-RAG debug pane is only available in the Android app')
       return
     }
 
@@ -46,7 +46,7 @@ export function SessionAttachmentRagDevPane({ opened, onClose }: { opened: boole
   }
 
   const clearAll = async () => {
-    if (platform.type !== 'desktop') {
+    if (platform.type !== 'mobile') {
       return
     }
     if (!window.confirm('Clear all Session-RAG libsql data? This cannot be undone.')) {

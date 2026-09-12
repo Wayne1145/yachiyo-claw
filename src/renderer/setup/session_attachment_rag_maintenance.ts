@@ -40,7 +40,7 @@ function collectSessionMessageIds(session: Session): string[] {
 }
 
 async function collectMaintenanceScope() {
-  if (platform.type !== 'desktop') {
+  if (platform.type !== 'mobile') {
     return {
       sessionIds: [],
       messageIds: [],
@@ -106,7 +106,7 @@ export async function runSessionAttachmentRagMaintenancePass() {
 }
 
 export function initSessionAttachmentRagMaintenance() {
-  if (maintenanceStarted || platform.type !== 'desktop') {
+  if (maintenanceStarted || platform.type !== 'mobile') {
     return
   }
 

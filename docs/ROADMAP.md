@@ -46,7 +46,7 @@ flowchart TD
 
 ## 验证分层
 
-- 每次代码变更先运行最小相关测试；Android 阶段合并门禁固定为类型检查、`test:android-foundation`、移动 bundle 同步、Gradle 单元测试、APK 构建与包内容审计。
+- 每次代码变更先运行最小相关测试；Android 阶段合并门禁固定为类型检查、全量 `pnpm test`、`pnpm lint`、移动 bundle 同步、Gradle 单元测试、APK 构建与包内容审计。
 - Chatbox 上游全量测试和 Web 构建作为共享层兼容性门禁。已确认的上游基线失败必须记录精确用例、原因和跟踪项，不能写成“通过”或混入 Android 回归统计。
 - 涉及 UI、Keystore、深链、后台、权限或设备工具的阶段还必须通过 Android 11、13 和 15/16 的模拟器或真机 smoke/instrumentation 测试；没有连接设备时只能标记为主机构建通过。
 - 发布门禁在上述检查之外加入 release 签名、升级安装、权限 allowlist、遥测/调试产物扫描、SBOM 和设备矩阵报告。

@@ -733,9 +733,6 @@ export async function requestLoginTicketId() {
   let deviceType: string
   if (platform.type === 'mobile') {
     deviceType = await platform.getPlatform()
-  } else if (platform.type === 'desktop') {
-    const os = getOS()
-    deviceType = os
   } else {
     // web 或其他
     deviceType = platform.type

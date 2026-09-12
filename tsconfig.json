@@ -17,7 +17,7 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "allowJs": true,
-    "outDir": ".erb/dll",
+    "outDir": ".cache/tsc",
     "skipLibCheck": true
   },
   "exclude": [
@@ -25,9 +25,7 @@
     "dist",
     "tmp",
     "test",
-    "release",
     "out",
-    ".erb/dll",
     "ios",
     "android",
     "Yachiyo Claw",

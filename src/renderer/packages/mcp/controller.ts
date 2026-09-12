@@ -11,7 +11,6 @@ import { isEqual } from 'lodash'
 import { requestAgentApproval } from '@/mobile/agent-approval'
 import { mobileMcpController } from '@/mobile/mcp-mobile-controller'
 import { createSafeMcpOAuthFetch } from '@/mobile/mcp-oauth-provider'
-import { IPCStdioTransport } from './ipc-stdio-transport'
 import type { MCPServerConfig, MCPServerStatus } from './types'
 
 type TransportConfig = MCPServerConfig['transport']
@@ -23,26 +22,8 @@ async function createClient(
   authProvider?: OAuthClientProvider
 ): Promise<MCPClient> {
   if (transportConfig.type === 'stdio') {
-    if (Capacitor.isNativePlatform()) throw new Error('stdio MCP transports are unavailable on mobile.')
-    const transport = await IPCStdioTransport.create(transportConfig)
-    let errorMessage = ''
-    try {
-      return await createMCPClient({
-        name,
-        transport,
-        onUncaughtError(error: unknown) {
-          console.error('mcp:client:onUncaughtError', error)
-          errorMessage += (error as Error).message
-        },
-      })
-    } catch (err) {
-      transport.close().catch(console.error)
-      let message = (err as Error).message
-      if (errorMessage && !message.includes(errorMessage)) {
-        message += `\n${errorMessage}`
-      }
-      throw new Error(message, { cause: err })
-    }
+    // stdio servers need a local process host; this app only speaks HTTP/SSE MCP.
+    throw new Error('stdio MCP transports are unavailable on mobile.')
   }
   if (transportConfig.type === 'http') {
     const safeFetch = Capacitor.isNativePlatform() ? createSafeMcpOAuthFetch() : undefined

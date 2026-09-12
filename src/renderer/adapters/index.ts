@@ -70,54 +70,8 @@ export async function createModelDependencies(): Promise<ModelDependencies> {
     },
     sentry: new RendererSentryAdapter(),
     getRemoteConfig: settingActions.getRemoteConfig,
-    oauth:
-      platform.type === 'desktop'
-        ? {
-            async refreshCredential(providerId: string, credential: OAuthCredentials): Promise<OAuthCredentials> {
-              const resultJson: string = await (platform as any).ipc.invoke(
-                OAuthIpcChannels.REFRESH,
-                providerId,
-                JSON.stringify(credential)
-              )
-              const result = JSON.parse(resultJson) as {
-                success: boolean
-                credentials?: OAuthCredentials
-                error?: string
-              }
-              if (!result.success || !result.credentials) {
-                throw new Error(result.error || `Failed to refresh OAuth credential for ${providerId}`)
-              }
-              return result.credentials
-            },
-            persistCredential(providerId: string, credential: OAuthCredentials): void {
-              const settingsProviderId = toOAuthSettingsProviderId(providerId) || providerId
-              settingsStore.setState((currentSettings) => ({
-                providers: {
-                  ...(currentSettings.providers || {}),
-                  [settingsProviderId]: {
-                    ...(currentSettings.providers?.[settingsProviderId] || {}),
-                    oauth: credential,
-                  },
-                },
-              }))
-            },
-            clearCredential(providerId: string): void {
-              const settingsProviderId = toOAuthSettingsProviderId(providerId) || providerId
-              settingsStore.setState((currentSettings) => {
-                const currentProviderSettings = currentSettings.providers?.[settingsProviderId] || {}
-                return {
-                  providers: {
-                    ...(currentSettings.providers || {}),
-                    [settingsProviderId]: {
-                      ...currentProviderSettings,
-                      oauth: undefined,
-                    },
-                  },
-                }
-              })
-            },
-          }
-        : undefined,
+    // Provider OAuth ran in the Electron main process; there is no refresh path without it.
+    oauth: undefined,
     platformType: platform.type,
     localInference: platform.type === 'mobile' ? new NativeLocalInferenceAdapter() : undefined,
   }

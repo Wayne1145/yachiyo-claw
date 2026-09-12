@@ -4,7 +4,6 @@ import { settingsStore, useLanguage, useSettingsStore } from '@/stores/settingsS
 import { uiStore, useUIStore } from '@/stores/uiStore'
 import { type Language, Theme } from '../../shared/types'
 import platform from '../platform'
-import DesktopPlatform from '../platform/desktop_platform'
 
 export const switchTheme = async (theme: Theme) => {
   let finalTheme = 'light' as 'light' | 'dark'
@@ -17,9 +16,6 @@ export const switchTheme = async (theme: Theme) => {
     realTheme: finalTheme,
   })
   localStorage.setItem('initial-theme', finalTheme)
-  if (platform instanceof DesktopPlatform) {
-    await platform.switchTheme(finalTheme)
-  }
 }
 
 export default function useAppTheme(forceLight = false) {
