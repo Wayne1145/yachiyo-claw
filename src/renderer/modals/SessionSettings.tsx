@@ -295,7 +295,7 @@ const SessionSettingsModal = NiceModal.create(
                     <ActionIcon
                       color="chatbox-error"
                       size={20}
-                      radius={10}
+                      radius="var(--yachiyo-r-sm)"
                       bottom={3}
                       right={3}
                       className="absolute"

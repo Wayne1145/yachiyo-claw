@@ -92,7 +92,7 @@ export const SettingsModal: FC<SettingsModalProps> = (props) => {
             h={36}
             w={36}
             p={0}
-            radius={18}
+            radius="var(--yachiyo-r-surface)"
             onClick={onClose}
             autoFocus={false}
           >

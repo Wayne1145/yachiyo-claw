@@ -331,7 +331,7 @@ function Index() {
                   />
                   <ActionIcon
                     size={32}
-                    radius={16}
+                    radius="var(--yachiyo-r-surface)"
                     c="chatbox-tertiary"
                     bg="#F1F3F5"
                     onClick={() => setSession((old) => ({ ...old, copilotId: undefined }))}
