@@ -142,6 +142,15 @@ describe('Flow Glass visual contracts', () => {
     expect(flowStyles).not.toMatch(/\.yachiyo-mobile-conversation-tools\s*\{[^}]*border-radius:\s*20px;/s)
   })
 
+  it('enforces one standard R-corner contract for ordinary controls', () => {
+    expect(globalStyles).toMatch(
+      /html\[data-yachiyo-appearance='flow-glass'\][\s\S]*?border-radius:\s*var\(--yachiyo-r-control\) !important;[\s\S]*?corner-shape:\s*round !important;/
+    )
+    expect(globalStyles).toMatch(/:not\(\.rounded-full\):not\(\.yachiyo-round\)/)
+    expect(globalStyles).toContain('.mantine-Modal-content')
+    expect(globalStyles).toContain('.mantine-Drawer-content')
+  })
+
   it('keeps small active navigation labels above WCAG AA contrast in both color schemes', () => {
     const lightLabel = readHexToken(flowStyles, 'html[data-yachiyo-appearance="flow-glass"]', '--flow-nav-active-label')
     const darkLabel = readHexToken(

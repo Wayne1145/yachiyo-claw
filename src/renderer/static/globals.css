@@ -347,3 +347,60 @@ div[data-vaul-drawer] {
     corner-shape: round;
   }
 }
+
+/* Product-wide corner contract: regular UI uses one predictable R corner.
+   Circular indicators keep their geometry explicitly; no browser support for
+   corner-shape may change the visible corner style. */
+html[data-yachiyo-appearance='flow-glass']
+  :where(
+    button,
+    input,
+    textarea,
+    select,
+    [role='button'],
+    .mantine-Paper-root,
+    .mantine-Card-root,
+    .mantine-Modal-content,
+    .mantine-Drawer-content,
+    .mantine-Popover-dropdown,
+    .mantine-Menu-dropdown,
+    .mantine-Combobox-dropdown,
+    [class*='rounded-']
+  ):not(.rounded-full):not(.yachiyo-round):not(.mantine-Avatar-root):not(.mantine-Progress-root):not(.mantine-Slider-track):not(.mantine-Slider-bar) {
+  border-radius: var(--yachiyo-r-control) !important;
+  corner-shape: round !important;
+}
+
+/* Final rule: every rendered UI box uses the same standard R corner. This
+   intentionally removes pill, semicircle, squircle, and mixed-corner styles
+   from product surfaces so the appearance is deterministic in every WebView. */
+html[data-yachiyo-appearance='flow-glass']
+  :where(body, body *, body *::before, body *::after):not(svg):not(svg *):not(canvas):not(
+    .mantine-Progress-root
+  ):not(.mantine-Slider-track):not(.mantine-Slider-bar) {
+  border-radius: var(--yachiyo-r-control) !important;
+  corner-shape: round !important;
+}
+
+html[data-yachiyo-appearance='flow-glass']
+  :where(
+    .rounded-full,
+    .yachiyo-round,
+    .mantine-Avatar-root,
+    .mantine-Avatar-image,
+    .mantine-Avatar-placeholder,
+    .mantine-Switch-track,
+    .mantine-Switch-thumb,
+    .mantine-Radio-radio,
+    .mantine-Radio-icon,
+    .mantine-Loader-root,
+    .mantine-Indicator-indicator,
+    .mantine-ColorSwatch-root,
+    .mantine-Progress-root,
+    .mantine-Progress-section,
+    .mantine-Slider-thumb,
+    .mantine-Slider-track,
+    .mantine-Slider-bar
+  ) {
+  corner-shape: round !important;
+}
