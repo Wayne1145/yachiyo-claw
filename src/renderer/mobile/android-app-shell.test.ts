@@ -24,8 +24,10 @@ const emptySettings = (): Pick<Settings, 'customProviders' | 'defaultChatModel' 
 })
 
 describe('Android app shell state', () => {
-  it('only enables the dedicated shell for Android mobile builds', () => {
+  it('enables the dedicated shell for Android builds and their web previews', () => {
     expect(shouldUseAndroidAppShell('mobile', 'android')).toBe(true)
+    expect(shouldUseAndroidAppShell('web', 'android')).toBe(true)
+    expect(shouldUseAndroidAppShell('web', 'web')).toBe(false)
     expect(shouldUseAndroidAppShell('mobile', 'ios')).toBe(false)
     expect(shouldUseAndroidAppShell('desktop', 'android')).toBe(false)
   })

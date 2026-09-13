@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import { getNativeFeatureHealth, type NativeFeatureHealth } from '@/features/native-health'
 import { shouldOpenPermissionWizard } from '@/mobile/device-permissions'
+import platform from '@/platform'
 import {
   type DevicePermissionStatus,
   type PermissionTarget,
@@ -95,6 +96,7 @@ export function AndroidPermissionWizard() {
   }, [deferred])
 
   useEffect(() => {
+    if (platform.type !== 'mobile') return
     void refresh()
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void refresh()

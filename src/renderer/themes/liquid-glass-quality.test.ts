@@ -54,6 +54,12 @@ describe('Liquid Glass quality', () => {
     expect(resolveLiquidGlassQuality('auto', { ...capable, forcedColors: true })).toBe('reduced')
   })
 
+  it('keeps Android auto on its no-filter path even without SVG filters or with reduced motion', () => {
+    expect(resolveLiquidGlassQuality('auto', { ...capable, supportsSvgDisplacement: false })).toBe('reduced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, prefersReducedMotion: true })).toBe('reduced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, androidMajorVersion: undefined, supportsSvgDisplacement: false })).toBe('balanced')
+  })
+
   it('mirrors requested and resolved quality for first-paint attributes', () => {
     expect(applyLiquidGlassQuality('auto', capable)).toBe('reduced')
     expect(document.documentElement.dataset.yachiyoLiquidGlassQualityPreference).toBe('auto')

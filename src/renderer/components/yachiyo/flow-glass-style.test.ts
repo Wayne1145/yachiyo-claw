@@ -98,6 +98,10 @@ function sectionBetween(start: string, end: string) {
 }
 
 describe('Flow Glass visual contracts', () => {
+  it('starts with reduced materials before React applies the user quality preference', () => {
+    const entry = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8')
+    expect(entry).toMatch(/<html\s+data-yachiyo-liquid-glass-quality="reduced">/)
+  })
   it('keeps the continuous corner scale and concentric navigation geometry', () => {
     expect(globalStyles).toContain('--yachiyo-r-xs: 6px')
     expect(globalStyles).toContain('--yachiyo-r-sm: 10px')

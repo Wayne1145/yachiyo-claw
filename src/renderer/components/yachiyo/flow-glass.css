@@ -1326,6 +1326,8 @@ html[data-yachiyo-appearance='flow-glass'][data-theme='dark'][data-yachiyo-liqui
 /* Keep this list aligned with every theme-owned material declaration below and above. */
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced']
   :is(
+    .yachiyo-mobile-header,
+    .yachiyo-agent-disclosure,
     .yachiyo-mobile-conversation-tools,
     .yachiyo-agent-header-controls,
     .yachiyo-mobile-header .mantine-ActionIcon-root,
