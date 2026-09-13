@@ -99,7 +99,7 @@ export function ImportProviderModal({ opened, onClose, importedConfig, existingP
       size="lg"
       styles={{
         content: {
-          borderRadius: '12px',
+          borderRadius: 'var(--yachiyo-r-surface)',
         },
         header: {
           borderBottom: 'none',
@@ -119,7 +119,7 @@ export function ImportProviderModal({ opened, onClose, importedConfig, existingP
             p="sm"
             style={{
               backgroundColor: 'var(--chatbox-background-error-secondary)',
-              borderRadius: '8px',
+              borderRadius: 'var(--yachiyo-r-sm)',
             }}
           >
             <ScalableIcon icon={IconAlertTriangle} color="var(--chatbox-tint-error)" />

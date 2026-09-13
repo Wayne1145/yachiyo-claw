@@ -35,6 +35,7 @@ import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conve
 import { removeBuiltInDemoSessions } from '@/mobile/demo-session-cleanup'
 import { syncInstalledLocalModelsIntoSettings } from '@/mobile/local-model-provider-sync'
 import { fetchYachiyoModels } from '@/mobile/yachiyo-api'
+import platform from '@/platform'
 import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
 import {
   type AndroidInteractionState,
@@ -46,6 +47,7 @@ import { router } from '@/router'
 import { initThemeApplication } from '@/stores/themeStore'
 import { useUIStore } from '@/stores/uiStore'
 import { LIQUID_GLASS_QUALITY_STORAGE_KEY, observeLiquidGlassQuality } from '@/themes/liquid-glass-quality'
+import { applyContinuousCornersCapability, maybeNotifyOutdatedWebView } from '@/themes/continuous-corners'
 import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
 import { PluginPageHost } from '@/plugins/PluginPageHost'
 import { startPendingPluginInstallRecovery } from '@/plugins/install-recovery'
@@ -221,6 +223,13 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    applyContinuousCornersCapability()
+    // Older Android System WebViews lack corner-shape; prompt once so the full visuals can be restored.
+    const timer = window.setTimeout(() => maybeNotifyOutdatedWebView((key) => String(t(key))), 4000)
+    return () => window.clearTimeout(timer)
+  }, [t])
+
+  useEffect(() => {
     void syncAndroidSystemBars({ scheme: realTheme })
       .then(setInteractionState)
       .catch(() => undefined)
@@ -292,6 +301,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // A download notification tap sets a pending route natively; pick it up on launch and on resume.
+    if (platform.type !== 'mobile') return
     const consumePendingRoute = async () => {
       try {
         const { route } = await yachiyoDownloadsNative.consumePendingRoute()

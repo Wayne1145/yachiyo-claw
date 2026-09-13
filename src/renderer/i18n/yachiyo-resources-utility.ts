@@ -178,6 +178,11 @@ export const yachiyoUtilityEnglish: Record<string, string> = {
   '确定删除主题“{{name}}”？此操作无法撤销。': 'Delete “{{name}}”? This action cannot be undone.',
   '当前正在使用此主题，删除后将恢复内置的 Yachiyo 流光玻璃主题。':
     'This theme is currently active. Deleting it will restore the built-in Yachiyo Flow Glass theme.',
+  '系统 WebView 版本过旧，连续圆角与部分视觉效果已切换为兼容模式。':
+    'The system WebView is outdated, so continuous corners and some visual effects are in compatibility mode.',
+  '更新 Android System WebView 后即可恢复完整效果。':
+    'Update Android System WebView to restore the full experience.',
+  '更新 WebView': 'Update WebView',
   取消: 'Cancel',
   确认删除: 'Delete',
 }
@@ -351,6 +356,10 @@ export const yachiyoUtilityTraditionalChinese: Record<string, string> = {
   删除主题: '刪除主題',
   '确定删除主题“{{name}}”？此操作无法撤销。': '確定刪除主題「{{name}}」？此操作無法復原。',
   '当前正在使用此主题，删除后将恢复内置的 Yachiyo 流光玻璃主题。': '目前正在使用此主題，刪除後將恢復內建的 Yachiyo 流光玻璃主題。',
+  '系统 WebView 版本过旧，连续圆角与部分视觉效果已切换为兼容模式。':
+    '系統 WebView 版本過舊，連續圓角與部分視覺效果已切換為相容模式。',
+  '更新 Android System WebView 后即可恢复完整效果。': '更新 Android System WebView 後即可恢復完整效果。',
+  '更新 WebView': '更新 WebView',
   取消: '取消',
   确认删除: '確認刪除',
 }

@@ -68,3 +68,14 @@ token 会被拒绝。完整的公开 token 列表以
 远程地址必须是无账号信息的公开 HTTPS URL。下载器限制重定向、文件大小和私网地址，下载完成后仍会
 按同一严格 schema 解析。主题没有签名或作者身份验证机制；URL 导入只保护传输过程，用户应自行核对
 来源。主题仅改变颜色，不会获得插件、Agent、文件或网络权限。
+
+## 圆角系统
+
+全应用使用一套圆角尺度（`globals.css` 中的 `--yachiyo-r-*`：xs 6 / sm 10 / control 14 /
+surface 18 / shell 24 / pill）。Mantine 的 `radius` 和 MUI 的 `shape` 都映射到这组 token，第三方
+主题不覆盖圆角。
+
+在支持 `corner-shape: squircle` 的引擎（Chromium / Android System WebView ≥ 139）上，所有圆角以
+Apple 式连续曲率（squircle）渲染，真正的圆形元素（头像、开关、单选、进度条等）保持 `round`。旧版
+WebView 自动回退为普通圆弧，应用会检测该情况并提示更新 Android System WebView（见
+`src/renderer/themes/continuous-corners.ts`）。

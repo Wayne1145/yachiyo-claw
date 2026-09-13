@@ -32,7 +32,7 @@ export default function SponsorChip(props: {}) {
           display: 'block',
           whiteSpace: 'normal',
         },
-        borderRadius: '8px',
+        borderRadius: 'var(--yachiyo-r-sm)',
         marginRight: '25px',
         opacity: 0.6,
       }}

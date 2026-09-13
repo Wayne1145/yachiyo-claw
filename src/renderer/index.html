@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html data-yachiyo-liquid-glass-quality="reduced">
   <head>
     <meta charset="utf-8" />
     <meta name="color-scheme" content="light dark" />
@@ -75,6 +75,16 @@
     </script>
     <script>
       document.documentElement.setAttribute("data-yachiyo-appearance", "flow-glass");
+      try {
+        var supportsSquircle =
+          typeof CSS !== "undefined" &&
+          typeof CSS.supports === "function" &&
+          CSS.supports("corner-shape", "squircle");
+        document.documentElement.setAttribute(
+          "data-yachiyo-corners",
+          supportsSquircle ? "squircle" : "round"
+        );
+      } catch (error) {}
       var initialTheme = localStorage.getItem("initial-theme");
       if (initialTheme === "light" || initialTheme === "dark") {
         document.documentElement.setAttribute("data-theme", initialTheme);

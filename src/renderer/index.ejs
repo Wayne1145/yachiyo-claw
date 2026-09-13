@@ -33,6 +33,16 @@
     <title>Yachiyo Claw</title>
     <script>
       document.documentElement.setAttribute("data-yachiyo-appearance", "flow-glass");
+      try {
+        var supportsSquircle =
+          typeof CSS !== "undefined" &&
+          typeof CSS.supports === "function" &&
+          CSS.supports("corner-shape", "squircle");
+        document.documentElement.setAttribute(
+          "data-yachiyo-corners",
+          supportsSquircle ? "squircle" : "round"
+        );
+      } catch (error) {}
       var initialTheme = localStorage.getItem("initial-theme");
       if (initialTheme === "light" || initialTheme === "dark") {
         document.documentElement.setAttribute("data-theme", initialTheme);
