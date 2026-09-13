@@ -425,8 +425,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
 
           phase = 'settings'
           if (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source)) {
-            const mocVersion = await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
-            if (mocVersion === 5) throw createLive2DError('L2D-MOC-003', { resource: descriptor.source })
+            // Cubism 5 Core keeps the Cubism 4 C API surface used by the Pixi
+            // adapter. Let the adapter perform the authoritative model parse;
+            // this probe is only used to produce a precise compatibility error.
+            await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
           }
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,
