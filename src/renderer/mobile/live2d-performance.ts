@@ -67,3 +67,28 @@ export function resolveLive2DAssetUrl(source: string, baseUrl?: string): string 
     return source
   }
 }
+
+export type Live2DMocVersion = 4 | 5 | 'unknown'
+
+/** Reads the binary format marker without asking Cubism Core to create a model. */
+export function detectLive2DMocVersion(bytes: ArrayBuffer): Live2DMocVersion {
+  const header = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 8))
+  if (header.length < 5 || header[0] !== 0x4d || header[1] !== 0x4f || header[2] !== 0x43 || header[3] !== 0x33) {
+    return 'unknown'
+  }
+  if (header[4] === 4) return 4
+  if (header[4] === 5) return 5
+  return 'unknown'
+}
+
+export async function detectLive2DMocVersionFromModel(source: string): Promise<Live2DMocVersion> {
+  const modelResponse = await fetch(source)
+  if (!modelResponse.ok) throw new Error(`Live2D model settings request failed: ${modelResponse.status}`)
+  const model = (await modelResponse.json()) as { FileReferences?: { Moc?: string } }
+  const moc = model.FileReferences?.Moc
+  if (!moc) return 'unknown'
+  const mocUrl = new URL(moc, source).toString()
+  const mocResponse = await fetch(mocUrl)
+  if (!mocResponse.ok) throw new Error(`Live2D moc request failed: ${mocResponse.status}`)
+  return detectLive2DMocVersion(await mocResponse.arrayBuffer())
+}

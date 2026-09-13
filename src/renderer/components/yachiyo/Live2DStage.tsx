@@ -15,7 +15,12 @@ import {
   normalizeLive2DError,
   YachiyoLive2DError,
 } from '@/mobile/live2d-errors'
-import { getLive2DResolution, type Live2DRenderQuality, resolveLive2DAssetUrl } from '@/mobile/live2d-performance'
+import {
+  detectLive2DMocVersionFromModel,
+  getLive2DResolution,
+  type Live2DRenderQuality,
+  resolveLive2DAssetUrl,
+} from '@/mobile/live2d-performance'
 import { DEFAULT_LIVE2D_TRANSFORM, type Live2DTransform, normalizeLive2DTransform } from '@/mobile/live2d-transform'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
@@ -419,6 +424,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
           rendererCleanup = attemptCleanup
 
           phase = 'settings'
+          if (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source)) {
+            const mocVersion = await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
+            if (mocVersion === 5) throw createLive2DError('L2D-MOC-003', { resource: descriptor.source })
+          }
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,
           })

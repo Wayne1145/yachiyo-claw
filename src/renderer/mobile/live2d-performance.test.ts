@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getLive2DResolution, resolveLive2DAssetUrl } from './live2d-performance'
+import { detectLive2DMocVersion, getLive2DResolution, resolveLive2DAssetUrl } from './live2d-performance'
 
 describe('Live2D render quality', () => {
   it('caps the device pixel ratio for each quality profile', () => {
@@ -29,6 +29,11 @@ describe('Live2D render quality', () => {
 })
 
 describe('Live2D asset URLs', () => {
+  it('detects Cubism 4 and 5 MOC headers before runtime creation', () => {
+    expect(detectLive2DMocVersion(new Uint8Array([0x4d, 0x4f, 0x43, 0x33, 4]).buffer)).toBe(4)
+    expect(detectLive2DMocVersion(new Uint8Array([0x4d, 0x4f, 0x43, 0x33, 5]).buffer)).toBe(5)
+    expect(detectLive2DMocVersion(new Uint8Array([0x4d, 0x4f, 0x43, 0x32, 5]).buffer)).toBe('unknown')
+  })
   it('resolves root-style assets beside file and Capacitor entry documents', () => {
     expect(resolveLive2DAssetUrl('/live2d/yachiyo/model.model3.json', 'file:///C:/app/index.html')).toBe(
       'file:///C:/app/live2d/yachiyo/model.model3.json'

@@ -46,6 +46,7 @@ vi.mock('pixi-live2d-display/cubism4', () => ({
   ZipLoader: {},
 }))
 vi.mock('@/mobile/live2d-performance', () => ({
+  detectLive2DMocVersionFromModel: async () => 4,
   getLive2DResolution: () => 1,
   resolveLive2DAssetUrl: (path: string) => path,
 }))
