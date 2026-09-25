@@ -85,7 +85,7 @@ html[data-yachiyo-appearance='flow-glass']
   .yachiyo-mobile-shell
   :where(button, [role='button'], .mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
   border-radius: var(--flow-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
 }
 
 .yachiyo-flow-environment {
@@ -281,7 +281,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-header-controls {
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: squircle;
+  corner-shape: round;
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 42%), var(--flow-control-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
@@ -315,7 +315,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse {
   min-height: 44px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: radial-gradient(circle at 34% 20%, var(--flow-edge-mid), transparent 48%), var(--flow-control-fill);
   box-shadow:
@@ -337,7 +337,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse-glyph
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-disclosure {
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background:
     linear-gradient(152deg, color-mix(in srgb, var(--flow-edge-light) 76%, transparent), transparent 38%),
@@ -372,7 +372,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-disclosure .yachiyo-ag
   min-height: 0;
   padding: 2px 4px 4px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--yachiyo-r-control);
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
@@ -434,7 +434,7 @@ html[data-yachiyo-appearance='flow-glass']
   min-height: 44px;
   border: 0;
   border-radius: calc(var(--flow-r-popover) - 5px);
-  corner-shape: squircle;
+  corner-shape: round;
   background: transparent;
   box-shadow: none;
 }
@@ -486,7 +486,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-grid {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-nav);
-  corner-shape: squircle;
+  corner-shape: round;
   background: linear-gradient(165deg, var(--flow-edge-mid), transparent 38%), var(--flow-chrome-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
@@ -510,7 +510,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens {
   width: calc((100% - 10px) / var(--yachiyo-tab-count));
   height: 54px;
   border-radius: var(--flow-r-lens);
-  corner-shape: squircle;
+  corner-shape: round;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens-inner {
@@ -632,7 +632,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-task-composer-panel {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid) !important;
   border-radius: var(--flow-r-composer) !important;
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background:
     linear-gradient(126deg, color-mix(in srgb, var(--flow-blue) 6%, transparent), transparent 38%),
@@ -683,7 +683,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .manti
   min-width: 44px;
   min-height: 44px;
   border-radius: var(--flow-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
 }
 
 html[data-yachiyo-appearance='flow-glass']
@@ -699,7 +699,7 @@ html[data-yachiyo-appearance='flow-glass']
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-composer-row .yachiyo-composer-model {
   border-radius: var(--flow-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 72%, transparent);
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--flow-edge-light) 62%, transparent), transparent 46%),
@@ -778,7 +778,7 @@ html[data-yachiyo-appearance='flow-glass'] .bubble-user-msg .inline-block.max-w-
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-user-message {
   border: 1px solid rgba(0, 122, 255, 0.18);
   border-radius: var(--flow-r-panel) !important;
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: rgba(225, 240, 255, 0.54) !important;
   box-shadow:
@@ -887,7 +887,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-plugin-page-host {
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-settings-list {
   border: 1px solid var(--flow-divider);
   border-radius: var(--flow-r-panel);
-  corner-shape: squircle;
+  corner-shape: round;
   background: var(--flow-group-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-mid),
@@ -932,7 +932,7 @@ html[data-yachiyo-appearance='flow-glass'] .local-model-device-metrics,
 html[data-yachiyo-appearance='flow-glass'] .local-model-metadata {
   border-color: var(--flow-divider);
   border-radius: var(--flow-r-panel);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: var(--flow-group-fill);
   box-shadow:
@@ -982,7 +982,7 @@ html[data-yachiyo-appearance='flow-glass'] .mantine-Combobox-dropdown {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 44%), var(--flow-popover-fill);
   box-shadow:
@@ -1022,7 +1022,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
   padding: 9px 10px;
   border: 1px solid transparent;
   border-radius: var(--yachiyo-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: transparent;
   transition:
@@ -1115,7 +1115,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-surface {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-sheet);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 38%), var(--flow-sheet-fill);
   box-shadow:
@@ -1129,7 +1129,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-surface {
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-sheet {
   box-sizing: border-box;
   max-height: calc(100dvh - var(--mobile-safe-area-inset-top, 0px));
-  border-radius: var(--flow-r-sheet) var(--flow-r-sheet) 0 0;
+  border-radius: var(--flow-r-sheet);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-sheet .yachiyo-adaptive-scroll {
@@ -1142,7 +1142,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-drawer {
   width: min(88vw, 420px);
   padding-top: var(--mobile-safe-area-inset-top, 0px);
   padding-right: var(--mobile-safe-area-inset-right, 0px);
-  border-radius: var(--flow-r-sheet) 0 0 var(--flow-r-sheet);
+  border-radius: var(--flow-r-sheet);
 }
 
 :dir(rtl) html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-drawer,
@@ -1151,7 +1151,7 @@ html[data-yachiyo-appearance='flow-glass'] :dir(rtl).yachiyo-adaptive-drawer {
   left: 0;
   padding-right: 0;
   padding-left: var(--mobile-safe-area-inset-left, 0px);
-  border-radius: 0 var(--flow-r-sheet) var(--flow-r-sheet) 0;
+  border-radius: var(--flow-r-sheet);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-scroll {
@@ -1223,7 +1223,7 @@ html[data-yachiyo-appearance='flow-glass']
   isolation: isolate;
   overflow: hidden;
   border-radius: var(--flow-r-control) !important;
-  corner-shape: squircle;
+  corner-shape: round;
   transition:
     transform 120ms ease-out,
     color 140ms ease,
@@ -1940,7 +1940,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-interactive-llm-selector {
   position: relative;
   border-radius: var(--yachiyo-r-surface);
-  corner-shape: squircle;
+  corner-shape: round;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .mantine-ActionIcon-root[data-active='true'] {
@@ -1957,7 +1957,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control.man
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 72%, transparent);
   border-radius: var(--yachiyo-r-shell);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text-secondary);
   background:
     linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 24%, transparent), transparent 44%),
@@ -1976,7 +1976,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .ma
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-indicator {
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 58%, var(--flow-edge-mid));
   border-radius: var(--yachiyo-r-surface);
-  corner-shape: squircle;
+  corner-shape: round;
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--flow-edge-light) 46%, transparent), transparent 46%),
     color-mix(in srgb, var(--flow-control-fill) 80%, var(--flow-blue) 10%);
@@ -2112,7 +2112,7 @@ html[data-yachiyo-appearance='flow-glass']
   min-height: 48px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-content);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 44%), var(--flow-control-fill);
   box-shadow:
@@ -2148,7 +2148,7 @@ html[data-yachiyo-appearance='flow-glass']
   min-height: 48px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--yachiyo-r-shell);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),

@@ -75,16 +75,9 @@
     </script>
     <script>
       document.documentElement.setAttribute("data-yachiyo-appearance", "flow-glass");
-      try {
-        var supportsSquircle =
-          typeof CSS !== "undefined" &&
-          typeof CSS.supports === "function" &&
-          CSS.supports("corner-shape", "squircle");
-        document.documentElement.setAttribute(
-          "data-yachiyo-corners",
-          supportsSquircle ? "squircle" : "round"
-        );
-      } catch (error) {}
+      // The product corner contract is deliberately the regular R corner.
+      // Do not let a WebView's optional squircle implementation change it.
+      document.documentElement.setAttribute("data-yachiyo-corners", "round");
       var initialTheme = localStorage.getItem("initial-theme");
       if (initialTheme === "light" || initialTheme === "dark") {
         document.documentElement.setAttribute("data-theme", initialTheme);

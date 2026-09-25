@@ -102,9 +102,9 @@ describe('AndroidBottomNavigation', () => {
     const inner = container.querySelector('.yachiyo-bottom-nav-lens-inner') as HTMLElement
 
     expect(lens.style.transform).toBe('translate3d(0%, 0, 0)')
-    expect(inner.style.transform).toBe('scaleX(1)')
+    expect(inner.style.transform).toBe('')
     act(() => presentationIndex.set(1))
     expect(lens.style.transform).toBe('translate3d(0%, 0, 0)')
-    expect(inner.style.transform).toBe('scaleX(1)')
+    expect(inner.style.transform).toBe('')
   })
 })

@@ -21,7 +21,7 @@
   padding-bottom: var(--mobile-safe-area-inset-bottom, 0px);
   border: 1px solid color-mix(in srgb, var(--chatbox-border-primary) 72%, white 28%);
   border-bottom: 0;
-  border-radius: var(--yachiyo-r-shell) var(--yachiyo-r-shell) 0 0;
+  border-radius: var(--yachiyo-r-shell);
   color: var(--chatbox-tint-primary);
   background: color-mix(in srgb, var(--chatbox-background-primary) 86%, transparent);
   box-shadow:
@@ -77,8 +77,8 @@
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-model-surface {
   border-color: var(--flow-edge-mid);
-  border-radius: var(--flow-r-sheet) var(--flow-r-sheet) 0 0;
-  corner-shape: squircle;
+  border-radius: var(--flow-r-sheet);
+  corner-shape: round;
   color: var(--flow-text);
   background:
     linear-gradient(148deg, color-mix(in srgb, var(--flow-edge-light) 74%, transparent), transparent 32%),

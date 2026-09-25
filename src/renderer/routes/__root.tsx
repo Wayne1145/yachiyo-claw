@@ -325,7 +325,7 @@ const creteMantineTheme = (scale = 1) =>
   createTheme({
     /** Put your mantine theme override here */
     scale,
-    defaultRadius: 'lg',
+    defaultRadius: 'md',
     primaryColor: 'chatbox-brand',
     colors: {
       'chatbox-brand': colorsTuple(Array.from({ length: 10 }, () => 'var(--chatbox-tint-brand)')),
@@ -417,7 +417,7 @@ const creteMantineTheme = (scale = 1) =>
       Button: Button.extend({
         defaultProps: {
           color: 'chatbox-brand',
-          radius: 'xl',
+          radius: 'md',
         },
         styles: () => ({
           root: {
@@ -430,7 +430,7 @@ const creteMantineTheme = (scale = 1) =>
       }),
       Input: Input.extend({
         defaultProps: {
-          radius: 'xl',
+          radius: 'md',
         },
         styles: (_theme, props) => ({
           wrapper: {
@@ -447,7 +447,7 @@ const creteMantineTheme = (scale = 1) =>
       TextInput: TextInput.extend({
         defaultProps: {
           size: 'sm',
-          radius: 'xl',
+          radius: 'md',
         },
         styles: () => ({
           label: {
@@ -460,7 +460,7 @@ const creteMantineTheme = (scale = 1) =>
       Textarea: TextInput.extend({
         defaultProps: {
           size: 'sm',
-          radius: 'lg',
+          radius: 'md',
         },
         styles: () => ({
           label: {
@@ -474,7 +474,7 @@ const creteMantineTheme = (scale = 1) =>
         defaultProps: {
           size: 'sm',
           allowDeselect: false,
-          radius: 'xl',
+          radius: 'md',
         },
         styles: () => ({
           label: {
@@ -487,7 +487,7 @@ const creteMantineTheme = (scale = 1) =>
       NativeSelect: NativeSelect.extend({
         defaultProps: {
           size: 'sm',
-          radius: 'xl',
+          radius: 'md',
         },
         styles: () => ({
           label: {
@@ -536,7 +536,7 @@ const creteMantineTheme = (scale = 1) =>
           },
           content: {
             backgroundColor: 'var(--chatbox-background-primary)',
-            borderRadius: rem('24px'),
+            borderRadius: 'var(--yachiyo-r-surface)',
           },
           overlay: {
             '--overlay-bg': 'var(--chatbox-background-mask-overlay)',
@@ -590,7 +590,7 @@ const creteMantineTheme = (scale = 1) =>
         },
         styles: {
           dropdown: {
-            borderRadius: rem('18px'),
+            borderRadius: 'var(--yachiyo-r-surface)',
           },
         },
       }),

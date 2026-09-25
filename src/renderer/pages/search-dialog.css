@@ -12,7 +12,7 @@ html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-dialog .MuiDialog-pap
   margin: 16px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background:
     linear-gradient(154deg, color-mix(in srgb, var(--flow-edge-light) 78%, transparent), transparent 32%),
@@ -48,7 +48,7 @@ html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command [cmdk-input-w
   padding-inline: 14px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-content);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text-secondary);
   background:
     linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 68%, transparent), transparent 42%),
@@ -118,7 +118,7 @@ html[data-yachiyo-appearance="flow-glass"] .yachiyo-search-command-item {
   padding: 10px 12px;
   border: 1px solid transparent;
   border-radius: var(--yachiyo-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   background: transparent !important;
   gap: 10px;

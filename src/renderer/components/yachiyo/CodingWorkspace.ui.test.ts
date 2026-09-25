@@ -26,7 +26,7 @@ describe('Coding home Flow Glass contracts', () => {
       /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s,
     )
     expect(styles).toMatch(
-      /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*border-radius:\s*var\(--yachiyo-r-control\);[^}]*corner-shape:\s*squircle;/s,
+      /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*border-radius:\s*var\(--yachiyo-r-control\);[^}]*corner-shape:\s*round;/s,
     )
   })
 

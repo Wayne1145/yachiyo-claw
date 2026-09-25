@@ -101,14 +101,16 @@ describe('Flow Glass visual contracts', () => {
   it('starts with reduced materials before React applies the user quality preference', () => {
     const entry = fs.readFileSync(path.join(__dirname, '../../index.html'), 'utf8')
     expect(entry).toMatch(/<html\s+data-yachiyo-liquid-glass-quality="reduced">/)
+    expect(entry).toContain('setAttribute("data-yachiyo-corners", "round")')
+    expect(entry).not.toContain('supportsSquircle')
   })
-  it('keeps the continuous corner scale and concentric navigation geometry', () => {
+  it('keeps the regular R-corner scale and concentric navigation geometry', () => {
     expect(globalStyles).toContain('--yachiyo-r-xs: 6px')
     expect(globalStyles).toContain('--yachiyo-r-sm: 10px')
     expect(globalStyles).toContain('--yachiyo-r-control: 14px')
     expect(globalStyles).toContain('--yachiyo-r-surface: 18px')
     expect(globalStyles).toContain('--yachiyo-r-shell: 24px')
-    expect(globalStyles).toMatch(/@supports \(corner-shape: squircle\)\s*\{\s*\*,\s*::before,\s*::after\s*\{\s*corner-shape: squircle;/)
+    expect(globalStyles).not.toContain('corner-shape: squircle')
     expect(flowStyles).toContain('--flow-r-nav: var(--yachiyo-r-shell)')
     expect(flowStyles).toContain('--flow-r-lens: var(--yachiyo-r-surface)')
     expect(flowStyles).toContain('--flow-r-composer: var(--yachiyo-r-shell)')
@@ -133,7 +135,7 @@ describe('Flow Glass visual contracts', () => {
       /\.yachiyo-mobile-conversation-tools \.mantine-ActionIcon-root\s*{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-control\);[^}]*corner-shape:\s*squircle;/s
+      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-control\);[^}]*corner-shape:\s*round;/s
     )
     expect(flowStyles).toMatch(
       /\.yachiyo-chat-composer-surface \.mantine-ActionIcon-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control\);/s
@@ -144,11 +146,15 @@ describe('Flow Glass visual contracts', () => {
 
   it('enforces one standard R-corner contract for ordinary controls', () => {
     expect(globalStyles).toMatch(
-      /html\[data-yachiyo-appearance='flow-glass'\][\s\S]*?border-radius:\s*var\(--yachiyo-r-control\) !important;[\s\S]*?corner-shape:\s*round !important;/
+      /html:root\[data-yachiyo-corners='round'\] body [\s\S]*?border-radius:\s*var\(--yachiyo-r-control\) !important;[\s\S]*?corner-shape:\s*round !important;/
     )
-    expect(globalStyles).toMatch(/:not\(\.rounded-full\):not\(\.yachiyo-round\)/)
+    expect(globalStyles).toContain("data-yachiyo-corners='round'")
+    expect(globalStyles).not.toContain('9999px')
     expect(globalStyles).toContain('.mantine-Modal-content')
     expect(globalStyles).toContain('.mantine-Drawer-content')
+    expect(globalStyles).not.toContain('25%')
+    expect(globalStyles).toContain(':not(canvas)::before')
+    expect(globalStyles).toContain(':not(canvas)::after')
   })
 
   it('keeps small active navigation labels above WCAG AA contrast in both color schemes', () => {

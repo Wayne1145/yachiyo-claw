@@ -62,7 +62,9 @@ function dismissNotice(): void {
 export function applyContinuousCornersCapability(): boolean {
   const supported = supportsContinuousCorners()
   if (typeof document !== 'undefined') {
-    document.documentElement.dataset.yachiyoCorners = supported ? 'squircle' : 'round'
+    // The product uses regular R corners on every WebView. Optional squircle
+    // support is reported for diagnostics only and never changes geometry.
+    document.documentElement.dataset.yachiyoCorners = 'round'
   }
   return supported
 }

@@ -248,7 +248,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-capability-band {
   padding: 18px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-panel);
-  corner-shape: squircle;
+  corner-shape: round;
   background:
     linear-gradient(124deg, color-mix(in srgb, var(--flow-blue) 7%, transparent), transparent 36%),
     linear-gradient(164deg, var(--flow-edge-light), transparent 24%, var(--flow-edge-mid) 58%, transparent 82%),
@@ -287,7 +287,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-capability-band::after {
   inset: 1px;
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 38%, transparent);
   border-radius: calc(var(--flow-r-panel) - 1px);
-  corner-shape: squircle;
+  corner-shape: round;
   box-shadow: inset 0 -10px 22px color-mix(in srgb, var(--flow-edge-dark) 26%, transparent);
 }
 
@@ -306,7 +306,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-refresh-control.mantine-Butto
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--yachiyo-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-blue);
   background: transparent;
   box-shadow: none;
@@ -356,7 +356,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-ro
   min-height: 52px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: calc(var(--flow-r-panel) - 2px);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
@@ -404,7 +404,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-empty-state {
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 82%, transparent);
   border-radius: var(--flow-r-content);
-  corner-shape: squircle;
+  corner-shape: round;
   color: var(--flow-text-secondary);
   background: linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 54%, transparent), transparent 46%), color-mix(in srgb, var(--flow-control-fill) 72%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--flow-edge-dark) 55%, transparent);

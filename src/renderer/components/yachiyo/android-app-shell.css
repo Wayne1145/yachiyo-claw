@@ -29,7 +29,7 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-mobile-shell
   :where(button, [role='button'], .mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
   border-radius: var(--yachiyo-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
 }
 
 .App:has(.yachiyo-mobile-shell) {
@@ -808,7 +808,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 .yachiyo-live2d-move-actions .mantine-Button-root {
   min-width: 58px;
   border-radius: var(--yachiyo-r-control);
-  corner-shape: squircle;
+  corner-shape: round;
 }
 
 @media (max-width: 430px) {
@@ -2885,7 +2885,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 .yachiyo-agent-user-message {
   color: var(--yachiyo-text);
   background: var(--yachiyo-surface-soft);
-  border-bottom-right-radius: 7px !important;
+  border-radius: var(--yachiyo-r-control);
 }
 
 .yachiyo-mobile-shell button,

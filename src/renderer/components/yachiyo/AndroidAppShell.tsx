@@ -47,7 +47,6 @@ import { router } from '@/router'
 import { initThemeApplication } from '@/stores/themeStore'
 import { useUIStore } from '@/stores/uiStore'
 import { LIQUID_GLASS_QUALITY_STORAGE_KEY, observeLiquidGlassQuality } from '@/themes/liquid-glass-quality'
-import { applyContinuousCornersCapability, maybeNotifyOutdatedWebView } from '@/themes/continuous-corners'
 import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
 import { PluginPageHost } from '@/plugins/PluginPageHost'
 import { startPendingPluginInstallRecovery } from '@/plugins/install-recovery'
@@ -221,13 +220,6 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       stored === 'full' || stored === 'balanced' || stored === 'reduced' || stored === 'auto' ? stored : 'auto'
     return observeLiquidGlassQuality(preference)
   }, [])
-
-  useEffect(() => {
-    applyContinuousCornersCapability()
-    // Older Android System WebViews lack corner-shape; prompt once so the full visuals can be restored.
-    const timer = window.setTimeout(() => maybeNotifyOutdatedWebView((key) => String(t(key))), 4000)
-    return () => window.clearTimeout(timer)
-  }, [t])
 
   useEffect(() => {
     void syncAndroidSystemBars({ scheme: realTheme })

@@ -47,10 +47,6 @@ export function AndroidBottomNavigation({
     (value) => `translate3d(${value * direction * 100}%, 0, 0)`
   )
   const reducedLensTransform = `translate3d(${Math.max(0, activeIndex) * direction * 100}%, 0, 0)`
-  const lensInnerTransform = useTransform(resolvedPresentationIndex, () => {
-    const stretch = Math.min(0.05, Math.abs(resolvedPresentationIndex.getVelocity()) / 12_000)
-    return `scaleX(${1 + stretch})`
-  })
   const style: BottomNavigationStyle = {
     '--yachiyo-tab-count': Math.max(1, items.length),
   }
@@ -67,10 +63,8 @@ export function AndroidBottomNavigation({
           aria-hidden="true"
           hidden={activeIndex < 0}
         >
-          <motion.span
-            className="yachiyo-bottom-nav-lens-inner"
-            style={{ transform: shouldReduceMotion ? 'scaleX(1)' : lensInnerTransform }}
-          />
+          {/* Translate the frame without stretching its circular R corners. */}
+          <span className="yachiyo-bottom-nav-lens-inner" />
         </motion.span>
         {items.map((item, index) => (
           <AndroidBottomNavigationItem

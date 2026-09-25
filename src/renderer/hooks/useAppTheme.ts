@@ -71,7 +71,7 @@ export function getThemeDesign(realTheme: 'light' | 'dark', language: Language):
       MuiButton: {
         styleOverrides: {
           root: {
-            borderRadius: 999,
+            borderRadius: 'var(--yachiyo-r-control)',
             textTransform: 'none',
             transition: 'transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease',
           },
@@ -80,7 +80,7 @@ export function getThemeDesign(realTheme: 'light' | 'dark', language: Language):
       MuiPaper: {
         styleOverrides: {
           rounded: {
-            borderRadius: 18,
+            borderRadius: 'var(--yachiyo-r-surface)',
           },
         },
       },
