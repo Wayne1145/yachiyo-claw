@@ -1,8 +1,11 @@
 html[data-yachiyo-appearance='flow-glass'] {
-  --flow-r-nav: var(--yachiyo-r-shell);
-  --flow-r-lens: var(--yachiyo-r-surface);
+  /* iOS-style shape roles: bars and their lens are capsules, icon buttons are
+     circles, containers use the R scale and nest concentrically. */
+  --flow-r-nav: var(--yachiyo-r-pill);
+  --flow-r-lens: var(--yachiyo-r-pill);
+  --flow-r-icon: var(--yachiyo-r-pill);
   --flow-r-composer: var(--yachiyo-r-shell);
-  --flow-r-sheet: var(--yachiyo-r-shell);
+  --flow-r-sheet: var(--yachiyo-r-sheet);
   --flow-r-popover: var(--yachiyo-r-surface);
   --flow-r-panel: var(--yachiyo-r-surface);
   --flow-r-content: var(--yachiyo-r-control);
@@ -15,12 +18,15 @@ html[data-yachiyo-appearance='flow-glass'] {
   --flow-header-height: calc(72px + var(--mobile-safe-area-inset-top, 0px));
   --flow-nav-height: calc(64px + var(--mobile-safe-area-inset-bottom, 0px));
   --flow-composer-height: 116px;
-  --flow-chrome-fill: rgba(255, 255, 255, 0.38);
-  --flow-control-fill: rgba(255, 255, 255, 0.3);
-  --flow-popover-fill: rgba(252, 253, 255, 0.58);
-  --flow-sheet-fill: rgba(250, 252, 255, 0.62);
-  --flow-group-fill: rgba(250, 252, 255, 0.68);
+  --flow-chrome-fill: rgba(255, 255, 255, 0.44);
+  --flow-control-fill: rgba(255, 255, 255, 0.38);
+  --flow-popover-fill: rgba(252, 253, 255, 0.66);
+  --flow-sheet-fill: rgba(250, 252, 255, 0.74);
+  --flow-group-fill: rgba(255, 255, 255, 0.74);
+  /* Content glass: a translucent sheet over the ambient light, lit from the top edge. */
+  --flow-specular: linear-gradient(160deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.14) 30%, rgba(255, 255, 255, 0) 56%);
   --flow-content-fill: rgba(250, 252, 255, 0.9);
+  --flow-field-fill: rgba(255, 255, 255, 0.78);
   --flow-edge-light: rgba(255, 255, 255, 0.86);
   --flow-edge-mid: rgba(255, 255, 255, 0.38);
   --flow-edge-dark: rgba(49, 73, 96, 0.18);
@@ -30,6 +36,14 @@ html[data-yachiyo-appearance='flow-glass'] {
   --flow-text: #17212b;
   --flow-text-secondary: #455463;
   --flow-divider: rgba(69, 87, 104, 0.16);
+  --flow-env-color: #eef1f6;
+  --flow-env-glow: radial-gradient(120% 60% at 0% 0%, rgba(0, 122, 255, 0.11), transparent 62%),
+    radial-gradient(90% 52% at 100% 8%, rgba(175, 82, 222, 0.08), transparent 64%),
+    radial-gradient(110% 58% at 0% 100%, rgba(48, 176, 199, 0.08), transparent 62%),
+    radial-gradient(90% 50% at 100% 100%, rgba(255, 45, 85, 0.05), transparent 62%);
+  --flow-env-settings-color: #f2f2f7;
+  --flow-env-settings-glow: radial-gradient(120% 50% at 0% 0%, rgba(0, 122, 255, 0.06), transparent 60%),
+    radial-gradient(90% 45% at 100% 100%, rgba(175, 82, 222, 0.04), transparent 60%);
 }
 
 html[data-yachiyo-appearance='flow-glass'][data-theme='dark'] {
@@ -38,12 +52,14 @@ html[data-yachiyo-appearance='flow-glass'][data-theme='dark'] {
   --flow-green: #30d158;
   --flow-orange: #ff9f0a;
   --flow-red: #ff453a;
-  --flow-chrome-fill: rgba(24, 28, 34, 0.48);
-  --flow-control-fill: rgba(36, 41, 49, 0.42);
-  --flow-popover-fill: rgba(29, 34, 42, 0.68);
-  --flow-sheet-fill: rgba(24, 29, 36, 0.76);
-  --flow-group-fill: rgba(27, 33, 41, 0.72);
+  --flow-chrome-fill: rgba(32, 36, 44, 0.5);
+  --flow-control-fill: rgba(40, 45, 54, 0.46);
+  --flow-popover-fill: rgba(30, 34, 42, 0.74);
+  --flow-sheet-fill: rgba(24, 28, 35, 0.8);
+  --flow-group-fill: rgba(30, 34, 41, 0.72);
+  --flow-specular: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03) 30%, rgba(255, 255, 255, 0) 56%);
   --flow-content-fill: rgba(24, 29, 36, 0.9);
+  --flow-field-fill: rgba(255, 255, 255, 0.06);
   --flow-edge-light: rgba(255, 255, 255, 0.2);
   --flow-edge-mid: rgba(255, 255, 255, 0.1);
   --flow-edge-dark: rgba(0, 0, 0, 0.56);
@@ -53,6 +69,14 @@ html[data-yachiyo-appearance='flow-glass'][data-theme='dark'] {
   --flow-text: #f4f7fa;
   --flow-text-secondary: #b9c2cc;
   --flow-divider: rgba(230, 237, 244, 0.14);
+  --flow-env-color: #0e1116;
+  --flow-env-glow: radial-gradient(120% 60% at 0% 0%, rgba(10, 132, 255, 0.17), transparent 62%),
+    radial-gradient(90% 52% at 100% 10%, rgba(191, 90, 242, 0.11), transparent 64%),
+    radial-gradient(110% 58% at 0% 100%, rgba(100, 210, 255, 0.07), transparent 62%),
+    radial-gradient(90% 50% at 100% 100%, rgba(255, 55, 95, 0.06), transparent 62%);
+  --flow-env-settings-color: #0c0e12;
+  --flow-env-settings-glow: radial-gradient(120% 50% at 0% 0%, rgba(10, 132, 255, 0.09), transparent 60%),
+    radial-gradient(90% 45% at 100% 100%, rgba(191, 90, 242, 0.06), transparent 60%);
 }
 
 html[data-yachiyo-appearance='flow-glass'] body,
@@ -85,7 +109,6 @@ html[data-yachiyo-appearance='flow-glass']
   .yachiyo-mobile-shell
   :where(button, [role='button'], .mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
   border-radius: var(--flow-r-control);
-  corner-shape: round;
 }
 
 .yachiyo-flow-environment {
@@ -100,8 +123,8 @@ html[data-yachiyo-appearance='flow-glass']
   pointer-events: none;
   background-position: center;
   background-size: cover;
-  background-color: #f1f4f7;
-  background-image: linear-gradient(145deg, rgba(112, 166, 207, 0.035), transparent 46%, rgba(132, 145, 162, 0.025));
+  background-color: var(--flow-env-color, #eef1f6);
+  background-image: var(--flow-env-glow, none);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-flow-environment {
@@ -112,35 +135,69 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-flow-environment {
   z-index: -1;
 }
 
-.yachiyo-flow-environment[data-context='interactive'] {
-  background-color: #f2f4f7;
-}
-
-.yachiyo-flow-environment[data-context='tasks'] {
-  background-color: #f1f4f4;
-}
-
 .yachiyo-flow-environment[data-context='settings'] {
-  background-color: #f2f2f7;
-  background-image: none;
+  background-color: var(--flow-env-settings-color, #f2f2f7);
+  background-image: var(--flow-env-settings-glow, none);
 }
 
-html[data-theme='dark'] .yachiyo-flow-environment {
-  background-color: #11151a;
-  background-image: linear-gradient(145deg, rgba(95, 139, 174, 0.035), transparent 46%, rgba(132, 145, 162, 0.018));
+/* Scroll-edge effect, as on iOS: content fades out under the floating chrome
+   instead of colliding with the title and buttons. Each fade repaints the
+   environment sized to the viewport, so it lines up with the layer behind. */
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-drawer::before,
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav::before {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+  background-color: var(--flow-env-color);
+  background-image: var(--flow-env-glow);
+  background-repeat: no-repeat;
+  background-size: 100% 100vh;
 }
 
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='interactive'] {
-  background-color: #121419;
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-drawer::before {
+  top: 0;
+  height: calc(var(--flow-header-height) + 56px);
+  background-position: 0 0;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
 }
 
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='tasks'] {
-  background-color: #111615;
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav::before {
+  bottom: 0;
+  height: calc(var(--flow-nav-height) + 34px);
+  background-position: 0 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 52px), transparent);
+  mask-image: linear-gradient(to top, #000 calc(100% - 52px), transparent);
 }
 
-html[data-theme='dark'] .yachiyo-flow-environment[data-context='settings'] {
-  background-color: #121316;
-  background-image: none;
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-flow-environment[data-context='settings']
+  ~ .yachiyo-mobile-header-drawer::before,
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-flow-environment[data-context='settings']
+  ~ .yachiyo-bottom-nav::before {
+  background-color: var(--flow-env-settings-color);
+  background-image: var(--flow-env-settings-glow);
+}
+
+/* A custom photo cannot be repainted as a gradient, and the Live2D stage is
+   full-screen content; keep both unobstructed. */
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-flow-environment[data-context='interactive']
+  ~ .yachiyo-mobile-header-drawer::before,
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-flow-environment[data-context='interactive']
+  ~ .yachiyo-bottom-nav::before,
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-flow-environment[data-custom-background='true']
+  ~ .yachiyo-mobile-header-drawer::before,
+html[data-yachiyo-appearance='flow-glass']
+  .yachiyo-flow-environment[data-custom-background='true']
+  ~ .yachiyo-bottom-nav::before {
+  display: none;
 }
 
 .yachiyo-flow-environment-image,
@@ -237,11 +294,12 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header {
   backdrop-filter: none;
 }
 
+/* A flush navigation bar, as on iOS: translucent material and a hairline, no drop shadow. */
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header[data-shell-tab='settings'] {
   background: var(--flow-sheet-fill);
   -webkit-backdrop-filter: blur(24px) saturate(1.18);
   backdrop-filter: blur(24px) saturate(1.18);
-  box-shadow: var(--flow-shadow-control);
+  box-shadow: inset 0 -0.5px 0 var(--flow-divider);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-primary,
@@ -281,18 +339,19 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-header-controls {
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: round;
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 42%), var(--flow-control-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-control);
-  backdrop-filter: blur(20px) saturate(1.35);
-  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
 }
 
+/* A capsule of circular buttons: 2px inset keeps the 22px circles concentric. */
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools {
   padding: 2px;
+  border-radius: var(--flow-r-nav);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-pager-header-actions {
@@ -314,15 +373,14 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse {
   height: 44px;
   min-height: 44px;
   border: 1px solid var(--flow-edge-mid);
-  border-radius: var(--flow-r-control);
-  corner-shape: round;
+  border-radius: var(--flow-r-icon);
   color: var(--flow-text);
   background: radial-gradient(circle at 34% 20%, var(--flow-edge-mid), transparent 48%), var(--flow-control-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     var(--flow-shadow-control);
-  backdrop-filter: blur(14px) saturate(1.24);
-  -webkit-backdrop-filter: blur(14px) saturate(1.24);
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse {
@@ -337,7 +395,6 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-header-collapse-glyph
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-disclosure {
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: round;
   color: var(--flow-text);
   background:
     linear-gradient(152deg, color-mix(in srgb, var(--flow-edge-light) 76%, transparent), transparent 38%),
@@ -345,8 +402,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-disclosure {
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     var(--flow-shadow-control);
-  backdrop-filter: blur(18px) saturate(1.3);
-  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-disclosure-trigger {
@@ -412,6 +469,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools .m
   height: 44px;
   min-height: 44px;
   border-color: transparent;
+  border-radius: var(--flow-r-icon);
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
@@ -434,7 +492,6 @@ html[data-yachiyo-appearance='flow-glass']
   min-height: 44px;
   border: 0;
   border-radius: calc(var(--flow-r-popover) - 5px);
-  corner-shape: round;
   background: transparent;
   box-shadow: none;
 }
@@ -486,14 +543,13 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-grid {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-nav);
-  corner-shape: round;
   background: linear-gradient(165deg, var(--flow-edge-mid), transparent 38%), var(--flow-chrome-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-chrome);
-  backdrop-filter: blur(30px) saturate(1.45);
-  -webkit-backdrop-filter: blur(30px) saturate(1.45);
+  backdrop-filter: blur(22px) saturate(1.85);
+  -webkit-backdrop-filter: blur(22px) saturate(1.85);
   pointer-events: auto;
 }
 
@@ -510,7 +566,6 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens {
   width: calc((100% - 10px) / var(--yachiyo-tab-count));
   height: 54px;
   border-radius: var(--flow-r-lens);
-  corner-shape: round;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens-inner {
@@ -522,16 +577,13 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-bottom-nav-lens-inner {
   display: block;
   border: 1px solid rgba(255, 255, 255, 0.52);
   border-radius: inherit;
-  corner-shape: inherit;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.64), rgba(76, 163, 255, 0.14) 55%, rgba(255, 127, 156, 0.1)),
-    rgba(255, 255, 255, 0.2);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(76, 163, 255, 0.16) 55%, rgba(175, 82, 222, 0.08)),
+    rgba(255, 255, 255, 0.34);
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.96),
     inset 0 -1px 0 rgba(45, 75, 105, 0.2),
     0 5px 18px rgba(34, 77, 120, 0.14);
-  backdrop-filter: blur(18px) saturate(1.42);
-  -webkit-backdrop-filter: blur(18px) saturate(1.42);
   transform-origin: center;
 }
 
@@ -632,7 +684,6 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-task-composer-panel {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid) !important;
   border-radius: var(--flow-r-composer) !important;
-  corner-shape: round;
   color: var(--flow-text);
   background:
     linear-gradient(126deg, color-mix(in srgb, var(--flow-blue) 6%, transparent), transparent 38%),
@@ -642,8 +693,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-task-composer-panel {
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     var(--flow-shadow-chrome) !important;
-  backdrop-filter: blur(20px) saturate(1.32);
-  -webkit-backdrop-filter: blur(20px) saturate(1.32);
+  backdrop-filter: blur(20px) saturate(1.75);
+  -webkit-backdrop-filter: blur(20px) saturate(1.75);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface > * {
@@ -682,8 +733,7 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .manti
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-chat-composer-surface .mantine-ActionIcon-root {
   min-width: 44px;
   min-height: 44px;
-  border-radius: var(--flow-r-control);
-  corner-shape: round;
+  border-radius: var(--flow-r-icon);
 }
 
 html[data-yachiyo-appearance='flow-glass']
@@ -698,8 +748,7 @@ html[data-yachiyo-appearance='flow-glass']
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-composer-row .yachiyo-composer-model {
-  border-radius: var(--flow-r-control);
-  corner-shape: round;
+  border-radius: var(--flow-r-nav);
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 72%, transparent);
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--flow-edge-light) 62%, transparent), transparent 46%),
@@ -778,14 +827,11 @@ html[data-yachiyo-appearance='flow-glass'] .bubble-user-msg .inline-block.max-w-
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-agent-user-message {
   border: 1px solid rgba(0, 122, 255, 0.18);
   border-radius: var(--flow-r-panel) !important;
-  corner-shape: round;
   color: var(--flow-text);
   background: rgba(225, 240, 255, 0.54) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.58),
     0 5px 16px rgba(29, 74, 116, 0.07);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-android-user-message {
@@ -853,8 +899,6 @@ html[data-yachiyo-appearance='flow-glass'] .local-model-installed-row {
   box-shadow:
     inset 0 1px 0 var(--flow-edge-mid),
     0 4px 14px rgba(24, 47, 69, 0.06);
-  backdrop-filter: blur(10px) saturate(1.08);
-  -webkit-backdrop-filter: blur(10px) saturate(1.08);
 }
 
 /* Apple-style grouped settings remain one grouped list, not a stack of glass cards. */
@@ -887,13 +931,10 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-plugin-page-host {
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-settings-list {
   border: 1px solid var(--flow-divider);
   border-radius: var(--flow-r-panel);
-  corner-shape: round;
-  background: var(--flow-group-fill);
+  background: var(--flow-specular), var(--flow-group-fill);
   box-shadow:
-    inset 0 1px 0 var(--flow-edge-mid),
+    inset 0 1px 0 var(--flow-edge-light),
     0 8px 24px rgba(28, 51, 73, 0.07);
-  backdrop-filter: blur(12px) saturate(1.12);
-  -webkit-backdrop-filter: blur(12px) saturate(1.12);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-settings-item {
@@ -932,14 +973,11 @@ html[data-yachiyo-appearance='flow-glass'] .local-model-device-metrics,
 html[data-yachiyo-appearance='flow-glass'] .local-model-metadata {
   border-color: var(--flow-divider);
   border-radius: var(--flow-r-panel);
-  corner-shape: round;
   color: var(--flow-text);
-  background: var(--flow-group-fill);
+  background: var(--flow-specular), var(--flow-group-fill);
   box-shadow:
-    inset 0 1px 0 var(--flow-edge-mid),
+    inset 0 1px 0 var(--flow-edge-light),
     0 8px 24px rgba(28, 51, 73, 0.07);
-  backdrop-filter: blur(16px) saturate(1.18);
-  -webkit-backdrop-filter: blur(16px) saturate(1.18);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-scheduled-task-row,
@@ -961,8 +999,6 @@ html[data-yachiyo-appearance='flow-glass'] :is(.coding-tab-preview-actions span,
   box-shadow:
     inset 0 1px 0 var(--flow-edge-mid),
     0 8px 24px rgba(28, 51, 73, 0.07);
-  backdrop-filter: blur(16px) saturate(1.18);
-  -webkit-backdrop-filter: blur(16px) saturate(1.18);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-about-release-action {
@@ -982,15 +1018,14 @@ html[data-yachiyo-appearance='flow-glass'] .mantine-Combobox-dropdown {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-popover);
-  corner-shape: round;
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 44%), var(--flow-popover-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     0 18px 46px rgba(24, 45, 67, 0.2);
-  backdrop-filter: blur(32px) saturate(1.4);
-  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.8);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
   transform-origin: var(--popover-transform-origin, center);
 }
 
@@ -1022,7 +1057,6 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
   padding: 9px 10px;
   border: 1px solid transparent;
   border-radius: var(--yachiyo-r-control);
-  corner-shape: round;
   color: var(--flow-text);
   background: transparent;
   transition:
@@ -1085,6 +1119,22 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-composer-popover .mantine-Me
   background: var(--flow-popover-fill);
 }
 
+/* Form fields sit on the glass palette in both schemes instead of Mantine's neutral greys. */
+html[data-yachiyo-appearance='flow-glass'] .mantine-Input-input {
+  border-color: var(--flow-divider);
+  color: var(--flow-text);
+  background-color: var(--flow-field-fill);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .mantine-Input-input:focus,
+html[data-yachiyo-appearance='flow-glass'] .mantine-Input-input:focus-within {
+  border-color: color-mix(in srgb, var(--flow-blue) 55%, transparent);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .mantine-Input-input::placeholder {
+  color: color-mix(in srgb, var(--flow-text-secondary) 72%, transparent);
+}
+
 html[data-yachiyo-appearance='flow-glass'] .mantine-Tooltip-tooltip {
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--yachiyo-r-sm);
@@ -1093,8 +1143,8 @@ html[data-yachiyo-appearance='flow-glass'] .mantine-Tooltip-tooltip {
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     var(--flow-shadow-control);
-  backdrop-filter: blur(18px) saturate(1.3);
-  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.7);
+  -webkit-backdrop-filter: blur(16px) saturate(1.7);
 }
 
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] .mantine-Tooltip-tooltip {
@@ -1115,20 +1165,26 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-surface {
   overflow: hidden;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-sheet);
-  corner-shape: round;
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 38%), var(--flow-sheet-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-sheet);
-  backdrop-filter: blur(38px) saturate(1.42);
-  -webkit-backdrop-filter: blur(38px) saturate(1.42);
+  backdrop-filter: blur(24px) saturate(1.7);
+  -webkit-backdrop-filter: blur(24px) saturate(1.7);
 }
 
+/* Sheets float inset from the display edges, as on iOS, so every corner is an
+   R corner instead of a rounded edge pressed against a square screen edge. */
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-sheet {
   box-sizing: border-box;
-  max-height: calc(100dvh - var(--mobile-safe-area-inset-top, 0px));
+  right: calc(8px + var(--mobile-safe-area-inset-right, 0px));
+  bottom: calc(8px + var(--mobile-safe-area-inset-bottom, 0px));
+  left: calc(8px + var(--mobile-safe-area-inset-left, 0px));
+  max-height: calc(
+    100dvh - var(--mobile-safe-area-inset-top, 0px) - var(--mobile-safe-area-inset-bottom, 0px) - 16px
+  );
   border-radius: var(--flow-r-sheet);
 }
 
@@ -1165,10 +1221,9 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-drawer .yachiyo-ada
   padding-top: 18px;
 }
 
+/* Sheets dim what is behind them; a full-screen backdrop blur is the costliest layer there is. */
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-overlay {
-  background: rgba(12, 22, 32, 0.26);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(12, 22, 32, 0.3);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-adaptive-handle {
@@ -1222,8 +1277,7 @@ html[data-yachiyo-appearance='flow-glass']
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border-radius: var(--flow-r-control) !important;
-  corner-shape: round;
+  border-radius: var(--flow-r-icon) !important;
   transition:
     transform 120ms ease-out,
     color 140ms ease,
@@ -1302,22 +1356,22 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='fu
 
 /* Balanced retains stable blur; reduced keeps translucent layering without expensive blur. */
 html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] {
-  --flow-chrome-fill: rgba(248, 251, 254, 0.88);
-  --flow-control-fill: rgba(246, 249, 252, 0.82);
-  --flow-popover-fill: rgba(250, 252, 254, 0.9);
-  --flow-sheet-fill: rgba(248, 250, 253, 0.9);
-  --flow-group-fill: rgba(250, 252, 254, 0.86);
+  --flow-chrome-fill: rgba(249, 251, 254, 0.95);
+  --flow-control-fill: rgba(247, 249, 252, 0.93);
+  --flow-popover-fill: rgba(250, 252, 254, 0.96);
+  --flow-sheet-fill: rgba(248, 250, 253, 0.96);
+  --flow-group-fill: rgba(255, 255, 255, 0.78);
   --flow-content-fill: rgba(250, 252, 254, 0.88);
   --flow-edge-mid: rgba(46, 64, 81, 0.34);
   --flow-divider: rgba(46, 64, 81, 0.3);
 }
 
 html[data-yachiyo-appearance='flow-glass'][data-theme='dark'][data-yachiyo-liquid-glass-quality='reduced'] {
-  --flow-chrome-fill: rgba(27, 32, 39, 0.9);
-  --flow-control-fill: rgba(33, 39, 47, 0.84);
-  --flow-popover-fill: rgba(29, 35, 43, 0.92);
-  --flow-sheet-fill: rgba(25, 30, 37, 0.92);
-  --flow-group-fill: rgba(27, 33, 41, 0.88);
+  --flow-chrome-fill: rgba(28, 32, 39, 0.95);
+  --flow-control-fill: rgba(35, 40, 48, 0.93);
+  --flow-popover-fill: rgba(29, 34, 42, 0.96);
+  --flow-sheet-fill: rgba(25, 29, 36, 0.96);
+  --flow-group-fill: rgba(30, 34, 41, 0.78);
   --flow-content-fill: rgba(25, 30, 37, 0.9);
   --flow-edge-mid: rgba(231, 237, 244, 0.26);
   --flow-divider: rgba(231, 237, 244, 0.24);
@@ -1639,7 +1693,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
 
   html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-conversation-tools {
     padding: 1px;
-    border-radius: var(--flow-r-popover);
+    border-radius: var(--flow-r-nav);
   }
 
   html[data-yachiyo-appearance='flow-glass'] .yachiyo-pager-header-actions {
@@ -1753,7 +1807,7 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
 .yachiyo-glass-quality-panel .mantine-SegmentedControl-root {
   max-width: 100%;
   overflow-x: auto;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   scrollbar-width: none;
 }
 
@@ -1802,8 +1856,6 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 5px 16px rgba(32, 69, 104, 0.1);
-  backdrop-filter: blur(12px) saturate(1.35);
-  -webkit-backdrop-filter: blur(12px) saturate(1.35);
 }
 
 .yachiyo-theme-preview-chrome {
@@ -1821,7 +1873,6 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  corner-shape: round;
   background: rgba(255, 255, 255, 0.54);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
@@ -1877,7 +1928,6 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
   height: 6px;
   margin: auto;
   border-radius: 50%;
-  corner-shape: round;
   background: rgba(48, 65, 82, 0.54);
 }
 
@@ -1932,15 +1982,14 @@ html[data-yachiyo-appearance='flow-glass']
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 58%, transparent),
     0 5px 14px color-mix(in srgb, var(--flow-text) 9%, transparent);
-  backdrop-filter: blur(16px) saturate(1.26);
-  -webkit-backdrop-filter: blur(16px) saturate(1.26);
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-character-selector,
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .yachiyo-interactive-llm-selector {
   position: relative;
   border-radius: var(--yachiyo-r-surface);
-  corner-shape: round;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-header .mantine-ActionIcon-root[data-active='true'] {
@@ -1957,7 +2006,6 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control.man
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 72%, transparent);
   border-radius: var(--yachiyo-r-shell);
-  corner-shape: round;
   color: var(--flow-text-secondary);
   background:
     linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 24%, transparent), transparent 44%),
@@ -1965,8 +2013,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control.man
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 54%, transparent),
     0 5px 14px color-mix(in srgb, var(--flow-text) 8%, transparent);
-  backdrop-filter: blur(16px) saturate(1.26);
-  -webkit-backdrop-filter: blur(16px) saturate(1.26);
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-control {
@@ -1976,7 +2024,6 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .ma
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-mode-control .mantine-SegmentedControl-indicator {
   border: 1px solid color-mix(in srgb, var(--flow-edge-light) 58%, var(--flow-edge-mid));
   border-radius: var(--yachiyo-r-surface);
-  corner-shape: round;
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--flow-edge-light) 46%, transparent), transparent 46%),
     color-mix(in srgb, var(--flow-control-fill) 80%, var(--flow-blue) 10%);
@@ -2055,8 +2102,22 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-model-row {
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-control);
-  backdrop-filter: blur(22px) saturate(1.36);
-  -webkit-backdrop-filter: blur(22px) saturate(1.36);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-round-button,
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-llm-selector,
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-keyboard-input .mantine-Textarea-input {
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-live-bubble,
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-live-transcript,
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-notice,
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-model-row {
+  background: linear-gradient(155deg, var(--flow-edge-mid), transparent 42%), var(--flow-content-fill);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-interactive-round-button {
@@ -2087,8 +2148,8 @@ html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-picker-modal {
     inset 0 -1px 0 var(--flow-edge-dark),
     0 -2px 0 color-mix(in srgb, var(--flow-edge-light) 24%, transparent),
     var(--flow-shadow-sheet) !important;
-  backdrop-filter: blur(38px) saturate(1.42) !important;
-  -webkit-backdrop-filter: blur(38px) saturate(1.42) !important;
+  backdrop-filter: blur(24px) saturate(1.7) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.7) !important;
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-picker-modal .mantine-Modal-header,
@@ -2112,15 +2173,12 @@ html[data-yachiyo-appearance='flow-glass']
   min-height: 48px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-content);
-  corner-shape: round;
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 44%), var(--flow-control-fill);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-control);
-  backdrop-filter: blur(22px) saturate(1.34);
-  -webkit-backdrop-filter: blur(22px) saturate(1.34);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-model-row {
@@ -2148,14 +2206,11 @@ html[data-yachiyo-appearance='flow-glass']
   min-height: 48px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--yachiyo-r-shell);
-  corner-shape: round;
   color: var(--flow-text);
   box-shadow:
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-control);
-  backdrop-filter: blur(22px) saturate(1.36);
-  -webkit-backdrop-filter: blur(22px) saturate(1.36);
 }
 
 html[data-yachiyo-appearance='flow-glass'] .yachiyo-live2d-import-button.mantine-Button-root {
@@ -2304,4 +2359,33 @@ html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='re
     -webkit-backdrop-filter: none !important;
     filter: none !important;
   }
+}
+
+/* The model picker floats like every other sheet. */
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-model-sheet {
+  right: calc(8px + var(--mobile-safe-area-inset-right, 0px));
+  bottom: calc(8px + var(--mobile-safe-area-inset-bottom, 0px));
+  left: calc(8px + var(--mobile-safe-area-inset-left, 0px));
+  max-height: calc(
+    100dvh - var(--mobile-safe-area-inset-top, 0px) - var(--mobile-safe-area-inset-bottom, 0px) - 16px
+  );
+}
+
+html[data-yachiyo-appearance='flow-glass'] .yachiyo-mobile-model-surface {
+  padding-bottom: 0;
+  border: 1px solid var(--flow-edge-mid);
+  border-radius: var(--flow-r-sheet);
+  color: var(--flow-text);
+  background: linear-gradient(155deg, var(--flow-edge-mid), transparent 38%), var(--flow-sheet-fill);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark),
+    var(--flow-shadow-sheet);
+  backdrop-filter: blur(24px) saturate(1.7);
+  -webkit-backdrop-filter: blur(24px) saturate(1.7);
+}
+
+html[data-yachiyo-appearance='flow-glass'][data-yachiyo-liquid-glass-quality='reduced'] .yachiyo-mobile-model-surface {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }

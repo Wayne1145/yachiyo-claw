@@ -103,17 +103,17 @@ const LIVE2D_ERRORS: Record<Live2DErrorCode, Live2DErrorDefinition> = {
     explanation: '模型配置或引用资源无法从应用存储中读取。', resolution: '请重试；导入模型可删除后重新导入。', retryable: true,
   },
   'L2D-MOC-001': {
-    code: 'L2D-MOC-001', phase: 'moc', title: 'Live2D Moc 文件不兼容',
-    explanation: 'Cubism Core 无法读取 .moc3，文件可能损坏或由不兼容版本导出。', resolution: '请使用兼容的 Cubism 4 版本重新导出模型。', retryable: false,
+    code: 'L2D-MOC-001', phase: 'moc', title: 'Live2D Moc 文件无法读取',
+    explanation: 'Cubism Core 无法读取 .moc3，文件可能损坏或导出不完整。', resolution: '请重新导出模型，或重新导入原始模型文件。', retryable: false,
   },
   'L2D-MOC-002': {
     code: 'L2D-MOC-002', phase: 'moc', title: 'Live2D 模型实例创建失败',
     explanation: 'Moc 已读取，但 Cubism Core 无法为它创建模型实例，通常与内存或模型复杂度有关。', resolution: '请关闭高负载页面、切换省电画质，或精简模型后重试。', retryable: true,
   },
   'L2D-MOC-003': {
-    code: 'L2D-MOC-003', phase: 'moc', title: '缺少 Cubism 5 运行库',
-    explanation: '此模型使用 Cubism 5 格式，但当前应用只加载了 Cubism 4 运行库。',
-    resolution: '请安装包含 Cubism 5 运行库的版本，或使用 Cubism 4 格式重新导出模型。', retryable: false,
+    code: 'L2D-MOC-003', phase: 'moc', title: 'Live2D 模型版本过新',
+    explanation: '此模型由更新版本的 Cubism Editor 导出，当前内置运行库最高支持 Cubism 5.0 格式。',
+    resolution: '请在 Cubism Editor 中导出为 Cubism 5.0 或更早的格式。', retryable: false,
   },
   'L2D-TEX-001': {
     code: 'L2D-TEX-001', phase: 'texture', title: 'Live2D 纹理无法读取',

@@ -1,16 +1,52 @@
-*       text    eol=lf
-*.exe   binary
-*.png   binary
-*.jpg   binary
-*.jpeg  binary
-*.ico   binary
-*.icns  binary
-*.eot   binary
-*.otf   binary
-*.ttf   binary
-*.woff  binary
-*.woff2 binary
-*.so    binary
-*.so.*  binary
-*.onnx  binary
-*.tgz   binary
+# Normalize text to LF, but let Git detect binary content. Forcing `text` on
+# every path rewrote CRLF byte pairs inside binaries (model.moc3, webp, zip).
+*       text=auto eol=lf
+
+# Binary formats are listed explicitly so detection never depends on content.
+*.exe     binary
+*.dll     binary
+*.so      binary
+*.so.*    binary
+*.a       binary
+*.jar     binary
+*.class   binary
+*.dex     binary
+*.apk     binary
+*.aab     binary
+*.keystore binary
+*.jks     binary
+*.p12     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.webp    binary
+*.avif    binary
+*.bmp     binary
+*.ico     binary
+*.icns    binary
+*.eot     binary
+*.otf     binary
+*.ttf     binary
+*.woff    binary
+*.woff2   binary
+*.mp3     binary
+*.wav     binary
+*.ogg     binary
+*.m4a     binary
+*.mp4     binary
+*.webm    binary
+*.pdf     binary
+*.zip     binary
+*.tgz     binary
+*.gz      binary
+*.xz      binary
+*.7z      binary
+*.wasm    binary
+*.onnx    binary
+*.tflite  binary
+*.task    binary
+*.litertlm binary
+*.gguf    binary
+*.bin     binary
+*.moc3    binary

@@ -37,7 +37,8 @@ body,
   height: 100%;
 }
 
-html[data-theme="dark"] {
+/* The Android shell keeps WebView's native overlay scrollbars; custom ones stay for the web preview. */
+html[data-theme="dark"]:not([data-yachiyo-appearance="flow-glass"]) {
   .ToolBar {
     background-color: var(--chatbox-background-primary);
   }
@@ -70,17 +71,9 @@ html[data-theme="dark"] {
   ::-webkit-scrollbar-button {
     display: none;
   }
-
-  a {
-    color: #fff;
-  }
-  /* 错误消息中的链接强制成蓝色 */
-  .message-error-tips a {
-    color: #2563eb !important;
-  }
 }
 
-html[data-theme="light"] {
+html[data-theme="light"]:not([data-yachiyo-appearance="flow-glass"]) {
   .ToolBar {
     background-color: var(--chatbox-background-primary);
   }
@@ -113,14 +106,19 @@ html[data-theme="light"] {
   ::-webkit-scrollbar-button {
     display: none;
   }
+}
 
-  a {
-    color: #333;
-  }
-  /* 错误消息中的链接强制成蓝色 */
-  .message-error-tips a {
-    color: #2563eb !important;
-  }
+html[data-theme="dark"] a {
+  color: #fff;
+}
+
+html[data-theme="light"] a {
+  color: #333;
+}
+
+/* 错误消息中的链接强制成蓝色 */
+html[data-theme] .message-error-tips a {
+  color: #2563eb !important;
 }
 
 .App {

@@ -15,6 +15,7 @@ import useVersion from '@/hooks/useVersion'
 import '@/modals'
 import NiceModal from '@ebay/nice-modal-react'
 import {
+  ActionIcon,
   Avatar,
   Button,
   Checkbox,
@@ -31,10 +32,12 @@ import {
   NativeSelect,
   Popover,
   rem,
+  SegmentedControl,
   Select,
   Slider,
   Switch,
   Text,
+  Textarea,
   TextInput,
   Title,
   Tooltip,
@@ -384,13 +387,14 @@ const creteMantineTheme = (scale = 1) =>
       xl: '1.6', // 32px
     },
     // One corner scale for the whole app (see --yachiyo-r-* in globals.css).
+    // `xl` is the capsule: avatars, icon buttons and badges become circles/capsules.
     radius: {
       xs: 'var(--yachiyo-r-xs)',
       sm: 'var(--yachiyo-r-sm)',
       md: 'var(--yachiyo-r-control)',
       lg: 'var(--yachiyo-r-surface)',
-      xl: 'var(--yachiyo-r-shell)',
-      xxl: 'var(--yachiyo-r-shell)',
+      xl: 'var(--yachiyo-r-pill)',
+      xxl: 'var(--yachiyo-r-pill)',
     },
     spacing: {
       '3xs': 'calc(0.125rem * var(--mantine-scale))',
@@ -417,7 +421,7 @@ const creteMantineTheme = (scale = 1) =>
       Button: Button.extend({
         defaultProps: {
           color: 'chatbox-brand',
-          radius: 'md',
+          radius: 'xl',
         },
         styles: () => ({
           root: {
@@ -457,7 +461,7 @@ const creteMantineTheme = (scale = 1) =>
           },
         }),
       }),
-      Textarea: TextInput.extend({
+      Textarea: Textarea.extend({
         defaultProps: {
           size: 'sm',
           radius: 'md',
@@ -512,6 +516,7 @@ const creteMantineTheme = (scale = 1) =>
       Checkbox: Checkbox.extend({
         defaultProps: {
           size: 'sm',
+          radius: 'xs',
         },
         styles: (_theme, props) => ({
           label: {
@@ -536,7 +541,7 @@ const creteMantineTheme = (scale = 1) =>
           },
           content: {
             backgroundColor: 'var(--chatbox-background-primary)',
-            borderRadius: 'var(--yachiyo-r-surface)',
+            borderRadius: 'var(--yachiyo-r-sheet)',
           },
           overlay: {
             '--overlay-bg': 'var(--chatbox-background-mask-overlay)',
@@ -560,6 +565,7 @@ const creteMantineTheme = (scale = 1) =>
           },
           content: {
             backgroundColor: 'var(--chatbox-background-primary)',
+            borderRadius: 'var(--yachiyo-r-sheet)',
           },
           overlay: {
             '--overlay-bg': 'var(--chatbox-background-mask-overlay)',
@@ -572,7 +578,21 @@ const creteMantineTheme = (scale = 1) =>
           zIndex: 2100,
         },
       }),
+      // Icon-only buttons are circles and segmented controls are capsules, as on iOS.
+      ActionIcon: ActionIcon.extend({
+        defaultProps: {
+          radius: 'xl',
+        },
+      }),
+      SegmentedControl: SegmentedControl.extend({
+        defaultProps: {
+          radius: 'xl',
+        },
+      }),
       Avatar: Avatar.extend({
+        defaultProps: {
+          radius: 'xl',
+        },
         styles: () => ({
           image: {
             objectFit: 'contain',

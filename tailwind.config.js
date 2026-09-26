@@ -90,14 +90,20 @@ module.exports = {
         xl: 'var(--chatbox-spacing-xl)',
         xxl: 'var(--chatbox-spacing-xxl)',
       },
+      // Every utility resolves to the app corner scale (globals.css), including
+      // Tailwind's own DEFAULT/2xl/3xl/full keys, so no stray radius survives.
       borderRadius: {
         none: 'var(--chatbox-radius-none)',
         xs: 'var(--chatbox-radius-xs)',
         sm: 'var(--chatbox-radius-sm)',
+        DEFAULT: 'var(--chatbox-radius-sm)',
         md: 'var(--chatbox-radius-md)',
         lg: 'var(--chatbox-radius-lg)',
-        xl: 'var(--chatbox-radius-xl)',
+        xl: 'var(--chatbox-radius-lg)',
+        '2xl': 'var(--chatbox-radius-xl)',
+        '3xl': 'var(--chatbox-radius-xxl)',
         xxl: 'var(--chatbox-radius-xxl)',
+        full: 'var(--yachiyo-r-pill)',
       },
       animation: {
         'fade-in': 'fadeIn 1s ease-out',

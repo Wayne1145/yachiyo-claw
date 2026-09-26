@@ -29,7 +29,6 @@ body:has(.yachiyo-mobile-shell),
 .yachiyo-mobile-shell
   :where(button, [role='button'], .mantine-ActionIcon-root, .mantine-Button-root, .mantine-UnstyledButton-root) {
   border-radius: var(--yachiyo-r-control);
-  corner-shape: round;
 }
 
 .App:has(.yachiyo-mobile-shell) {
@@ -249,7 +248,6 @@ body:has(.yachiyo-mobile-shell),
   min-width: 7px;
   height: 7px;
   border-radius: 50%;
-  corner-shape: round;
   background: #98a2a0;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--yachiyo-surface) 70%, transparent);
 }
@@ -266,7 +264,7 @@ body:has(.yachiyo-mobile-shell),
   font-size: 12px;
   white-space: nowrap;
   padding: 7px 11px;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   background: var(--yachiyo-surface-muted);
   transition:
     color 180ms ease,
@@ -277,7 +275,6 @@ body:has(.yachiyo-mobile-shell),
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  corner-shape: round;
   background: #98a2a0;
 }
 
@@ -692,7 +689,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   min-height: 44px;
   padding: 0 8px;
   border: 1px solid var(--yachiyo-border);
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   align-items: center;
   gap: 4px;
   color: var(--yachiyo-text-muted);
@@ -807,8 +804,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 
 .yachiyo-live2d-move-actions .mantine-Button-root {
   min-width: 58px;
-  border-radius: var(--yachiyo-r-control);
-  corner-shape: round;
+  border-radius: var(--yachiyo-r-pill);
 }
 
 @media (max-width: 430px) {
@@ -886,7 +882,6 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   border: 3px solid color-mix(in srgb, var(--yachiyo-accent) 20%, transparent);
   border-top-color: var(--yachiyo-accent);
   border-radius: 50%;
-  corner-shape: round;
   content: '';
   transform: translate(-50%, -50%);
   animation: yachiyo-live2d-loading 720ms linear infinite;
@@ -974,7 +969,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   gap: 6px;
   padding: 0 14px;
   border: 1px solid var(--yachiyo-border);
-  border-radius: var(--yachiyo-r-surface);
+  border-radius: var(--yachiyo-r-pill);
   color: var(--yachiyo-text);
   background: var(--yachiyo-surface-soft);
 }
@@ -1142,7 +1137,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   height: 52px;
   padding: 0 15px;
   border: 1px solid var(--yachiyo-border);
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   color: var(--yachiyo-text);
   background: var(--yachiyo-surface);
   box-shadow: 0 5px 16px rgba(44, 35, 40, 0.08);
@@ -1417,7 +1412,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   overflow: hidden;
   padding: 0 8px;
   border: 0;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   color: var(--chatbox-tint-secondary);
   background: color-mix(in srgb, var(--chatbox-background-tertiary) 72%, transparent);
   font-size: 13px;
@@ -1459,7 +1454,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   gap: 2px;
   padding: 0 6px;
   border: 0;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   color: var(--chatbox-tint-secondary);
   background: transparent;
   font-size: 14px;
@@ -1527,7 +1522,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   left: -4px;
   content: '';
   border: 2px solid var(--chatbox-border-brand);
-  border-radius: var(--yachiyo-r-surface);
+  border-radius: var(--yachiyo-r-pill);
   animation: yachiyo-voice-recording-pulse 1.15s ease-out infinite;
   pointer-events: none;
 }
@@ -1542,7 +1537,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   width: 100%;
   height: 4px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: var(--yachiyo-r-pill);
   background: var(--yachiyo-surface-muted);
 }
 .yachiyo-context-progress > span {
@@ -1707,23 +1702,25 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   letter-spacing: 0 !important;
 }
 
+/* Inset grouped rows, as in iOS: one tinted R panel with hairline separators. */
 .yachiyo-endpoint-summary {
   display: grid;
-  gap: 1px;
   overflow: hidden;
-  border: 1px solid var(--yachiyo-border);
-  border-radius: var(--yachiyo-r-surface);
-  background: var(--yachiyo-border);
+  border-radius: var(--yachiyo-r-control);
+  background: color-mix(in srgb, var(--yachiyo-text) 5%, transparent);
 }
 
 .yachiyo-endpoint-summary > div {
   min-width: 0;
-  padding: 11px 12px;
+  padding: 12px 14px;
   display: grid;
   grid-template-columns: 20px 44px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  background: var(--yachiyo-surface-muted);
+}
+
+.yachiyo-endpoint-summary > div + div {
+  box-shadow: inset 0 1px 0 var(--yachiyo-border);
 }
 
 .yachiyo-endpoint-summary svg {
@@ -1746,8 +1743,8 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 
 .yachiyo-primary-button {
   background: var(--yachiyo-accent) !important;
-  border-radius: var(--yachiyo-r-control) !important;
-  box-shadow: 0 8px 18px rgba(216, 117, 151, 0.2);
+  border-radius: var(--yachiyo-r-pill) !important;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--yachiyo-accent) 26%, transparent);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -1760,17 +1757,22 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 
 .yachiyo-primary-button:active {
   transform: scale(0.98);
-  box-shadow: 0 4px 12px rgba(216, 117, 151, 0.16);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--yachiyo-accent) 20%, transparent);
 }
 
 .yachiyo-local-security-note {
-  padding: 10px 12px;
+  padding: 11px 14px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  border-left: 3px solid var(--yachiyo-accent);
+  gap: 10px;
+  border-radius: var(--yachiyo-r-control);
   color: var(--yachiyo-text-muted);
-  background: var(--yachiyo-surface-muted);
+  background: color-mix(in srgb, var(--yachiyo-accent) 8%, transparent);
+}
+
+.yachiyo-local-security-note > svg {
+  flex: 0 0 auto;
+  color: var(--yachiyo-accent);
 }
 
 .yachiyo-chat-landing {
@@ -1934,7 +1936,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 
 .yachiyo-status-value .mantine-Button-root {
   flex: 0 0 auto;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
 }
 
 .yachiyo-status-value .yachiyo-about-release-action {
@@ -1947,7 +1949,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
   flex: 0 0 auto;
   gap: 4px;
   border: 0;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   color: var(--yachiyo-accent-strong);
   background: transparent;
   box-shadow: none;
@@ -2028,7 +2030,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 
 .yachiyo-permission-row button {
   flex: 0 0 auto;
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
 }
 
 .yachiyo-history-dialog {
@@ -2043,7 +2045,7 @@ html[data-theme='dark'] .yachiyo-settings-stack-page {
 }
 
 .yachiyo-history-search input {
-  border-radius: var(--yachiyo-r-control);
+  border-radius: var(--yachiyo-r-pill);
   background: var(--yachiyo-surface-muted);
 }
 

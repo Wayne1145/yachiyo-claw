@@ -3,14 +3,17 @@
 @tailwind utilities;
 
 :root {
-  /* Regular circular R corners, independent of WebView squircle support. */
+  /* Apple-style R corners: one circular-arc scale for every WebView. A shape
+     nested inside another uses the parent radius minus its inset, so corners
+     stay concentric. */
   --yachiyo-r-xs: 6px;
   --yachiyo-r-sm: 10px;
   --yachiyo-r-control: 14px;
-  --yachiyo-r-surface: 18px;
-  --yachiyo-r-shell: 24px;
-  /* Legacy consumers also use standard R corners. */
-  --yachiyo-r-pill: var(--yachiyo-r-control);
+  --yachiyo-r-surface: 22px;
+  --yachiyo-r-shell: 28px;
+  --yachiyo-r-sheet: 34px;
+  /* Capsule: the radius clamps to half the height, so a square box is a circle. */
+  --yachiyo-r-pill: 999px;
 
   /* radius (legacy Chatbox names, mapped onto the scale above) */
   --chatbox-radius-none: 0rem;
@@ -19,7 +22,7 @@
   --chatbox-radius-md: var(--yachiyo-r-control);
   --chatbox-radius-lg: var(--yachiyo-r-surface);
   --chatbox-radius-xl: var(--yachiyo-r-shell);
-  --chatbox-radius-xxl: var(--yachiyo-r-shell);
+  --chatbox-radius-xxl: var(--yachiyo-r-sheet);
 
   /* spacing */
   --chatbox-spacing-none: 0rem;
@@ -320,54 +323,84 @@ div[data-vaul-drawer] {
   z-index: 2000;
 }
 
-/* Product-wide R corners, including portals and startup/recovery screens.
-   Use lengths: percentages give rectangular controls elliptical corners.
-   Drawing primitives keep their geometry. Do not put pseudo-elements inside
-   :where(), where browsers discard them from its forgiving selector list. */
-html:root[data-yachiyo-corners='round'] body *:not(svg):not(canvas) {
-  border-radius: var(--yachiyo-r-control) !important;
-  corner-shape: round !important;
+/* Corner roles. Components own their radius through the scale above; these
+   rules cover shared primitives. Only simple selectors are used here because
+   Android 11's stock WebView (Chromium 83) drops rules with :where()/:is().
+   Never set corner-shape: its superellipse looks square at small radii and
+   backdrop blur cannot follow it. */
+
+/* Layers that meet the display edges stay flush: the display has its own corners. */
+html,
+body,
+#root,
+.App,
+canvas,
+td,
+th,
+tr,
+thead,
+tbody,
+tfoot,
+hr {
+  border-radius: 0;
 }
 
-html:root[data-yachiyo-corners='round'] body *:not(svg):not(canvas)::before,
-html:root[data-yachiyo-corners='round'] body *:not(svg):not(canvas)::after {
-  border-radius: inherit !important;
-  corner-shape: round !important;
+/* Inline text chips. */
+code,
+kbd,
+samp,
+mark {
+  border-radius: var(--yachiyo-r-xs);
 }
 
-/* Compact controls need a smaller circular arc so 14px cannot turn them into
-   circles or capsules. Size variables come from Mantine and contain lengths. */
-html:root[data-yachiyo-corners='round'] body .mantine-ActionIcon-root {
-  border-radius: min(var(--yachiyo-r-control), calc(var(--ai-size, 24px) / 4)) !important;
+/* Rich content: blocks inside messages and documents. */
+pre,
+table,
+figure,
+video,
+iframe,
+.shiki-code-wrapper,
+.katex-display {
+  border-radius: var(--yachiyo-r-control);
 }
 
-html:root[data-yachiyo-corners='round'] body .mantine-Badge-root,
-html:root[data-yachiyo-corners='round'] body .mantine-Pill-root,
-html:root[data-yachiyo-corners='round'] body .MuiChip-root,
-html:root[data-yachiyo-corners='round'] body .MuiIconButton-root,
-html:root[data-yachiyo-corners='round'] body .rounded-full,
-html:root[data-yachiyo-corners='round'] body .mantine-CloseButton-root,
-html:root[data-yachiyo-corners='round'] body .mantine-Checkbox-input,
-html:root[data-yachiyo-corners='round'] body .mantine-Radio-radio,
-html:root[data-yachiyo-corners='round'] body .mantine-Switch-track,
-html:root[data-yachiyo-corners='round'] body .mantine-Switch-thumb,
-html:root[data-yachiyo-corners='round'] body .mantine-Slider-thumb {
-  border-radius: var(--yachiyo-r-xs) !important;
+pre code,
+.shiki-code-wrapper code {
+  border-radius: 0;
 }
 
-html:root[data-yachiyo-corners='round'] body .mantine-Avatar-root,
-html:root[data-yachiyo-corners='round'] body .mantine-Avatar-image,
-html:root[data-yachiyo-corners='round'] body .mantine-Avatar-placeholder {
-  border-radius: min(var(--yachiyo-r-control), calc(var(--avatar-size, 24px) / 4)) !important;
+table {
+  overflow: hidden;
+}
+
+/* A one-sided accent border on a rounded box renders as a bracket. Quotes keep
+   the accent as an inset capsule on a rounded tinted panel instead. */
+blockquote {
+  position: relative;
+  border-left: 0 !important;
+  border-radius: var(--yachiyo-r-control);
+  padding-inline-start: 18px;
+  background: color-mix(in srgb, var(--chatbox-tint-brand) 7%, transparent);
+}
+
+blockquote::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 7px;
+  width: 3px;
+  border-radius: var(--yachiyo-r-pill);
+  background: color-mix(in srgb, var(--chatbox-tint-brand) 55%, transparent);
+  content: '';
 }
 
 /* Clip opaque children to the outer contour as well as rounding the frame. */
-html:root[data-yachiyo-corners='round'] body .mantine-Modal-content,
-html:root[data-yachiyo-corners='round'] body .mantine-Drawer-content,
-html:root[data-yachiyo-corners='round'] body .MuiDialog-paper,
-html:root[data-yachiyo-corners='round'] body .MuiDrawer-paper,
-html:root[data-yachiyo-corners='round'] body .yachiyo-adaptive-surface,
-html:root[data-yachiyo-corners='round'] body .yachiyo-mobile-model-surface,
-html:root[data-yachiyo-corners='round'] body .shiki-code-wrapper {
+.mantine-Modal-content,
+.mantine-Drawer-content,
+.MuiDialog-paper,
+.MuiDrawer-paper,
+.yachiyo-adaptive-surface,
+.yachiyo-mobile-model-surface,
+.shiki-code-wrapper {
   overflow: hidden;
 }

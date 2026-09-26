@@ -68,27 +68,39 @@ export function resolveLive2DAssetUrl(source: string, baseUrl?: string): string 
   }
 }
 
-export type Live2DMocVersion = 4 | 5 | 'unknown'
+/** Cubism editor release that writes each .moc3 format version. */
+const MOC_FORMAT_RELEASES: Record<number, string> = { 1: '3.0', 2: '3.3', 3: '4.0', 4: '4.2', 5: '5.0', 6: '5.3' }
 
-/** Reads the binary format marker without asking Cubism Core to create a model. */
-export function detectLive2DMocVersion(bytes: ArrayBuffer): Live2DMocVersion {
-  const header = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 8))
-  if (header.length < 5 || header[0] !== 0x4d || header[1] !== 0x4f || header[2] !== 0x43 || header[3] !== 0x33) {
-    return 'unknown'
-  }
-  if (header[4] === 4) return 4
-  if (header[4] === 5) return 5
-  return 'unknown'
+export function describeLive2DMocFormat(version: number): string {
+  return MOC_FORMAT_RELEASES[version] ? `Cubism ${MOC_FORMAT_RELEASES[version]}` : `MOC ${version}`
 }
 
-export async function detectLive2DMocVersionFromModel(source: string): Promise<Live2DMocVersion> {
-  const modelResponse = await fetch(source)
-  if (!modelResponse.ok) throw new Error(`Live2D model settings request failed: ${modelResponse.status}`)
+/** Reads the .moc3 format version from its header without asking Cubism Core to parse it. */
+export function readLive2DMocFormat(bytes: ArrayBuffer | Uint8Array): number | undefined {
+  const header = bytes instanceof Uint8Array ? bytes.subarray(0, 8) : new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 8))
+  if (header.length < 5 || header[0] !== 0x4d || header[1] !== 0x4f || header[2] !== 0x43 || header[3] !== 0x33) {
+    return undefined
+  }
+  return header[4] || undefined
+}
+
+/**
+ * Explains a failed model load. Only the first chunk of the .moc3 is read, so a
+ * diagnosis never costs a second full download of a multi-megabyte model.
+ */
+export async function probeLive2DMocFormat(modelSettingsUrl: string): Promise<number | undefined> {
+  const modelResponse = await fetch(modelSettingsUrl)
+  if (!modelResponse.ok) return undefined
   const model = (await modelResponse.json()) as { FileReferences?: { Moc?: string } }
   const moc = model.FileReferences?.Moc
-  if (!moc) return 'unknown'
-  const mocUrl = new URL(moc, source).toString()
-  const mocResponse = await fetch(mocUrl)
-  if (!mocResponse.ok) throw new Error(`Live2D moc request failed: ${mocResponse.status}`)
-  return detectLive2DMocVersion(await mocResponse.arrayBuffer())
+  if (!moc) return undefined
+  const mocResponse = await fetch(new URL(moc, modelSettingsUrl).toString())
+  if (!mocResponse.ok || !mocResponse.body) return undefined
+  const reader = mocResponse.body.getReader()
+  try {
+    const { value } = await reader.read()
+    return value ? readLive2DMocFormat(value) : undefined
+  } finally {
+    void reader.cancel().catch(() => undefined)
+  }
 }

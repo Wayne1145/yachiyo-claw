@@ -16,9 +16,10 @@ import {
   YachiyoLive2DError,
 } from '@/mobile/live2d-errors'
 import {
-  detectLive2DMocVersionFromModel,
+  describeLive2DMocFormat,
   getLive2DResolution,
   type Live2DRenderQuality,
+  probeLive2DMocFormat,
   resolveLive2DAssetUrl,
 } from '@/mobile/live2d-performance'
 import { DEFAULT_LIVE2D_TRANSFORM, type Live2DTransform, normalizeLive2DTransform } from '@/mobile/live2d-transform'
@@ -424,12 +425,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
           rendererCleanup = attemptCleanup
 
           phase = 'settings'
-          if (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source)) {
-            // Cubism 5 Core keeps the Cubism 4 C API surface used by the Pixi
-            // adapter. Let the adapter perform the authoritative model parse;
-            // this probe is only used to produce a precise compatibility error.
-            await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
-          }
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,
           })
@@ -515,6 +510,25 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
               // Ignore a renderer that failed while its WebGL context was being lost.
             }
           }
+        }
+      }
+
+      // Only after a failed load: tell a model exported by a newer Cubism
+      // editor apart from a damaged file, using the Core's own format limit.
+      if (
+        lastFailure?.phase === 'settings' &&
+        !(lastFailure.reason instanceof YachiyoLive2DError) &&
+        (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source))
+      ) {
+        const format = await probeLive2DMocFormat(resolveLive2DAssetUrl(descriptor.source)).catch(() => undefined)
+        const latest = (
+          window as { Live2DCubismCore?: { Version?: { csmGetLatestMocVersion?: () => number } } }
+        ).Live2DCubismCore?.Version?.csmGetLatestMocVersion?.()
+        if (format && latest && format > latest) {
+          throw createLive2DError('L2D-MOC-003', {
+            resource: descriptor.builtIn ? descriptor.source : descriptor.name,
+            technicalDetail: `${describeLive2DMocFormat(format)} model; runtime supports up to ${describeLive2DMocFormat(latest)}`,
+          })
         }
       }
 
