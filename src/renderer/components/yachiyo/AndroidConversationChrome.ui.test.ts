@@ -137,7 +137,7 @@ describe('Android conversation chrome UI contract', () => {
     )
     expect(shellStyles).toMatch(/\.yachiyo-composer-reasoning\s*\{[^}]*width:\s*74px;[^}]*white-space:\s*nowrap;/s)
     expect(flowStyles).toMatch(
-      /\.yachiyo-adaptive-sheet\s*\{[^}]*max-height:\s*calc\(100dvh - var\(--mobile-safe-area-inset-top, 0px\)\);/s,
+      /\.yachiyo-adaptive-sheet\s*\{[^}]*max-height:\s*calc\(100dvh - var\(--mobile-safe-area-inset-top, 0px\) - var\(--mobile-safe-area-inset-bottom, 0px\) - 16px\);/s,
     )
   })
 

@@ -285,7 +285,7 @@ export function ThemeCenter() {
               <div>
                 <Text fw={650}>{t('Yachiyo 流光玻璃')}</Text>
                 <Text size="xs" c="dimmed">
-                  {t('内置 · Apple 式连续圆角、共享透镜与分层玻璃材质')}
+                  {t('内置 · Apple 风格 R 角、共享透镜与分层玻璃材质')}
                 </Text>
               </div>
               {activeThemeId === null && !previewingTheme && (

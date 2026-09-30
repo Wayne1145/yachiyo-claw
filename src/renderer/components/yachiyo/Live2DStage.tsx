@@ -162,10 +162,10 @@ function getQualityCandidates(quality: Live2DRenderQuality): Live2DRenderQuality
 function fitModel(model: ModelInstance, width: number, height: number, transform: Live2DTransform) {
   const naturalWidth = Math.max(1, model.width / Math.max(model.scale.x, 0.0001))
   const naturalHeight = Math.max(1, model.height / Math.max(model.scale.y, 0.0001))
-  const scale = Math.min(width / naturalWidth, height / naturalHeight) * 1.08 * transform.scale
+  const scale = Math.min(width / naturalWidth, height / naturalHeight) * 0.96 * transform.scale
   model.anchor.set(0.5, 0.5)
   model.scale.set(scale)
-  model.position.set(width / 2 + transform.offsetX * width, height / 2 + height * 0.04 + transform.offsetY * height)
+  model.position.set(width / 2 + transform.offsetX * width, height / 2 + transform.offsetY * height)
 }
 
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(function Live2DStage(

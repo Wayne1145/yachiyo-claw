@@ -35,9 +35,11 @@ void SafeArea.addListener('safeAreaChanged', ({ insets }) => {
 }).catch(() => console.warn('Unable to observe mobile safe-area changes'))
 
 void Keyboard.addListener('keyboardWillShow', () => {
+  document.documentElement.dataset.yachiyoKeyboard = 'open'
   document.documentElement.style.setProperty(`--mobile-safe-area-inset-bottom`, `0px`)
 }).catch(() => console.warn('Unable to observe the mobile keyboard'))
 
 void Keyboard.addListener('keyboardWillHide', () => {
+  delete document.documentElement.dataset.yachiyoKeyboard
   void refreshSafeAreaInsets()
 }).catch(() => console.warn('Unable to observe the mobile keyboard'))

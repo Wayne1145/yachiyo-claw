@@ -72,10 +72,13 @@ token 会被拒绝。完整的公开 token 列表以
 ## 圆角系统
 
 全应用使用一套圆角尺度（`globals.css` 中的 `--yachiyo-r-*`：xs 6 / sm 10 / control 14 /
-surface 18 / shell 24 / pill）。Mantine 的 `radius` 和 MUI 的 `shape` 都映射到这组 token，第三方
+surface 22 / shell 28 / sheet 34 / pill 999）。Mantine 的 `radius` 和 MUI 的 `shape` 都映射到这组 token，第三方
 主题不覆盖圆角。
 
-在支持 `corner-shape: squircle` 的引擎（Chromium / Android System WebView ≥ 139）上，所有圆角以
-Apple 式连续曲率（squircle）渲染，真正的圆形元素（头像、开关、单选、进度条等）保持 `round`。旧版
-WebView 自动回退为普通圆弧，应用会检测该情况并提示更新 Android System WebView（见
-`src/renderer/themes/continuous-corners.ts`）。
+所有内核都使用普通圆弧 R 角，不依赖 `corner-shape`。图标按钮是圆形，导航和主按钮为胶囊，
+卡片为 22px 圆角，底部面板使用 34px 圆角并与屏幕边缘保持 8px 间距。嵌套轮廓按内边距保持同心。
+全屏背景与单侧分隔线不套用控件圆角，避免屏幕出现切角或弯曲的分隔线。
+
+交互页只保留一排顶部入口；聊天/Agent 切换、文字、语音和停止/发送集中在底部输入区。
+模型、人格、声音、摄像头和角色调整位于有文字标签的设置面板。输入与打开设置时保留角色画面，
+暂停不必要的动画；关闭后恢复。角色根据实际顶部工具栏和输入区尺寸重新适配可用空间。

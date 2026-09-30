@@ -108,13 +108,13 @@ describe('Flow Glass visual contracts', () => {
     expect(globalStyles).toContain('--yachiyo-r-xs: 6px')
     expect(globalStyles).toContain('--yachiyo-r-sm: 10px')
     expect(globalStyles).toContain('--yachiyo-r-control: 14px')
-    expect(globalStyles).toContain('--yachiyo-r-surface: 18px')
-    expect(globalStyles).toContain('--yachiyo-r-shell: 24px')
+    expect(globalStyles).toContain('--yachiyo-r-surface: 22px')
+    expect(globalStyles).toContain('--yachiyo-r-shell: 28px')
     expect(globalStyles).not.toContain('corner-shape: squircle')
-    expect(flowStyles).toContain('--flow-r-nav: var(--yachiyo-r-shell)')
-    expect(flowStyles).toContain('--flow-r-lens: var(--yachiyo-r-surface)')
+    expect(flowStyles).toContain('--flow-r-nav: var(--yachiyo-r-pill)')
+    expect(flowStyles).toContain('--flow-r-lens: var(--yachiyo-r-pill)')
     expect(flowStyles).toContain('--flow-r-composer: var(--yachiyo-r-shell)')
-    expect(flowStyles).toContain('--flow-r-sheet: var(--yachiyo-r-shell)')
+    expect(flowStyles).toContain('--flow-r-sheet: var(--yachiyo-r-sheet)')
     expect(flowStyles).toContain('--flow-r-popover: var(--yachiyo-r-surface)')
     expect(flowStyles).toContain('--flow-r-panel: var(--yachiyo-r-surface)')
     expect(flowStyles).toContain('--flow-r-content: var(--yachiyo-r-control)')
@@ -135,26 +135,23 @@ describe('Flow Glass visual contracts', () => {
       /\.yachiyo-mobile-conversation-tools \.mantine-ActionIcon-root\s*{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-control\);[^}]*corner-shape:\s*round;/s
+      /\.yachiyo-mobile-header \.mantine-ActionIcon-root,[^}]*border-radius:\s*var\(--flow-r-icon\);/s
     )
     expect(flowStyles).toMatch(
-      /\.yachiyo-chat-composer-surface \.mantine-ActionIcon-root\s*\{[^}]*border-radius:\s*var\(--flow-r-control\);/s
+      /\.yachiyo-chat-composer-surface \.mantine-ActionIcon-root\s*\{[^}]*border-radius:\s*var\(--flow-r-icon\);/s
     )
     expect(flowStyles).not.toContain('clip-path: circle(50% at 50% 50%)')
     expect(flowStyles).not.toMatch(/\.yachiyo-mobile-conversation-tools\s*\{[^}]*border-radius:\s*20px;/s)
   })
 
-  it('enforces one standard R-corner contract for ordinary controls', () => {
-    expect(globalStyles).toMatch(
-      /html:root\[data-yachiyo-corners='round'\] body [\s\S]*?border-radius:\s*var\(--yachiyo-r-control\) !important;[\s\S]*?corner-shape:\s*round !important;/
-    )
-    expect(globalStyles).toContain("data-yachiyo-corners='round'")
-    expect(globalStyles).not.toContain('9999px')
-    expect(globalStyles).toContain('.mantine-Modal-content')
-    expect(globalStyles).toContain('.mantine-Drawer-content')
-    expect(globalStyles).not.toContain('25%')
-    expect(globalStyles).toContain(':not(canvas)::before')
-    expect(globalStyles).toContain(':not(canvas)::after')
+  it('preserves circular controls without rounding screen layers or accent borders', () => {
+    expect(globalStyles).toContain('--yachiyo-r-pill: 999px')
+    expect(globalStyles).toContain('--yachiyo-r-sheet: 34px')
+    expect(globalStyles).not.toMatch(/body \*[\s\S]*?border-radius:[^;]*!important/)
+    expect(flowStyles).toContain('--flow-r-icon: var(--yachiyo-r-pill)')
+    expect(flowStyles).not.toMatch(/:(?:is|where)\(/)
+    expect(flowStyles).not.toContain('corner-shape:')
+    expect(shellStyles).not.toContain('corner-shape:')
   })
 
   it('keeps small active navigation labels above WCAG AA contrast in both color schemes', () => {
@@ -252,7 +249,7 @@ describe('Flow Glass visual contracts', () => {
     expect(releaseAction).toContain('<IconExternalLink')
     expect(releaseAction).toContain('needCheckUpdate ? YACHIYO_LATEST_RELEASE_URL : YACHIYO_RELEASES_URL')
     expect(shellStyles).toMatch(
-      /\.yachiyo-status-value \.yachiyo-about-release-action\s*{[^}]*min-height:\s*44px;[^}]*border-radius:\s*var\(--yachiyo-r-control\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
+      /\.yachiyo-status-value \.yachiyo-about-release-action\s*{[^}]*min-height:\s*44px;[^}]*border-radius:\s*var\(--yachiyo-r-pill\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
     )
     expect(flowStyles).toMatch(
       /\.yachiyo-about-release-action\s*{[^}]*color:\s*var\(--flow-blue\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s
@@ -278,7 +275,7 @@ describe('Flow Glass visual contracts', () => {
       )
     }
     for (const selector of materialSelectors) {
-      expect(reducedStyles, `${selector} must downgrade in reduced quality`).toContain(selector)
+      expect(reducedStyles.replace(/\s+/g, ' '), `${selector} must downgrade in reduced quality`).toContain(selector)
     }
     expect(reducedStyles).toMatch(/backdrop-filter:\s*none !important;/)
     expect(reducedStyles).toMatch(/-webkit-backdrop-filter:\s*none !important;/)
@@ -319,7 +316,10 @@ describe('Flow Glass visual contracts', () => {
     expect(preferenceStyles).toContain('(prefers-contrast: more)')
     expect(preferenceStyles).toContain('(forced-colors: active)')
     for (const selector of materialSelectors) {
-      expect(preferenceStyles, `${selector} must honor accessibility material fallbacks`).toContain(selector)
+      expect(
+        preferenceStyles.replace(/\s+/g, ' '),
+        `${selector} must honor accessibility material fallbacks`
+      ).toContain(selector)
     }
     expect(preferenceStyles).toMatch(/backdrop-filter:\s*none !important;/)
     expect(preferenceStyles).toMatch(/filter:\s*none !important;/)
@@ -330,7 +330,7 @@ describe('Flow Glass visual contracts', () => {
     const forcedColorStyles = sectionBetween('@media (forced-colors: active)', '@media (orientation: landscape)')
 
     for (const selector of materialSelectors) {
-      expect(forcedColorStyles, `${selector} must use forced system colors`).toContain(selector)
+      expect(forcedColorStyles.replace(/\s+/g, ' '), `${selector} must use forced system colors`).toContain(selector)
     }
     expect(forcedColorStyles).toContain('border: 1px solid CanvasText !important;')
     expect(forcedColorStyles).toContain('color: CanvasText !important;')

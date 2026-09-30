@@ -224,19 +224,19 @@ html[data-yachiyo-appearance="flow-glass"] .coding-workspace {
   color: var(--flow-text);
 }
 
-html[data-yachiyo-appearance="flow-glass"] :is(
-  .coding-capability-band,
-  .coding-project-row,
-  .coding-run-row,
-  .coding-change,
-  .coding-project-pane aside,
-  .coding-tabs .mantine-Tabs-list
-) {
+html[data-yachiyo-appearance="flow-glass"] .coding-capability-band,
+html[data-yachiyo-appearance="flow-glass"] .coding-project-row,
+html[data-yachiyo-appearance="flow-glass"] .coding-run-row,
+html[data-yachiyo-appearance="flow-glass"] .coding-change,
+html[data-yachiyo-appearance="flow-glass"] .coding-project-pane aside,
+html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-list {
   border-color: var(--flow-divider);
   border-radius: var(--flow-r-content);
   color: var(--flow-text);
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 46%), var(--flow-group-fill);
-  box-shadow: inset 0 1px 0 var(--flow-edge-mid), 0 8px 24px rgba(28, 51, 73, 0.07);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-mid),
+    0 8px 24px rgba(28, 51, 73, 0.07);
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-capability-band {
@@ -246,8 +246,7 @@ html[data-yachiyo-appearance="flow-glass"] .coding-capability-band {
   padding: 18px;
   border: 1px solid var(--flow-edge-mid);
   border-radius: var(--flow-r-panel);
-  background:
-    linear-gradient(124deg, color-mix(in srgb, var(--flow-blue) 7%, transparent), transparent 36%),
+  background: linear-gradient(124deg, color-mix(in srgb, var(--flow-blue) 7%, transparent), transparent 36%),
     linear-gradient(164deg, var(--flow-edge-light), transparent 24%, var(--flow-edge-mid) 58%, transparent 82%),
     var(--flow-chrome-fill);
   box-shadow:
@@ -332,7 +331,9 @@ html[data-yachiyo-appearance="flow-glass"] .coding-environment-action.mantine-Bu
   border: 1px solid color-mix(in srgb, var(--flow-blue) 22%, var(--flow-edge-mid));
   color: var(--flow-blue);
   background: color-mix(in srgb, var(--flow-blue) 10%, var(--flow-control-fill));
-  box-shadow: inset 0 1px 0 var(--flow-edge-light), inset 0 -1px 0 var(--flow-edge-dark);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    inset 0 -1px 0 var(--flow-edge-dark);
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-home-actions {
@@ -350,24 +351,26 @@ html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-ro
     inset 0 1px 0 var(--flow-edge-light),
     inset 0 -1px 0 var(--flow-edge-dark),
     var(--flow-shadow-control);
-  transition: transform 130ms ease-out, border-color 130ms ease-out, background-color 130ms ease-out, box-shadow 130ms ease-out;
+  transition:
+    transform 130ms ease-out,
+    border-color 130ms ease-out,
+    background-color 130ms ease-out,
+    box-shadow 130ms ease-out;
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-home-action-primary.mantine-Button-root {
   border-color: color-mix(in srgb, var(--flow-blue) 34%, var(--flow-edge-mid));
-  background:
-    linear-gradient(155deg, color-mix(in srgb, white 32%, transparent), transparent 38%),
+  background: linear-gradient(155deg, color-mix(in srgb, white 32%, transparent), transparent 38%),
     color-mix(in srgb, var(--flow-blue) 24%, var(--flow-control-fill));
 }
 
-html[data-yachiyo-appearance="flow-glass"] .coding-home-action-primary :is(.mantine-Button-section, .mantine-Button-label) {
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action-primary .mantine-Button-section,
+html[data-yachiyo-appearance="flow-glass"] .coding-home-action-primary .mantine-Button-label {
   color: var(--flow-blue);
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-home-action-secondary.mantine-Button-root {
-  background:
-    linear-gradient(155deg, var(--flow-edge-light), transparent 40%),
-    var(--flow-control-fill);
+  background: linear-gradient(155deg, var(--flow-edge-light), transparent 40%), var(--flow-control-fill);
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-home-action-secondary .mantine-Button-section {
@@ -391,15 +394,20 @@ html[data-yachiyo-appearance="flow-glass"] .coding-empty-state {
   border: 1px solid color-mix(in srgb, var(--flow-edge-mid) 82%, transparent);
   border-radius: var(--flow-r-content);
   color: var(--flow-text-secondary);
-  background: linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 54%, transparent), transparent 46%), color-mix(in srgb, var(--flow-control-fill) 72%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--flow-edge-dark) 55%, transparent);
+  background: linear-gradient(155deg, color-mix(in srgb, var(--flow-edge-light) 54%, transparent), transparent 46%),
+    color-mix(in srgb, var(--flow-control-fill) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--flow-edge-light) 72%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--flow-edge-dark) 55%, transparent);
   gap: 10px;
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-project-row,
 html[data-yachiyo-appearance="flow-glass"] .coding-run-row {
   background: linear-gradient(155deg, var(--flow-edge-mid), transparent 52%), var(--flow-control-fill);
-  box-shadow: inset 0 1px 0 var(--flow-edge-light), var(--flow-shadow-control);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light),
+    var(--flow-shadow-control);
 }
 
 html[data-yachiyo-appearance="flow-glass"] .coding-project-row:active,
@@ -438,49 +446,59 @@ html[data-yachiyo-appearance="flow-glass"] .coding-message[data-role="user"] {
   background: color-mix(in srgb, var(--flow-blue) 12%, var(--flow-content-fill));
 }
 
-html[data-yachiyo-appearance="flow-glass"] :is(
-  .coding-home,
-  .coding-workspace,
-  .coding-create-modal
-) :is(.mantine-Input-input, .mantine-Textarea-input, .mantine-SegmentedControl-root) {
+html[data-yachiyo-appearance="flow-glass"] .coding-home .mantine-Input-input,
+html[data-yachiyo-appearance="flow-glass"] .coding-home .mantine-Textarea-input,
+html[data-yachiyo-appearance="flow-glass"] .coding-home .mantine-SegmentedControl-root,
+html[data-yachiyo-appearance="flow-glass"] .coding-workspace .mantine-Input-input,
+html[data-yachiyo-appearance="flow-glass"] .coding-workspace .mantine-Textarea-input,
+html[data-yachiyo-appearance="flow-glass"] .coding-workspace .mantine-SegmentedControl-root,
+html[data-yachiyo-appearance="flow-glass"] .coding-create-modal .mantine-Input-input,
+html[data-yachiyo-appearance="flow-glass"] .coding-create-modal .mantine-Textarea-input,
+html[data-yachiyo-appearance="flow-glass"] .coding-create-modal .mantine-SegmentedControl-root {
   border-color: var(--flow-divider);
   border-radius: var(--flow-r-content);
   color: var(--flow-text);
   background: var(--flow-control-fill);
 }
 
-html[data-yachiyo-appearance="flow-glass"] :is(.coding-home, .coding-workspace) .mantine-Button-root:not(.coding-home-action, .coding-refresh-control, .coding-environment-action) {
+html[data-yachiyo-appearance="flow-glass"]
+  .coding-home
+  .mantine-Button-root:not(.coding-home-action, .coding-refresh-control, .coding-environment-action),
+html[data-yachiyo-appearance="flow-glass"]
+  .coding-workspace
+  .mantine-Button-root:not(.coding-home-action, .coding-refresh-control, .coding-environment-action) {
   border-radius: var(--yachiyo-r-control);
 }
 
-html[data-yachiyo-appearance="flow-glass"] :is(.coding-diff, .coding-log) {
+html[data-yachiyo-appearance="flow-glass"] .coding-diff,
+html[data-yachiyo-appearance="flow-glass"] .coding-log {
   border: 1px solid var(--flow-divider);
   border-radius: var(--yachiyo-r-sm);
   color: var(--flow-text);
   background: var(--flow-content-fill);
 }
 
-html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] :is(
-  .coding-capability-band,
-  .coding-capability-status .mantine-Badge-root,
-  .coding-environment-action,
-  .coding-home-action,
-  .coding-empty-state,
-  .coding-project-row,
-  .coding-run-row,
-  .coding-change,
-  .coding-project-pane aside,
-  .coding-tabs .mantine-Tabs-list
-) {
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-capability-band,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"]
+  .coding-capability-status
+  .mantine-Badge-root,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-environment-action,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-home-action,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-empty-state,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-project-row,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-run-row,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-change,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-project-pane aside,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"]
+  .coding-tabs
+  .mantine-Tabs-list {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] :is(
-  .coding-capability-band,
-  .coding-environment-action,
-  .coding-home-action
-) {
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-capability-band,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-environment-action,
+html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="reduced"] .coding-home-action {
   background: var(--flow-control-fill);
 }
 
@@ -494,27 +512,23 @@ html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="re
 }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  html[data-yachiyo-appearance="flow-glass"] :is(
-    .coding-capability-band,
-    .coding-capability-status .mantine-Badge-root,
-    .coding-environment-action,
-    .coding-home-action,
-    .coding-empty-state,
-    .coding-project-row,
-    .coding-run-row,
-    .coding-change,
-    .coding-project-pane aside,
-    .coding-tabs .mantine-Tabs-list
-  ) {
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band,
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-status .mantine-Badge-root,
+  html[data-yachiyo-appearance="flow-glass"] .coding-environment-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-home-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-empty-state,
+  html[data-yachiyo-appearance="flow-glass"] .coding-project-row,
+  html[data-yachiyo-appearance="flow-glass"] .coding-run-row,
+  html[data-yachiyo-appearance="flow-glass"] .coding-change,
+  html[data-yachiyo-appearance="flow-glass"] .coding-project-pane aside,
+  html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-list {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
 
-  html[data-yachiyo-appearance="flow-glass"] :is(
-    .coding-capability-band,
-    .coding-environment-action,
-    .coding-home-action
-  ) {
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band,
+  html[data-yachiyo-appearance="flow-glass"] .coding-environment-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-home-action {
     background: var(--flow-control-fill);
   }
 
@@ -530,7 +544,10 @@ html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="re
 
 @media (prefers-reduced-motion: reduce) {
   html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-root {
-    transition: color 160ms ease-out, border-color 160ms ease-out, background-color 160ms ease-out;
+    transition:
+      color 160ms ease-out,
+      border-color 160ms ease-out,
+      background-color 160ms ease-out;
   }
 
   html[data-yachiyo-appearance="flow-glass"] .coding-home-action.mantine-Button-root:active {
@@ -539,18 +556,16 @@ html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="re
 }
 
 @media (prefers-contrast: more) {
-  html[data-yachiyo-appearance="flow-glass"] :is(
-    .coding-capability-band,
-    .coding-capability-status .mantine-Badge-root,
-    .coding-environment-action,
-    .coding-home-action,
-    .coding-empty-state,
-    .coding-project-row,
-    .coding-run-row,
-    .coding-change,
-    .coding-project-pane aside,
-    .coding-tabs .mantine-Tabs-list
-  ) {
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band,
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-status .mantine-Badge-root,
+  html[data-yachiyo-appearance="flow-glass"] .coding-environment-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-home-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-empty-state,
+  html[data-yachiyo-appearance="flow-glass"] .coding-project-row,
+  html[data-yachiyo-appearance="flow-glass"] .coding-run-row,
+  html[data-yachiyo-appearance="flow-glass"] .coding-change,
+  html[data-yachiyo-appearance="flow-glass"] .coding-project-pane aside,
+  html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-list {
     border-width: 2px;
     border-color: var(--flow-text-secondary);
     box-shadow: none;
@@ -595,21 +610,19 @@ html[data-yachiyo-appearance="flow-glass"][data-yachiyo-liquid-glass-quality="re
 }
 
 @media (forced-colors: active) {
-  html[data-yachiyo-appearance="flow-glass"] :is(
-    .coding-capability-band,
-    .coding-capability-status .mantine-Badge-root,
-    .coding-environment-action,
-    .coding-home-action,
-    .coding-empty-state,
-    .coding-project-row,
-    .coding-run-row,
-    .coding-change,
-    .coding-project-pane aside,
-    .coding-tabs .mantine-Tabs-list,
-    .coding-message,
-    .coding-diff,
-    .coding-log
-  ) {
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-band,
+  html[data-yachiyo-appearance="flow-glass"] .coding-capability-status .mantine-Badge-root,
+  html[data-yachiyo-appearance="flow-glass"] .coding-environment-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-home-action,
+  html[data-yachiyo-appearance="flow-glass"] .coding-empty-state,
+  html[data-yachiyo-appearance="flow-glass"] .coding-project-row,
+  html[data-yachiyo-appearance="flow-glass"] .coding-run-row,
+  html[data-yachiyo-appearance="flow-glass"] .coding-change,
+  html[data-yachiyo-appearance="flow-glass"] .coding-project-pane aside,
+  html[data-yachiyo-appearance="flow-glass"] .coding-tabs .mantine-Tabs-list,
+  html[data-yachiyo-appearance="flow-glass"] .coding-message,
+  html[data-yachiyo-appearance="flow-glass"] .coding-diff,
+  html[data-yachiyo-appearance="flow-glass"] .coding-log {
     border: 1px solid CanvasText;
     color: CanvasText;
     background: Canvas;

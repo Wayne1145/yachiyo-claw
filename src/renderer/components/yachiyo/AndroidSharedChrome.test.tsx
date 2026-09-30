@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, within } from '@testing-library/react'
+import { render, waitFor, within } from '@testing-library/react'
 import { motionValue } from 'framer-motion'
 import { describe, expect, it } from 'vitest'
 import {
@@ -26,6 +26,20 @@ function transition(progress = 0.25): AndroidTabTransitionSnapshot {
 }
 
 describe('AndroidSharedChrome', () => {
+  it('restores the header after a completed swipe even while progress is still one', async () => {
+    const progress = motionValue(1)
+    const tree = (transitioning: boolean) => (
+      <AndroidPagerPagePresentationProvider value={{ role: 'source', transitioning, direction: 1, progress }}>
+        <AndroidInteractiveChrome>Interactive chrome</AndroidInteractiveChrome>
+      </AndroidPagerPagePresentationProvider>
+    )
+    const { container, rerender } = render(tree(true))
+    expect(container.querySelector<HTMLElement>('header')?.style.opacity).toBe('0')
+    rerender(tree(false))
+    await waitFor(() => expect(container.querySelector<HTMLElement>('header')?.style.opacity).toBe('1'))
+    expect(container.querySelector<HTMLElement>('header')?.style.transform).toBe('none')
+  })
+
   it('portals only active interactive chrome so a preview cannot intercept taps', () => {
     const host = document.createElement('div')
     document.body.appendChild(host)

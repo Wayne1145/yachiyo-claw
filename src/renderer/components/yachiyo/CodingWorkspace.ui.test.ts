@@ -12,9 +12,11 @@ describe('Coding home Flow Glass contracts', () => {
     expect(source).toContain('className="coding-home-action coding-home-action-secondary"')
     expect(source).toContain('className="coding-empty-state"')
     expect(styles).toMatch(
-      /\.coding-capability-band\s*\{[^}]*border-radius:\s*var\(--flow-r-panel\);[^}]*blur\(28px\)/s,
+      /\.coding-capability-band\s*\{[^}]*border-radius:\s*var\(--flow-r-panel\);/s,
     )
-    expect(styles).toMatch(/\.coding-home-action\.mantine-Button-root\s*\{[^}]*min-height:\s*52px;[^}]*blur\(20px\)/s)
+    expect(styles).toMatch(/\.coding-home-action\.mantine-Button-root\s*\{[^}]*min-height:\s*52px;/s)
+    // Content cards have glass fill and highlights, without a filter per row.
+    expect(styles).not.toMatch(/backdrop-filter:\s*blur\(/)
     expect(styles).toMatch(
       /\.coding-empty-state\s*\{[^}]*min-height:\s*60px;[^}]*border-radius:\s*var\(--flow-r-content\)/s,
     )
@@ -26,7 +28,7 @@ describe('Coding home Flow Glass contracts', () => {
       /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s,
     )
     expect(styles).toMatch(
-      /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*border-radius:\s*var\(--yachiyo-r-control\);[^}]*corner-shape:\s*round;/s,
+      /\.coding-refresh-control\.mantine-Button-root\s*\{[^}]*border-radius:\s*var\(--yachiyo-r-control\);/s,
     )
   })
 

@@ -718,7 +718,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
     <AndroidAppShellContext.Provider value={true}>
       <AndroidPagerGestureLockProvider>
         <AndroidSharedChromeHostProvider host={sharedChromeHost}>
-          <div className="yachiyo-mobile-shell">
+          <div className="yachiyo-mobile-shell" data-active-tab={activeTab}>
             <AndroidFlowGlassEnvironment pathname={location.pathname} />
             {pagerTransition && pagerTargetPath && (
               <AndroidFlowGlassEnvironment pathname={pagerTargetPath} transitionOpacity={pagerTransition.progress} />
