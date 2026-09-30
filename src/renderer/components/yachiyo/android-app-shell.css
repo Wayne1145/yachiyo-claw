@@ -1,4 +1,4 @@
-body:has(.yachiyo-mobile-shell),
+:root,
 .yachiyo-mobile-shell {
   --yachiyo-accent: var(--chatbox-tint-brand, #007aff);
   --yachiyo-accent-strong: var(--chatbox-background-brand-primary-hover, #006ee6);
@@ -31,7 +31,7 @@ body:has(.yachiyo-mobile-shell),
   border-radius: var(--yachiyo-r-control);
 }
 
-.App:has(.yachiyo-mobile-shell) {
+.App.yachiyo-app-shell-root {
   padding-top: 0;
   padding-right: 0;
   padding-bottom: 0;

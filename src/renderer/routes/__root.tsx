@@ -188,7 +188,6 @@ function Root() {
         router.navigate({ to: '/guide', replace: true })
         return
       }
-
     })()
   }, [location.pathname, isExceeded, isExceededResolved, useAndroidAppShell])
 
@@ -262,7 +261,11 @@ function Root() {
   }, [needRoomForMacWindowControls])
 
   return (
-    <Box className="box-border App relative" spellCheck={spellCheck} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <Box
+      className={`box-border App relative${useAndroidAppShell ? ' yachiyo-app-shell-root' : ''}`}
+      spellCheck={spellCheck}
+      dir={language === 'ar' ? 'rtl' : 'ltr'}
+    >
       {!useAndroidAppShell && <BackgroundImageOverlay />}
       {useAndroidAppShell ? (
         <AndroidAppShell>
