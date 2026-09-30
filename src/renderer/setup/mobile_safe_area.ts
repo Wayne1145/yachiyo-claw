@@ -13,16 +13,24 @@ interface MobileSafeAreaInsets {
   left: number
 }
 
+let keyboardOpen = false
+let refreshGeneration = 0
+let resizeFrame: number | undefined
+
 function applySafeAreaInsets(insets: MobileSafeAreaInsets) {
   for (const [key, value] of Object.entries(insets)) {
-    document.documentElement.style.setProperty(`--mobile-safe-area-inset-${key}`, `${value}px`)
+    document.documentElement.style.setProperty(
+      `--mobile-safe-area-inset-${key}`,
+      `${key === 'bottom' && keyboardOpen ? 0 : value}px`
+    )
   }
 }
 
 async function refreshSafeAreaInsets() {
+  const generation = ++refreshGeneration
   try {
     const { insets } = await SafeArea.getSafeAreaInsets()
-    applySafeAreaInsets(insets)
+    if (generation === refreshGeneration) applySafeAreaInsets(insets)
   } catch {
     console.warn('Unable to read mobile safe-area insets')
   }
@@ -30,16 +38,30 @@ async function refreshSafeAreaInsets() {
 
 void refreshSafeAreaInsets()
 
-void SafeArea.addListener('safeAreaChanged', ({ insets }) => {
-  applySafeAreaInsets(insets)
+void SafeArea.addListener('safeAreaChanged', () => {
+  // A queued native event can still contain the previous orientation's insets.
+  void refreshSafeAreaInsets()
 }).catch(() => console.warn('Unable to observe mobile safe-area changes'))
 
+const scheduleRefresh = () => {
+  if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame)
+  resizeFrame = window.requestAnimationFrame(() => {
+    resizeFrame = undefined
+    void refreshSafeAreaInsets()
+  })
+}
+window.addEventListener('resize', scheduleRefresh)
+window.addEventListener('orientationchange', scheduleRefresh)
+
 void Keyboard.addListener('keyboardWillShow', () => {
+  keyboardOpen = true
   document.documentElement.dataset.yachiyoKeyboard = 'open'
   document.documentElement.style.setProperty(`--mobile-safe-area-inset-bottom`, `0px`)
+  void refreshSafeAreaInsets()
 }).catch(() => console.warn('Unable to observe the mobile keyboard'))
 
 void Keyboard.addListener('keyboardWillHide', () => {
+  keyboardOpen = false
   delete document.documentElement.dataset.yachiyoKeyboard
   void refreshSafeAreaInsets()
 }).catch(() => console.warn('Unable to observe the mobile keyboard'))

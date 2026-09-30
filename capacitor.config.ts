@@ -12,6 +12,10 @@ const config: CapacitorConfig = {
     loggingBehavior: 'none',
   },
   plugins: {
+    Keyboard: {
+      // Android edge-to-edge windows do not reliably honor adjustResize alone.
+      resizeOnFullScreen: true,
+    },
     SplashScreen: {
       launchAutoHide: false,
       backgroundColor: '#F8FAFC',
