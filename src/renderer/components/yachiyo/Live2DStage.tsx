@@ -65,6 +65,13 @@ function hasCubismCore(): boolean {
   return Boolean((window as Window & { Live2DCubismCore?: unknown }).Live2DCubismCore)
 }
 
+function replaceCanvas(host: HTMLDivElement, canvas?: HTMLCanvasElement) {
+  // Element.replaceChildren is unavailable in Android 11's stock WebView 83.
+  // This dedicated host contains only Pixi nodes, never React status UI.
+  host.textContent = ''
+  if (canvas) host.appendChild(canvas)
+}
+
 async function loadCubismCore(): Promise<void> {
   if (hasCubismCore()) return
 
@@ -331,7 +338,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
     if (!renderEnabled) {
       setReady(false)
       setError(undefined)
-      host.replaceChildren()
+      replaceCanvas(host)
       return
     }
     let disposed = false
@@ -399,7 +406,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
           app.view.style.width = '100%'
           app.view.style.height = '100%'
           app.view.style.display = 'block'
-          host.replaceChildren(app.view)
+          replaceCanvas(host, app.view)
           appRef.current = app
           if (activityRef.current !== 'active' || document.visibilityState === 'hidden') app.ticker.stop()
 
@@ -551,7 +558,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
       rendererCleanup?.()
       observer?.disconnect()
       disposeResources()
-      host.replaceChildren()
+      replaceCanvas(host)
     }
   }, [descriptor.source, onReady, quality, renderEnabled, retryKey, t])
 

@@ -81,6 +81,22 @@ function setDocumentVisibility(value: DocumentVisibilityState) {
 }
 
 describe('Live2DStage lifecycle', () => {
+  it('loads and releases its canvas without the newer replaceChildren DOM API', async () => {
+    const unsupported = vi.spyOn(Element.prototype, 'replaceChildren').mockImplementation(() => {
+      throw new Error('Unavailable in WebView 83')
+    })
+    try {
+      const { container, rerender, unmount } = render(<Live2DStage model={descriptor} />)
+      await waitFor(() => expect(container.querySelector('.yachiyo-live2d-stage')?.getAttribute('data-ready')).toBe('true'))
+      rerender(<Live2DStage model={descriptor} activity="inactive" />)
+      expect(container.querySelector('canvas')).toBeNull()
+      unmount()
+      expect(unsupported).not.toHaveBeenCalled()
+    } finally {
+      unsupported.mockRestore()
+    }
+  })
+
   beforeEach(() => {
     mocks.applications.length = 0
     mocks.modelFrom.mockReset()
