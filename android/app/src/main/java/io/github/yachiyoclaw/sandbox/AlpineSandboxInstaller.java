@@ -24,7 +24,7 @@ final class AlpineSandboxInstaller {
         void onProgress(String stage, int percent, long transferred, long total);
     }
 
-    private record PendingLink(File path, String target, boolean hardLink) {}
+    private record PendingLink(File path, String target, boolean hardLink, int mode) {}
 
     private final Context context;
     private final SandboxDistribution.Spec distribution;
@@ -113,22 +113,27 @@ final class AlpineSandboxInstaller {
     }
 
     void prepareRuntimeFiles() throws Exception {
-        if (!runtimeDirectory.exists() && !runtimeDirectory.mkdirs()) throw new IOException("sandbox_runtime_unavailable");
-        File talloc = new File(runtimeDirectory, "libtalloc.so.2");
-        if (!talloc.isFile()) {
-            try (InputStream input = context.getAssets().open("sandbox/" + distribution.androidAbi() + "/libtalloc.so.2")) {
-                File temporary = new File(runtimeDirectory, "libtalloc.so.2.partial");
-                try (FileOutputStream output = new FileOutputStream(temporary)) {
-                    byte[] buffer = new byte[16 * 1024];
-                    int read;
-                    while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
-                    output.getFD().sync();
+        synchronized (AlpineSandboxInstaller.class) {
+            if (!runtimeDirectory.exists() && !runtimeDirectory.mkdirs()) throw new IOException("sandbox_runtime_unavailable");
+            File talloc = new File(runtimeDirectory, "libtalloc.so.2");
+            if (!talloc.isFile()) {
+                Os.chmod(runtimeDirectory.getAbsolutePath(), 0700);
+                try (InputStream input = context.getAssets().open("sandbox/" + distribution.androidAbi() + "/libtalloc.so.2")) {
+                    File temporary = new File(runtimeDirectory, "libtalloc.so.2.partial");
+                    try (FileOutputStream output = new FileOutputStream(temporary)) {
+                        byte[] buffer = new byte[16 * 1024];
+                        int read;
+                        while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
+                        output.getFD().sync();
+                    }
+                    Files.move(temporary.toPath(), talloc.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                } finally {
+                    Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
                 }
-                Files.move(temporary.toPath(), talloc.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
+            Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
+            Os.chmod(talloc.getAbsolutePath(), 0400);
         }
-        Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
-        Os.chmod(talloc.getAbsolutePath(), 0400);
     }
 
     private void extract(File archive, File destination, ProgressListener listener) throws Exception {
@@ -157,7 +162,7 @@ final class AlpineSandboxInstaller {
                 File parent = target.getParentFile();
                 if (parent == null || (!parent.isDirectory() && !parent.mkdirs())) throw new IOException("sandbox_extract_parent_failed");
                 if (entry.isSymbolicLink() || entry.isLink()) {
-                    links.add(new PendingLink(target, entry.getLinkName(), entry.isLink()));
+                    links.add(new PendingLink(target, entry.getLinkName(), entry.isLink(), entry.getMode()));
                     continue;
                 }
                 if (!entry.isFile()) continue;
@@ -182,7 +187,13 @@ final class AlpineSandboxInstaller {
             Files.deleteIfExists(link.path().toPath());
             if (link.hardLink()) {
                 File source = resolveArchiveTarget(destination, normalizeArchivePath(link.target()));
-                Files.createLink(link.path().toPath(), source.toPath());
+                if (!source.isFile()) throw new IOException("sandbox_archive_hardlink_invalid");
+                // Android app storage can deny host hard links. Materialize their
+                // contents instead, and count the copied bytes in the extraction budget.
+                extracted = Math.addExact(extracted, source.length());
+                if (extracted > maximumExtractedBytes) throw new IOException("sandbox_rootfs_too_large");
+                Files.copy(source.toPath(), link.path().toPath());
+                chmod(link.path(), link.mode());
             } else {
                 validateSymlinkTarget(destination, link.path(), link.target());
                 Files.createSymbolicLink(link.path().toPath(), new File(link.target()).toPath());
@@ -234,12 +245,14 @@ final class AlpineSandboxInstaller {
     }
 
     static void deleteRecursively(File target) throws IOException {
-        if (!target.exists()) return;
+        // Guest-root absolute links are often dangling on the Android host. They
+        // still need removing, without following them out of the staging tree.
+        if (!Files.exists(target.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
         if (target.isDirectory() && !Files.isSymbolicLink(target.toPath())) {
             File[] children = target.listFiles();
             if (children != null) for (File child : children) deleteRecursively(child);
         }
-        if (!target.delete() && target.exists()) throw new IOException("sandbox_delete_failed");
+        Files.deleteIfExists(target.toPath());
     }
 
     private static String hex(byte[] bytes) {

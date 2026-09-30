@@ -24,7 +24,6 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -125,6 +124,8 @@ public final class YachiyoSandboxPlugin extends Plugin {
             .put("architecture", ubuntuInstaller.spec().dpkgArch());
         org.json.JSONObject task = ubuntuInstaller.downloadTask();
         if (task != null) result.put("download", task);
+        String installError = UbuntuDistributionInstaller.lastInstallError(getContext());
+        if (installError != null) result.put("error", installError);
         call.resolve(result);
     }
 
@@ -689,43 +690,9 @@ public final class YachiyoSandboxPlugin extends Plugin {
         if (workspace == null) workspace = workspaceFor("default");
         if (!workspace.isDirectory() && !workspace.mkdirs()) throw new IOException("sandbox_workspace_unavailable");
         syncGuestDns();
-        File nativeDirectory = new File(getContext().getApplicationInfo().nativeLibraryDir);
-        File proot = new File(nativeDirectory, "libyachiyo_proot.so");
-        File loader = new File(nativeDirectory, "libyachiyo_proot_loader.so");
-        if (!proot.isFile() || !loader.isFile()) throw new IOException("sandbox_native_runtime_missing");
-        File temp = new File(getContext().getCacheDir(), "proot-tmp");
-        if (!temp.isDirectory() && !temp.mkdirs()) throw new IOException("sandbox_temp_unavailable");
-
-        List<String> arguments = new ArrayList<>();
-        arguments.add(proot.getAbsolutePath());
-        arguments.add("--link2symlink");
-        arguments.add("-0");
-        arguments.add("-r");
-        arguments.add(installer.rootfsDirectory().getAbsolutePath());
-        arguments.add("-b");
-        arguments.add("/dev");
-        arguments.add("-b");
-        arguments.add("/proc");
-        arguments.add("-b");
-        arguments.add(workspace.getAbsolutePath() + ":/workspace");
-        arguments.add("-w");
-        arguments.add("/workspace");
-        arguments.add("/usr/bin/env");
-        arguments.add("-i");
-        arguments.add("HOME=/root");
-        arguments.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-        arguments.add("TERM=xterm-256color");
-        arguments.add("LANG=C.UTF-8");
-        arguments.add("/bin/sh");
-        arguments.add("-lc");
-        arguments.add(command);
-
-        ProcessBuilder builder = new ProcessBuilder(arguments);
-        builder.directory(workspace);
-        builder.environment().put("PROOT_LOADER", loader.getAbsolutePath());
-        builder.environment().put("PROOT_TMP_DIR", temp.getAbsolutePath());
-        builder.environment().put("PROOT_NO_SECCOMP", "1");
-        builder.environment().put("LD_LIBRARY_PATH", installer.runtimeDirectory().getAbsolutePath() + ":" + nativeDirectory.getAbsolutePath());
+        ProcessBuilder builder = SandboxProcessFactory.create(
+            getContext(), installer.rootfsDirectory(), installer.runtimeDirectory(), workspace, command
+        );
         Process process = builder.start();
         if (!activeProcess.compareAndSet(null, process)) {
             process.destroyForcibly();

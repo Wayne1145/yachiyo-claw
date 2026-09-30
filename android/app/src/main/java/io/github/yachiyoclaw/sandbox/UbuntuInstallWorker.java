@@ -63,6 +63,7 @@ public final class UbuntuInstallWorker extends Worker {
             YachiyoSandboxService.start(getApplicationContext(), jobId);
             return Result.success();
         } catch (Exception error) {
+            UbuntuDistributionInstaller.recordInstallError(getApplicationContext(), error);
             return getRunAttemptCount() < 20 ? Result.retry() : Result.failure();
         }
     }

@@ -53,6 +53,18 @@ final class UbuntuDistributionInstaller {
 
     JSONObject downloadTask() { return GenericDownloadCoordinator.task(context, distribution.downloadId()); }
 
+    static String lastInstallError(Context context) {
+        return context.getSharedPreferences("ubuntu-install", Context.MODE_PRIVATE).getString("error", null);
+    }
+
+    static void recordInstallError(Context context, Exception error) {
+        String message = error == null ? null : error.getMessage();
+        // Status may be shown to a model; never expose filesystem paths or raw output.
+        String code = error == null ? null : message != null && message.matches("[a-z][a-z0-9_]{1,80}")
+            ? message : "ubuntu_install_" + error.getClass().getSimpleName();
+        context.getSharedPreferences("ubuntu-install", Context.MODE_PRIVATE).edit().putString("error", code).apply();
+    }
+
     void enqueueDownload() throws Exception {
         if (isInstalled()) return;
         if (new StatFs(context.getFilesDir().getAbsolutePath()).getAvailableBytes() < REQUIRED_FREE_BYTES) {
@@ -71,6 +83,7 @@ final class UbuntuDistributionInstaller {
     }
 
     void installDownloaded(AlpineSandboxInstaller.ProgressListener listener) throws Exception {
+        recordInstallError(context, null);
         if (isInstalled()) {
             listener.onProgress("rootfs_ready", 100, 1, 1);
             return;
