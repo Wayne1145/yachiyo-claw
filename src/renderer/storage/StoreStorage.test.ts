@@ -24,22 +24,15 @@ beforeAll(async () => {
 
 describe('StorageKeyGenerator', () => {
   it('builds stable file uniq keys', () => {
-    const file = {
-      name: 'demo.txt',
+    const file = Object.assign(new File([new Uint8Array(123)], 'demo.txt', { lastModified: 456 }), {
       path: '/tmp/demo.txt',
-      size: 123,
-      lastModified: 456,
-    } as File
+    })
 
     expect(StorageKeyGenerator.fileUniqKey(file)).toBe('file:/tmp/demo.txt-123-456')
   })
 
   it('falls back to file name when path is unavailable', () => {
-    const file = {
-      name: 'demo.txt',
-      size: 123,
-      lastModified: 456,
-    } as File
+    const file = new File([new Uint8Array(123)], 'demo.txt', { lastModified: 456 })
 
     expect(StorageKeyGenerator.fileUniqKey(file)).toBe('file:demo.txt-123-456')
   })

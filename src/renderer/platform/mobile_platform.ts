@@ -295,7 +295,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   }
 
   getLocalFilePath(file: File): string {
-    return file.path || ''
+    return (file as File & { path?: string }).path || ''
   }
 
   public async parseUrl(url: string): Promise<{ key: string; title: string }> {

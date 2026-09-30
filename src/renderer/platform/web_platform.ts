@@ -140,7 +140,7 @@ export default class WebPlatform extends IndexedDBStorage implements Platform {
   }
 
   getLocalFilePath(file: File): string {
-    return file.path || ''
+    return (file as File & { path?: string }).path || ''
   }
 
   public async parseUrl(url: string): Promise<{ key: string; title: string }> {
