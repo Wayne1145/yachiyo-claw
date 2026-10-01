@@ -2,9 +2,11 @@ import { yachiyoCatalogEnglish } from './yachiyo-resources-catalogs'
 import { yachiyoCodingEnglish } from './yachiyo-resources-coding'
 import { yachiyoInteractiveEnglish } from './yachiyo-resources-interactive'
 import { yachiyoMiscEnglish } from './yachiyo-resources-misc'
+import { yachiyoSettingsEnglish } from './yachiyo-resources-settings'
 import { yachiyoUtilityEnglish, yachiyoUtilityTraditionalChinese } from './yachiyo-resources-utility'
 
 const english: Record<string, string> = {
+  ...yachiyoSettingsEnglish,
   主导航: 'Main navigation',
   聊天: 'Chat',
   交互式: 'Interactive',

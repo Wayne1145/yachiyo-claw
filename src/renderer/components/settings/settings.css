@@ -1,0 +1,657 @@
+/* Settings share the app's materials and circular R corners. Blur stays on chrome,
+   never on every field or list row, to keep long settings pages inexpensive. */
+.settings-surface {
+  --settings-text: var(--chatbox-tint-primary, #17202c);
+  --settings-muted: var(--chatbox-tint-secondary, #606c7a);
+  --settings-accent: var(--chatbox-tint-brand, #007aff);
+  --settings-fill: var(--flow-group-fill, rgba(255, 255, 255, 0.82));
+  --settings-field: rgba(118, 135, 155, 0.075);
+  --settings-line: var(--flow-divider, rgba(82, 102, 125, 0.14));
+  color: var(--settings-text);
+  min-width: 0;
+  line-height: 1.5;
+}
+html[data-theme="dark"] .settings-surface {
+  --settings-fill: var(--flow-group-fill, rgba(31, 35, 44, 0.94));
+  --settings-field: rgba(180, 195, 215, 0.07);
+}
+.settings-page,
+.settings-home {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 880px;
+  padding: 24px clamp(16px, 4vw, 32px) 36px;
+  margin: 0 auto;
+}
+.settings-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.settings-page-heading > div {
+  min-width: 0;
+}
+.settings-page-heading h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 1.9rem);
+  font-weight: 720;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.settings-page-heading p,
+.settings-section-heading p {
+  margin: 7px 0 0;
+  color: var(--settings-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+.settings-section {
+  min-width: 0;
+  margin-bottom: 22px;
+}
+.settings-section-heading {
+  padding: 0 6px 10px;
+}
+.settings-section-heading h2,
+.settings-nav-group > h2 {
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 0;
+  color: var(--settings-muted);
+}
+.settings-section-body,
+.settings-nav-list {
+  min-width: 0;
+  border: 1px solid var(--settings-line);
+  border-radius: var(--yachiyo-r-surface, 22px);
+  background: var(--flow-specular, linear-gradient(145deg, rgba(255, 255, 255, 0.14), transparent 50%)),
+    var(--settings-fill);
+  box-shadow:
+    inset 0 1px 0 var(--flow-edge-light, rgba(255, 255, 255, 0.42)),
+    0 5px 18px rgba(22, 40, 66, 0.035);
+}
+.settings-section-body {
+  padding: clamp(16px, 3vw, 22px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.settings-section-body > * {
+  min-width: 0;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.settings-save-actions {
+  padding: 4px 0 12px;
+}
+.settings-save-actions > [role="status"] {
+  flex-basis: 100%;
+  font-size: 0.875rem;
+}
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  margin-bottom: 26px;
+  border: 1px solid var(--settings-line);
+  border-radius: var(--yachiyo-r-pill, 999px);
+  background: var(--settings-field);
+  color: var(--settings-muted);
+}
+.settings-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--settings-text);
+  background: transparent;
+  font: inherit;
+  appearance: none;
+}
+.settings-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.settings-search input::placeholder {
+  color: var(--settings-muted);
+}
+.settings-search > svg {
+  flex-shrink: 0;
+  margin-inline-end: 10px;
+}
+.settings-search button {
+  border: 0;
+  padding: 0;
+  flex: 0 0 36px;
+  height: 44px;
+  color: inherit;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 999px;
+}
+.settings-search:focus-within {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: 2px;
+}
+.settings-navigation-groups {
+  display: grid;
+  gap: 25px;
+}
+.settings-nav-group > h2 {
+  padding: 0 14px 9px;
+}
+.settings-nav-list {
+  overflow: hidden;
+}
+.settings-nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 76px;
+  padding: 13px 16px;
+  text-decoration: none;
+  color: inherit;
+  touch-action: manipulation;
+  transition: background-color 120ms ease;
+}
+.settings-nav-row + .settings-nav-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 67px;
+  right: 16px;
+  height: 1px;
+  background: var(--settings-line);
+}
+.settings-nav-row:hover,
+.settings-nav-row:active,
+.settings-nav-row[aria-current="page"] {
+  background: var(--settings-field);
+}
+.settings-nav-row:focus-visible {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: -3px;
+  border-radius: var(--yachiyo-r-control, 16px);
+}
+.settings-nav-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  margin-inline-end: 13px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.1);
+}
+[data-group="personal"] .settings-nav-icon {
+  color: #8b57cf;
+  background: rgba(139, 87, 207, 0.12);
+}
+[data-group="capability"] .settings-nav-icon {
+  color: #158274;
+  background: rgba(21, 130, 116, 0.12);
+}
+[data-group="app"] .settings-nav-icon {
+  color: #66758c;
+  background: rgba(102, 117, 140, 0.12);
+}
+html[data-theme="dark"] .settings-nav-icon {
+  color: #73b4ff;
+}
+html[data-theme="dark"] [data-group="personal"] .settings-nav-icon {
+  color: #c6a0ff;
+}
+html[data-theme="dark"] [data-group="capability"] .settings-nav-icon {
+  color: #65d6bd;
+}
+html[data-theme="dark"] [data-group="app"] .settings-nav-icon {
+  color: #b3c4dc;
+}
+.settings-nav-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.settings-nav-copy strong {
+  font-size: 0.975rem;
+  font-weight: 610;
+  overflow-wrap: anywhere;
+}
+.settings-nav-copy small {
+  margin-top: 3px;
+  color: var(--settings-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.settings-nav-chevron {
+  flex-shrink: 0;
+  color: var(--settings-muted);
+  opacity: 0.65;
+}
+.settings-home-footer {
+  text-align: center;
+  color: var(--settings-muted);
+  font-size: 0.75rem;
+  margin: 28px 0 0;
+}
+.settings-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 36px 16px;
+  color: var(--settings-muted);
+}
+.settings-empty p {
+  margin: 0;
+}
+.settings-layout {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+}
+.settings-sidebar {
+  width: 272px;
+  flex: 0 0 272px;
+  overflow: auto;
+  border-right: 1px solid var(--settings-line);
+}
+.settings-navigation-compact {
+  padding: 22px 14px;
+}
+.settings-navigation-compact .settings-page-heading h1 {
+  font-size: 1.25rem;
+}
+.settings-navigation-compact .settings-nav-row {
+  min-height: 50px;
+  gap: 0;
+  padding: 9px 10px;
+}
+.settings-navigation-compact .settings-nav-icon {
+  margin-inline-end: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+.settings-navigation-compact .settings-nav-copy strong {
+  font-size: 0.875rem;
+}
+.settings-navigation-compact .settings-nav-row + .settings-nav-row::before {
+  left: 50px;
+}
+.settings-content {
+  min-width: 0;
+  flex: 1;
+  overflow: auto;
+}
+.settings-provider-layout {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+}
+.settings-provider-content {
+  min-width: 0;
+  flex: 1;
+}
+.settings-provider-list {
+  flex: 0 0 230px;
+  min-width: 0;
+  padding: 20px 12px;
+}
+.settings-provider-list[data-single="true"] {
+  flex: 1;
+  max-width: 880px;
+  margin: auto;
+  padding: 24px 16px 36px;
+}
+.settings-provider-list .settings-nav-row {
+  min-height: 64px;
+}
+.settings-provider-status {
+  font-size: 0.75rem;
+  color: var(--settings-muted);
+}
+.settings-provider-list .settings-actions {
+  margin-top: 16px;
+}
+.settings-model-choice {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: 1px solid var(--settings-line);
+  border-radius: var(--yachiyo-r-control, 16px);
+  color: var(--settings-text);
+  background: var(--settings-field);
+  cursor: pointer;
+}
+.settings-model-choice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-model-choice > svg {
+  flex-shrink: 0;
+}
+.settings-surface .mantine-Input-wrapper {
+  min-width: 0;
+}
+.settings-surface .mantine-Input-input {
+  box-sizing: border-box;
+  border-radius: var(--yachiyo-r-control, 16px) !important;
+  min-height: 46px;
+  background-color: var(--settings-field);
+  border-color: var(--settings-line);
+  color: var(--settings-text);
+}
+.settings-surface .mantine-Input-input[data-variant="unstyled"] {
+  background: transparent;
+}
+.settings-surface .mantine-Input-label {
+  font-size: 0.875rem;
+  font-weight: 580;
+  margin-bottom: 7px;
+}
+.settings-surface .mantine-Input-description {
+  line-height: 1.5;
+  margin-bottom: 9px;
+}
+.settings-surface .mantine-Button-root {
+  box-sizing: border-box;
+  padding-left: 16px;
+  padding-right: 16px;
+  min-height: 44px;
+  max-width: 100%;
+  height: auto;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: var(--yachiyo-r-pill, 999px) !important;
+}
+.settings-surface .mantine-Button-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.settings-surface .mantine-ActionIcon-root {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px !important;
+}
+.settings-surface .mantine-Switch-root {
+  min-width: 0;
+}
+.settings-section-body > .mantine-Switch-root {
+  padding: 4px 0;
+}
+.settings-surface .mantine-Switch-body {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+}
+.settings-surface .mantine-Switch-labelWrapper {
+  flex: 1;
+  padding: 0;
+  min-width: 0;
+}
+.settings-surface .mantine-Switch-label {
+  font-size: 0.925rem;
+  line-height: 1.5;
+}
+.settings-surface .mantine-Switch-description {
+  line-height: 1.5;
+}
+.settings-surface .mantine-Switch-track {
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 999px !important;
+}
+.settings-surface .mantine-Switch-thumb {
+  border-radius: 50% !important;
+}
+.settings-surface .mantine-Checkbox-body,
+.settings-surface .mantine-Radio-body {
+  min-height: 44px;
+  align-items: center;
+}
+.settings-surface .mantine-Slider-root {
+  margin: 10px 4px 18px;
+}
+.settings-surface .mantine-Alert-root {
+  border-radius: var(--yachiyo-r-control, 16px);
+}
+.settings-surface .mantine-Group-root,
+.settings-surface .mantine-Flex-root {
+  min-width: 0;
+}
+.settings-surface :is(button, a, input, textarea, select):focus-visible {
+  outline-color: var(--settings-accent);
+}
+.settings-appearance-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.settings-appearance-option {
+  min-width: 0;
+  padding: 14px 8px;
+  min-height: 80px;
+  border: 1px solid var(--settings-line);
+  background: var(--settings-field);
+  color: var(--settings-text);
+  border-radius: var(--yachiyo-r-control, 16px);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 0.875rem;
+}
+.settings-appearance-option[aria-pressed="true"] {
+  border-color: var(--settings-accent);
+  box-shadow: inset 0 0 0 1px var(--settings-accent);
+  color: var(--settings-accent);
+}
+.settings-font-preview {
+  padding: 18px;
+  background: var(--settings-field);
+  border-radius: var(--yachiyo-r-control, 16px);
+  line-height: 1.6;
+}
+.settings-advanced {
+  margin-top: 22px;
+  border-radius: var(--yachiyo-r-surface, 22px);
+  border: 1px solid var(--settings-line);
+  background: var(--settings-fill);
+}
+.settings-advanced > summary {
+  cursor: pointer;
+  min-height: 52px;
+  padding: 16px 20px;
+  font-weight: 600;
+}
+.settings-advanced > .settings-section {
+  margin: 0;
+}
+.settings-advanced .settings-section-body {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.settings-advanced > .yachiyo-theme-import {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+/* Existing feature centers use the same content width and section materials. */
+.settings-surface .yachiyo-settings-subpage,
+.settings-surface .local-model-center {
+  width: 100%;
+  max-width: 880px;
+  padding: 24px clamp(16px, 4vw, 32px) 36px !important;
+}
+.settings-surface .yachiyo-settings-panel,
+.settings-surface .local-model-queue-row {
+  border-radius: var(--yachiyo-r-surface, 22px);
+  background: var(--settings-fill);
+  box-shadow: inset 0 1px 0 var(--flow-edge-light, rgba(255, 255, 255, 0.3));
+}
+.settings-surface .yachiyo-subpage-heading h2,
+.settings-surface .local-model-heading h1,
+.settings-surface .local-model-queue-heading h2 {
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
+}
+.settings-surface .yachiyo-subpage-heading {
+  margin-bottom: 24px;
+}
+.settings-surface .yachiyo-character-cards {
+  margin-bottom: 22px;
+}
+.settings-surface .yachiyo-character-cards button {
+  border-radius: var(--yachiyo-r-control, 16px);
+  min-height: 64px;
+}
+.settings-surface .yachiyo-character-cards button[aria-pressed="true"] {
+  border-color: var(--settings-accent);
+}
+.settings-page .settings-section:last-child {
+  margin-bottom: 0;
+}
+.settings-surface .yachiyo-theme-card-heading > .mantine-Badge-root {
+  flex: 0 0 auto;
+}
+.settings-surface .yachiyo-theme-card-heading p {
+  white-space: normal;
+}
+/* The Android navigation bar already names the page. Keep a semantic heading
+   without repeating the same title above every form. */
+.yachiyo-settings-detail .settings-page-heading h1,
+.yachiyo-settings-detail .settings-page-heading h2 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.yachiyo-settings-detail .settings-page-heading p {
+  margin-top: 0;
+}
+html[data-yachiyo-appearance="flow-glass"] .yachiyo-settings-home.settings-home-host {
+  padding: 0;
+  max-width: none;
+}
+.yachiyo-settings-home.settings-home-host {
+  padding: 0;
+  max-width: none;
+}
+html[data-yachiyo-appearance="flow-glass"] .settings-home-host > .settings-home {
+  padding-top: calc(var(--flow-header-height) + 20px);
+  padding-bottom: calc(var(--flow-nav-height) + 28px);
+}
+/* Older WebView compositors can turn a masked layer behind backdrop-filter
+   black. A painted fade produces the same settings scroll edge without a mask. */
+html[data-yachiyo-appearance="flow-glass"][data-theme]
+  .yachiyo-mobile-shell[data-active-tab="settings"]
+  .yachiyo-bottom-nav::before {
+  background: linear-gradient(to top, var(--flow-env-settings-color, #f2f2f7) calc(100% - 52px), transparent);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+@media (min-width: 760px) {
+  .settings-home .settings-navigation-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .settings-home .settings-page-heading h1 {
+    font-size: 2rem;
+  }
+}
+@media (max-width: 480px) {
+  .settings-page-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .settings-page-heading h1 {
+    font-size: 1.6rem;
+  }
+  .settings-surface .mantine-Flex-root {
+    flex-wrap: wrap;
+  }
+  .settings-surface .mantine-InputWrapper-root {
+    max-width: 100%;
+  }
+  .settings-surface .yachiyo-theme-remote-row {
+    flex-wrap: wrap;
+  }
+  .settings-surface .yachiyo-theme-remote-row > .mantine-Button-root {
+    width: 100%;
+  }
+}
+@media (min-width: 640px) and (max-height: 520px) {
+  .settings-home {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 24px;
+  }
+  .settings-home > .settings-page-heading {
+    align-self: center;
+    margin-bottom: 16px;
+  }
+  .settings-home > .settings-page-heading h1 {
+    font-size: 1.4rem;
+  }
+  .settings-home > .settings-page-heading p {
+    display: none;
+  }
+  .settings-home > .settings-search {
+    min-height: 44px;
+    margin-bottom: 16px;
+  }
+  .settings-home > .settings-navigation-groups,
+  .settings-home > .settings-empty,
+  .settings-home > .settings-home-footer {
+    grid-column: 1 / -1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-surface * {
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .settings-surface {
+    --settings-fill: var(--chatbox-background-primary, #fff);
+    --settings-field: var(--chatbox-background-secondary, #f2f2f7);
+  }
+  .settings-nav-list,
+  .settings-section-body {
+    background: var(--settings-fill);
+    box-shadow: none;
+  }
+}

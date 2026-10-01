@@ -1,3 +1,4 @@
+import { useSettingsConfirmation } from '@/components/settings/useSettingsConfirmation'
 import { ActionIcon, Anchor, Badge, Flex, Paper, SimpleGrid, Switch, Text } from '@mantine/core'
 import { spotlight } from '@mantine/spotlight'
 import { IconPlus } from '@tabler/icons-react'
@@ -53,6 +54,7 @@ type Props = {
 }
 
 const CustomServersSection: FC<Props> = (props) => {
+  const { confirm, confirmation } = useSettingsConfirmation()
   const { t } = useTranslation()
   const setSettings = useSettingsStore((state) => state.setSettings)
   const mcpSettings = useMcpSettings()
@@ -81,8 +83,8 @@ const CustomServersSection: FC<Props> = (props) => {
     setModal(null)
   }
 
-  const handleServerDelete = (id: string) => {
-    if (!window.confirm(t('Are you sure you want to delete this server?')!)) {
+  const handleServerDelete = async (id: string) => {
+    if (!(await confirm(String(t('Are you sure you want to delete this server?'))))) {
       return
     }
     setSettings((draft) => {
@@ -181,6 +183,7 @@ const CustomServersSection: FC<Props> = (props) => {
         onSave={handleServerUpdate}
         onDelete={handleServerDelete}
       />
+      {confirmation}
     </>
   )
 }

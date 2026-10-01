@@ -743,8 +743,8 @@ export function PluginCenter() {
   })
 
   return (
-    <main className="local-model-center local-model-download-queue">
-      <header className="local-model-queue-heading">
+    <main className="settings-surface local-model-center local-model-download-queue">
+      <header className="local-model-queue-heading settings-page-heading">
         <Group justify="space-between" gap="sm" wrap="wrap" w="100%">
           <Group gap="sm">
             {!inAndroidAppShell && (

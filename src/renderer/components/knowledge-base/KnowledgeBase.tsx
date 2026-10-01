@@ -1,4 +1,5 @@
-import { Alert, Button, Flex, Group, Paper, Pill, Stack, Text, Title, Tooltip } from '@mantine/core'
+import { SettingsPage } from '@/components/settings/SettingsPage'
+import { Alert, Button, Flex, Group, Paper, Pill, Stack, Text, Tooltip } from '@mantine/core'
 import { SystemProviders } from '@shared/defaults'
 import type { KnowledgeBase, ProviderModelInfo } from '@shared/types'
 import type { DocumentParserConfig, DocumentParserType } from '@shared/types/settings'
@@ -412,9 +413,9 @@ const KnowledgeBasePage: React.FC = () => {
   }
 
   return (
-    <Stack p="md" gap="xl">
+    <SettingsPage title={t('Knowledge Base')}>
       <Group justify="space-between" align="center">
-        <Title order={5}>{t('Knowledge Base')}</Title>
+
         <Button variant="outline" onClick={() => setShowCreate(true)} disabled={isUnsupportedPlatform}>
           <Group gap="xs">
             <ScalableIcon icon={IconPlus} size={16} />
@@ -666,7 +667,7 @@ const KnowledgeBasePage: React.FC = () => {
           )}
         </Stack>
       )}
-    </Stack>
+    </SettingsPage>
   )
 }
 

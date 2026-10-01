@@ -1,37 +1,16 @@
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  FileButton,
-  Group,
-  Modal,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-  Title,
-} from '@mantine/core'
+import { SettingsPage } from '@/components/settings/SettingsPage'
+import { AppearanceSettings } from '@/components/settings/AppearanceSettings'
+import { ActionIcon, Badge, Button, FileButton, Group, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core'
 import {
   MAX_THEME_MANIFEST_BYTES,
   parseThemeManifestText,
   resolveThemeVariables,
   type ThemeManifest,
 } from '@shared/themes/theme'
-import {
-  IconArrowLeft,
-  IconCheck,
-  IconDownload,
-  IconEye,
-  IconEyeOff,
-  IconLink,
-  IconPalette,
-  IconTrash,
-  IconUpload,
-} from '@tabler/icons-react'
+import { IconCheck, IconDownload, IconEye, IconEyeOff, IconLink, IconTrash, IconUpload } from '@tabler/icons-react'
 import type { TFunction } from 'i18next'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { router } from '@/router'
 import { useThemeStore } from '@/stores/themeStore'
 import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
@@ -164,103 +143,8 @@ export function ThemeCenter() {
   }
 
   return (
-    <main className="yachiyo-settings-subpage yachiyo-theme-center">
-      <header className="yachiyo-subpage-heading">
-        {!inAndroidAppShell && (
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size={38}
-            aria-label={t('返回设置')}
-            onClick={() => void router.navigate({ to: '/settings' })}
-          >
-            <IconArrowLeft size={21} />
-          </ActionIcon>
-        )}
-        <span className="yachiyo-subpage-icon" aria-hidden="true">
-          <IconPalette size={22} />
-        </span>
-        <div>
-          <Title order={2}>{t('主题外观')}</Title>
-          <Text size="sm" c="dimmed">
-            {t('导入声明式配色，不加载脚本或外部样式')}
-          </Text>
-        </div>
-      </header>
-
-      <section className="yachiyo-settings-panel yachiyo-theme-import">
-        <Stack gap="sm">
-          <div>
-            <Text fw={650}>{t('导入主题')}</Text>
-            <Text size="xs" c="dimmed">
-              {t('支持不超过 64 KB 的 JSON 主题清单，可先预览再安装')}
-            </Text>
-          </div>
-          <Textarea
-            value={draft}
-            onChange={(event) => handleDraftChange(event.currentTarget.value)}
-            placeholder={String(
-              t(
-                '例如 {"schemaVersion":1,"id":"sakura","name":"樱色","version":"1.0.0","mode":"light","tokens":{"tint-brand":"#d87597"}}'
-              )
-            )}
-            aria-label={String(t('主题 JSON'))}
-            autosize
-            minRows={4}
-            maxRows={9}
-          />
-          <Group gap="xs" align="flex-end" wrap="nowrap" className="yachiyo-theme-remote-row">
-            <TextInput
-              value={remoteUrl}
-              onChange={(event) => setRemoteUrl(event.currentTarget.value)}
-              label={t('从网址导入')}
-              description={t('Android 下载会显示在统一下载管理中')}
-              placeholder="https://example.com/yachiyo-theme.json"
-              leftSection={<IconLink size={16} />}
-              inputMode="url"
-              autoCapitalize="none"
-              autoCorrect="off"
-              aria-label={String(t('远程主题地址'))}
-              className="yachiyo-theme-remote-input"
-            />
-            <Button
-              variant="default"
-              leftSection={<IconDownload size={16} />}
-              loading={remoteLoading}
-              disabled={!remoteUrl.trim()}
-              onClick={() => void loadFromUrl()}
-            >
-              {t('下载并预览')}
-            </Button>
-          </Group>
-          {error && (
-            <Text size="xs" c="red" role="alert">
-              {error}
-            </Text>
-          )}
-          <div className="yachiyo-theme-import-actions">
-            <Button
-              variant={previewingTheme ? 'light' : 'default'}
-              leftSection={previewingTheme ? <IconEyeOff size={16} /> : <IconEye size={16} />}
-              disabled={!draft.trim()}
-              onClick={() => (previewingTheme ? clearPreview() : previewFromText(draft))}
-            >
-              {previewingTheme ? t('结束预览') : t('预览')}
-            </Button>
-            <Button disabled={!draft.trim()} onClick={() => installFromText(draft)}>
-              {t('安装并使用')}
-            </Button>
-            <FileButton accept="application/json,.json" onChange={(file) => void loadFromFile(file)}>
-              {(props) => (
-                <Button variant="default" leftSection={<IconUpload size={16} />} {...props}>
-                  {t('选择文件')}
-                </Button>
-              )}
-            </FileButton>
-          </div>
-        </Stack>
-      </section>
-
+    <SettingsPage title={t('主题外观')} description={t('配色、明暗模式与文字大小')} className="yachiyo-theme-center">
+      <AppearanceSettings />
       {previewingTheme && (
         <div className="yachiyo-theme-preview-notice" role="status">
           <IconEye size={17} />
@@ -285,7 +169,7 @@ export function ThemeCenter() {
               <div>
                 <Text fw={650}>{t('Yachiyo 流光玻璃')}</Text>
                 <Text size="xs" c="dimmed">
-                  {t('内置 · Apple 风格 R 角、共享透镜与分层玻璃材质')}
+                  {t('内置 · 明暗配色自动适配')}
                 </Text>
               </div>
               {activeThemeId === null && !previewingTheme && (
@@ -479,6 +363,81 @@ export function ThemeCenter() {
           </Group>
         </Stack>
       </Modal>
-    </main>
+      <details className="settings-advanced">
+        <summary>{t('导入主题')}</summary>
+        <section className="yachiyo-settings-panel yachiyo-theme-import">
+          <Stack gap="sm">
+            <div>
+              <Text fw={650}>{t('导入主题')}</Text>
+              <Text size="xs" c="dimmed">
+                {t('支持不超过 64 KB 的 JSON 主题清单，可先预览再安装')}
+              </Text>
+            </div>
+            <Textarea
+              value={draft}
+              onChange={(event) => handleDraftChange(event.currentTarget.value)}
+              placeholder={String(
+                t(
+                  '例如 {"schemaVersion":1,"id":"sakura","name":"樱色","version":"1.0.0","mode":"light","tokens":{"tint-brand":"#d87597"}}'
+                )
+              )}
+              aria-label={String(t('主题 JSON'))}
+              autosize
+              minRows={4}
+              maxRows={9}
+            />
+            <Group gap="xs" align="flex-end" wrap="nowrap" className="yachiyo-theme-remote-row">
+              <TextInput
+                value={remoteUrl}
+                onChange={(event) => setRemoteUrl(event.currentTarget.value)}
+                label={t('从网址导入')}
+                description={t('Android 下载会显示在统一下载管理中')}
+                placeholder="https://example.com/yachiyo-theme.json"
+                leftSection={<IconLink size={16} />}
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                aria-label={String(t('远程主题地址'))}
+                className="yachiyo-theme-remote-input"
+              />
+              <Button
+                variant="default"
+                leftSection={<IconDownload size={16} />}
+                loading={remoteLoading}
+                disabled={!remoteUrl.trim()}
+                onClick={() => void loadFromUrl()}
+              >
+                {t('下载并预览')}
+              </Button>
+            </Group>
+            {error && (
+              <Text size="xs" c="red" role="alert">
+                {error}
+              </Text>
+            )}
+            <div className="yachiyo-theme-import-actions">
+              <Button
+                variant={previewingTheme ? 'light' : 'default'}
+                leftSection={previewingTheme ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                disabled={!draft.trim()}
+                onClick={() => (previewingTheme ? clearPreview() : previewFromText(draft))}
+              >
+                {previewingTheme ? t('结束预览') : t('预览')}
+              </Button>
+              <Button disabled={!draft.trim()} onClick={() => installFromText(draft)}>
+                {t('安装并使用')}
+              </Button>
+              <FileButton accept="application/json,.json" onChange={(file) => void loadFromFile(file)}>
+                {(props) => (
+                  <Button variant="default" leftSection={<IconUpload size={16} />} {...props}>
+                    {t('选择文件')}
+                  </Button>
+                )}
+              </FileButton>
+            </div>
+          </Stack>
+        </section>
+      </details>
+    </SettingsPage>
   )
 }

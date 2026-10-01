@@ -1,13 +1,9 @@
-import { Button, Flex, Image, Indicator, ScrollArea, Stack, Text } from '@mantine/core'
+import { Button, Text } from '@mantine/core'
 import { ModelProviderEnum, type ProviderBaseInfo } from '@shared/types'
 import { IconChevronRight, IconPlus } from '@tabler/icons-react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import clsx from 'clsx'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import CustomProviderIcon from '@/components/CustomProviderIcon'
-import Divider from '@/components/common/Divider'
-import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
 import { useProviders } from '@/hooks/useProviders'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
@@ -20,6 +16,7 @@ interface ProviderListProps {
 
 export function ProviderList({ providers, onAddProvider }: ProviderListProps) {
   const { t } = useTranslation()
+  const [query, setQuery] = useState('')
   const isSmallScreen = useIsSmallScreen()
   const inAndroidAppShell = useInAndroidAppShell()
   const useSingleColumnLayout = isSmallScreen || inAndroidAppShell
@@ -54,76 +51,56 @@ export function ProviderList({ providers, onAddProvider }: ProviderListProps) {
     return [...yachiyo, ...activated, ...featured]
   }, [providers, activatedProviderIds])
 
+  const visible = (query.trim() ? providers : sortedProviders).filter((provider) =>
+    `${provider.name} ${provider.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+  )
   return (
-    <Stack
-      maw={useSingleColumnLayout ? undefined : 256}
-      className={clsx(
-        'border-solid border-0 border-r border-chatbox-border-primary',
-        useSingleColumnLayout ? 'w-full border-r-0' : 'flex-[1_0_auto]'
+    <div className="settings-provider-list settings-surface" data-single={useSingleColumnLayout}>
+      <header className="settings-page-heading">
+        <div>
+          <h1>{t('Model Provider')}</h1>
+          <p>{t('选择服务商，配置连接与模型')}</p>
+        </div>
+      </header>
+      <div className="settings-search">
+        <input
+          type="search"
+          value={query}
+          placeholder={String(t('搜索服务商'))}
+          aria-label={String(t('搜索服务商'))}
+          onChange={(event) => setQuery(event.currentTarget.value)}
+        />
+      </div>
+      <nav className="settings-nav-list" aria-label={String(t('Model Provider'))}>
+        {visible.map((provider) => (
+          <Link
+            key={provider.id}
+            to="/settings/provider/$providerId"
+            params={{ providerId: provider.id }}
+            className="settings-nav-row"
+            aria-current={provider.id === providerId ? 'page' : undefined}
+          >
+            <span className="settings-nav-icon">
+              <ProviderIconImage providerId={provider.id} size={24} />
+            </span>
+            <span className="settings-nav-copy">
+              <strong>{provider.name}</strong>
+              <small>{activatedProviderIds.has(provider.id) ? t('已配置') : t('未配置')}</small>
+            </span>
+            <IconChevronRight size={18} className="settings-nav-chevron" aria-hidden="true" />
+          </Link>
+        ))}
+      </nav>
+      {visible.length === 0 && (
+        <Text className="settings-empty" role="status">
+          {t('没有找到相关设置')}
+        </Text>
       )}
-      gap={0}
-    >
-      <ScrollArea flex={1} type={useSingleColumnLayout ? 'never' : 'hover'} scrollHideDelay={100}>
-        <Stack p={useSingleColumnLayout ? 0 : 'xs'} gap={useSingleColumnLayout ? 0 : 'xs'}>
-          {sortedProviders.map((provider) => (
-            <Link
-              key={provider.id}
-              to="/settings/provider/$providerId"
-              params={{ providerId: provider.id }}
-              className={'block no-underline'}
-            >
-              <Flex
-                component="span"
-                align="center"
-                gap="xs"
-                p="md"
-                pr="xl"
-                py={useSingleColumnLayout ? 'sm' : undefined}
-                c={provider.id === providerId ? 'chatbox-brand' : 'chatbox-secondary'}
-                bg={provider.id === providerId ? 'var(--chatbox-background-brand-secondary)' : 'transparent'}
-                className={clsx(
-                  'cursor-pointer select-none rounded-md',
-                  provider.id === providerId ? '' : 'hover:!bg-chatbox-background-gray-secondary'
-                )}
-              >
-                {provider.isCustom ? (
-                  provider.iconUrl ? (
-                    <Image w={32} h={32} src={provider.iconUrl} alt={provider.name} />
-                  ) : (
-                    <CustomProviderIcon providerId={provider.id} providerName={provider.name} size={32} />
-                  )
-                ) : (
-                  <ProviderIconImage providerId={provider.id} size={32} />
-                )}
-
-                <Text
-                  span
-                  size="sm"
-                  flex={useSingleColumnLayout ? 1 : undefined}
-                  className="!text-inherit whitespace-nowrap overflow-hidden text-ellipsis"
-                >
-                  {t(provider.name)}
-                </Text>
-
-                {activatedProviderIds.has(provider.id) && (
-                  <Indicator size={8} color="chatbox-success" className="ml-auto" />
-                )}
-
-                {useSingleColumnLayout && (
-                  <ScalableIcon icon={IconChevronRight} size={20} className="!text-chatbox-tint-tertiary ml-2" />
-                )}
-              </Flex>
-
-              {useSingleColumnLayout && <Divider />}
-            </Link>
-          ))}
-        </Stack>
-      </ScrollArea>
-      <Stack gap="xs" mx="md" my="sm">
-        <Button variant="outline" leftSection={<ScalableIcon icon={IconPlus} />} onClick={onAddProvider}>
+      <div className="settings-actions">
+        <Button variant="light" leftSection={<IconPlus size={18} />} onClick={onAddProvider}>
           {t('Add')}
         </Button>
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   )
 }

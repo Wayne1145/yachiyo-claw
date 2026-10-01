@@ -1,11 +1,11 @@
-import { Box, Button, FileButton, Flex, Slider, Stack, Switch, Text, Title, Tooltip } from '@mantine/core'
+import { SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
+import { Box, Button, FileButton, Flex, Slider, Stack, Switch, Text, Tooltip } from '@mantine/core'
 import { chatSessionSettings } from '@shared/defaults'
 import { IconInfoCircle } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AssistantAvatar, UserAvatar } from '@/components/common/Avatar'
-import { Divider } from '@/components/common/Divider'
 import MaxContextMessageCountSlider from '@/components/common/MaxContextMessageCountSlider'
 import { MessageLayoutSelector } from '@/components/common/MessageLayoutPreview'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
@@ -27,13 +27,10 @@ export function RouteComponent() {
   const { setSettings, ...settings } = useSettingsStore((state) => state)
 
   return (
-    <Stack gap="xxl" p="md">
-      <Title order={5}>{t('Chat Settings')}</Title>
-
+    <SettingsPage title={t('Chat Settings')} description={t('消息、渲染与上下文')}>
       {/* Avatars */}
-      <Stack gap="md">
+      <SettingsSection title={t('Edit Avatars')}>
         <Stack gap="xxs">
-          <Text fw="600">{t('Edit Avatars')}</Text>
           <Text size="xs" c="chatbox-tertiary">
             {t('Support jpg or png file smaller than 5MB')}
           </Text>
@@ -120,13 +117,10 @@ export function RouteComponent() {
             )}
           </Flex>
         </Stack>
-      </Stack>
-
-      <Divider />
+      </SettingsSection>
 
       {/* Default Settings */}
-      <Stack gap="md">
-        <Text fw="600">{t('Default Settings for New Conversation')}</Text>
+      <SettingsSection title={t('Default Settings for New Conversation')}>
         {/* Max Context Message Count */}
         <MaxContextMessageCountSlider
           wrapperProps={{ gap: 'xxs' }}
@@ -225,19 +219,16 @@ export function RouteComponent() {
           <Flex align="center" gap="xs" justify="space-between">
             <Text size="sm">{t('Stream output')}</Text>
             <Switch
-              // label={t('Stream output')}
+              aria-label={String(t('Stream output'))}
               checked={settings?.stream ?? true}
               onChange={(v) => setSettings({ stream: v.target.checked })}
             />
           </Flex>
         </Stack>
-      </Stack>
-      <Divider />
+      </SettingsSection>
 
       {/* Conversation Settings */}
-      <Stack gap="md">
-        <Text fw="600">{t('Conversation Settings')}</Text>
-
+      <SettingsSection title={t('Conversation Settings')}>
         {/* Display */}
         <Stack gap="sm">
           <Text c="chatbox-tertiary">{t('Display')}</Text>
@@ -417,13 +408,11 @@ export function RouteComponent() {
             }
           />
         </Stack>
-      </Stack>
-
-      <Divider />
+      </SettingsSection>
 
       {/* Context Management */}
       <ContextManagementSection />
-    </Stack>
+    </SettingsPage>
   )
 }
 
@@ -444,9 +433,7 @@ function ContextManagementSection() {
   }, [settings.compactionThreshold, t])
 
   return (
-    <Stack gap="xl">
-      <Text fw="600">{t('Context Management')}</Text>
-
+    <SettingsSection title={t('Context Management')}>
       {/* Auto Compaction Toggle */}
       <Stack gap="sm">
         <Flex align="center" gap="xs" justify="space-between">
@@ -466,6 +453,7 @@ function ContextManagementSection() {
             </Tooltip>
           </Flex>
           <Switch
+            aria-label={String(t('Auto Compaction'))}
             checked={settings.autoCompaction ?? true}
             onChange={() =>
               setSettings({
@@ -521,6 +509,6 @@ function ContextManagementSection() {
           {strategyHint}
         </Text>
       </Stack>
-    </Stack>
+    </SettingsSection>
   )
 }

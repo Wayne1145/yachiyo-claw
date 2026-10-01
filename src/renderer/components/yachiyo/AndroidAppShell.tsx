@@ -81,13 +81,14 @@ import type { AndroidTabPageActivity } from './android-tab-page-activity'
 import './android-app-shell.css'
 import './flow-glass.css'
 import './local-model-center.css'
+import '@/components/settings/settings.css'
 
 const SETTINGS_HEADER_TITLES: Readonly<Record<string, string>> = {
   provider: 'Model Provider',
   'default-models': 'Default Models',
   downloads: '下载管理',
   themes: '主题外观',
-  features: '功能管理',
+  features: '功能模块',
   chat: 'Chat Settings',
   general: 'General Settings',
   'document-parser': 'Document Parser',
@@ -99,8 +100,8 @@ const SETTINGS_HEADER_TITLES: Readonly<Record<string, string>> = {
   skills: 'Skills',
   speech: '语音',
   'web-search': 'Web Search',
-  'user-memory': '用户记忆',
-  characters: '角色',
+  'user-memory': '用户与记忆',
+  characters: '角色设定',
   'plugin-runtime-test': '插件运行时测试',
 }
 
@@ -666,7 +667,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         ) : workspaceView === 'about' ? (
           <AndroidAboutWorkspace />
         ) : (
-          <div className="yachiyo-settings-detail">{children}</div>
+          <div className="yachiyo-settings-detail settings-surface">{children}</div>
         )
       return (
         <AndroidSettingsStackSurface

@@ -1,3 +1,4 @@
+import { SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
 import { Button, Flex, PasswordInput, Select, Stack, Text, Title, Tooltip } from '@mantine/core'
 import { IconCheck, IconX } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
@@ -91,316 +92,316 @@ export function RouteComponent() {
   }
 
   return (
-    <Stack p="md" gap="xxl">
-      <Title order={5}>{t('Web Search')}</Title>
-
-      <AdaptiveSelect
-        comboboxProps={{ withinPortal: true, withArrow: true }}
-        data={[
-          { value: 'bing', label: 'Bing Search (Free)' },
-          { value: 'tavily', label: 'Tavily' },
-          { value: 'bocha', label: 'BoCha' },
-          { value: 'querit', label: 'Querit' },
-        ]}
-        value={extension.webSearch.provider}
-        onChange={(e) =>
-          e &&
-          setSettings({
-            extension: {
-              ...extension,
-              webSearch: {
-                ...extension.webSearch,
-                provider: e as 'build-in' | 'bing' | 'tavily' | 'bocha' | 'querit',
+    <SettingsPage title={t('Web Search')} description={t('搜索服务与网页检索')}>
+      <SettingsSection>
+        <AdaptiveSelect
+          comboboxProps={{ withinPortal: true, withArrow: true }}
+          data={[
+            { value: 'bing', label: 'Bing Search (Free)' },
+            { value: 'tavily', label: 'Tavily' },
+            { value: 'bocha', label: 'BoCha' },
+            { value: 'querit', label: 'Querit' },
+          ]}
+          value={extension.webSearch.provider}
+          onChange={(e) =>
+            e &&
+            setSettings({
+              extension: {
+                ...extension,
+                webSearch: {
+                  ...extension.webSearch,
+                  provider: e as 'build-in' | 'bing' | 'tavily' | 'bocha' | 'querit',
+                },
               },
-            },
-          })
-        }
-        label={t('Search Provider')}
-        maw={320}
-      />
-      <Stack gap={4}>
-        <Text size="xs" c="chatbox-gray">
-          {t('Provided tools')}
-        </Text>
-        {(() => {
-          const supportsParseLink = PROVIDERS_WITH_PARSE_LINK.has(extension.webSearch.provider)
-          const tools: { label: string; supported: boolean }[] = [
-            { label: t('Web Search'), supported: true },
-            { label: t('Read Webpage'), supported: supportsParseLink },
-          ]
-          return tools.map(({ label, supported }) => (
-            <Flex key={label} align="center" gap="xs">
-              {supported ? (
-                <IconCheck size={14} color="var(--mantine-color-chatbox-success-6)" />
-              ) : (
-                <IconX size={14} color="var(--mantine-color-chatbox-gray-5)" />
-              )}
-              <Text size="xs" c={supported ? undefined : 'chatbox-gray'}>
-                {label}
-              </Text>
+            })
+          }
+          label={t('Search Provider')}
+          w="100%"
+        />
+        <Stack gap={4}>
+          <Text size="xs" c="chatbox-gray">
+            {t('Provided tools')}
+          </Text>
+          {(() => {
+            const supportsParseLink = PROVIDERS_WITH_PARSE_LINK.has(extension.webSearch.provider)
+            const tools: { label: string; supported: boolean }[] = [
+              { label: t('Web Search'), supported: true },
+              { label: t('Read Webpage'), supported: supportsParseLink },
+            ]
+            return tools.map(({ label, supported }) => (
+              <Flex key={label} align="center" gap="xs">
+                {supported ? (
+                  <IconCheck size={14} color="var(--mantine-color-chatbox-success-6)" />
+                ) : (
+                  <IconX size={14} color="var(--mantine-color-chatbox-gray-5)" />
+                )}
+                <Text size="xs" c={supported ? undefined : 'chatbox-gray'}>
+                  {label}
+                </Text>
+              </Flex>
+            ))
+          })()}
+        </Stack>
+        {extension.webSearch.provider === 'bing' && (
+          <Text size="xs" c="chatbox-gray">
+            {t(
+              'Bing Search is provided for free use, but it may have limitations and is subject to change by Microsoft.'
+            )}
+          </Text>
+        )}
+        {/* Tavily API Key */}
+        {extension.webSearch.provider === 'tavily' && (
+          <Stack gap="xs">
+            <Text fw="600">{t('Tavily API Key')}</Text>
+            <Flex align="center" gap="xs">
+              <PasswordInput
+                flex={1}
+                w="100%"
+                value={extension.webSearch.tavilyApiKey}
+                onChange={(e) => {
+                  setTavilyAvaliable(undefined)
+                  setSettings({
+                    extension: {
+                      ...extension,
+                      webSearch: {
+                        ...extension.webSearch,
+                        tavilyApiKey: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }}
+                error={tavilyAvaliable === false}
+              />
+              <Button
+                color="blue"
+                variant="light"
+                onClick={checkTavily}
+                loading={checkingTavily}
+                disabled={!extension.webSearch.tavilyApiKey?.trim()}
+              >
+                {t('Check')}
+              </Button>
             </Flex>
-          ))
-        })()}
-      </Stack>
-      {extension.webSearch.provider === 'bing' && (
-        <Text size="xs" c="chatbox-gray">
-          {t(
-            'Bing Search is provided for free use, but it may have limitations and is subject to change by Microsoft.'
-          )}
-        </Text>
-      )}
-      {/* Tavily API Key */}
-      {extension.webSearch.provider === 'tavily' && (
-        <Stack gap="xs">
-          <Text fw="600">{t('Tavily API Key')}</Text>
-          <Flex align="center" gap="xs">
-            <PasswordInput
-              flex={1}
-              maw={320}
-              value={extension.webSearch.tavilyApiKey}
-              onChange={(e) => {
-                setTavilyAvaliable(undefined)
-                setSettings({
-                  extension: {
-                    ...extension,
-                    webSearch: {
-                      ...extension.webSearch,
-                      tavilyApiKey: e.currentTarget.value,
-                    },
-                  },
-                })
-              }}
-              error={tavilyAvaliable === false}
-            />
+
+            {typeof tavilyAvaliable === 'boolean' ? (
+              tavilyAvaliable ? (
+                <Text size="xs" c="chatbox-success">
+                  {t('Connection successful!')}
+                </Text>
+              ) : (
+                <Text size="xs" c="chatbox-error">
+                  {t('API key invalid!')}
+                </Text>
+              )
+            ) : null}
             <Button
-              color="blue"
-              variant="light"
-              onClick={checkTavily}
-              loading={checkingTavily}
-              disabled={!extension.webSearch.tavilyApiKey?.trim()}
+              variant="transparent"
+              size="compact-xs"
+              px={0}
+              className="self-start"
+              onClick={() => platform.openLink('https://app.tavily.com?utm_source=chatbox')}
             >
-              {t('Check')}
+              {t('Get API Key')}
             </Button>
-          </Flex>
-
-          {typeof tavilyAvaliable === 'boolean' ? (
-            tavilyAvaliable ? (
-              <Text size="xs" c="chatbox-success">
-                {t('Connection successful!')}
-              </Text>
-            ) : (
-              <Text size="xs" c="chatbox-error">
-                {t('API key invalid!')}
-              </Text>
-            )
-          ) : null}
-          <Button
-            variant="transparent"
-            size="compact-xs"
-            px={0}
-            className="self-start"
-            onClick={() => platform.openLink('https://app.tavily.com?utm_source=chatbox')}
-          >
-            {t('Get API Key')}
-          </Button>
-        </Stack>
-      )}
-      {/* BoCha API Key */}
-      {extension.webSearch.provider === 'bocha' && (
-        <Stack gap="xs">
-          <Text fw="600">{t('BoCha API Key')}</Text>
-          <Flex align="center" gap="xs">
-            <PasswordInput
-              flex={1}
-              maw={320}
-              value={extension.webSearch.bochaApiKey}
-              onChange={(e) => {
-                setBochaAvailable(undefined)
-                setSettings({
-                  extension: {
-                    ...extension,
-                    webSearch: {
-                      ...extension.webSearch,
-                      bochaApiKey: e.currentTarget.value,
-                    },
-                  },
-                })
-              }}
-              error={bochaAvailable === false}
-            />
-            <Button
-              color="blue"
-              variant="light"
-              onClick={checkBocha}
-              loading={checkingBocha}
-              disabled={!extension.webSearch.bochaApiKey?.trim()}
-            >
-              {t('Check')}
-            </Button>
-          </Flex>
-
-          {typeof bochaAvailable === 'boolean' ? (
-            bochaAvailable ? (
-              <Text size="xs" c="chatbox-success">
-                {t('Connection successful!')}
-              </Text>
-            ) : (
-              <Text size="xs" c="chatbox-error">
-                {t('API key invalid!')}
-              </Text>
-            )
-          ) : null}
-          <Button
-            variant="transparent"
-            size="compact-xs"
-            px={0}
-            className="self-start"
-            onClick={() => platform.openLink('https://open.bochaai.com')}
-          >
-            {t('Get API Key')}
-          </Button>
-        </Stack>
-      )}
-      {/* Querit API Key */}
-      {extension.webSearch.provider === 'querit' && (
-        <Stack gap="xs">
-          <Text fw="600">{t('Querit API Key')}</Text>
-          <Flex align="center" gap="xs">
-            <PasswordInput
-              flex={1}
-              maw={320}
-              value={extension.webSearch.queritApiKey}
-              onChange={(e) => {
-                setQueritAvailable(undefined)
-                setSettings({
-                  extension: {
-                    ...extension,
-                    webSearch: {
-                      ...extension.webSearch,
-                      queritApiKey: e.currentTarget.value,
-                    },
-                  },
-                })
-              }}
-              placeholder={t('Enter your Querit API Key') || 'Enter your Querit API Key'}
-              error={queritAvailable === false}
-            />
-            <Button
-              color="blue"
-              variant="light"
-              onClick={checkQuerit}
-              loading={checkingQuerit}
-              disabled={!extension.webSearch.queritApiKey?.trim()}
-            >
-              {t('Check')}
-            </Button>
-          </Flex>
-
-          {typeof queritAvailable === 'boolean' ? (
-            queritAvailable ? (
-              <Text size="xs" c="chatbox-success">
-                {t('Connection successful!')}
-              </Text>
-            ) : (
-              <Text size="xs" c="chatbox-error">
-                {t('API key invalid!')}
-              </Text>
-            )
-          ) : null}
-
-          <Button
-            variant="transparent"
-            size="compact-xs"
-            px={0}
-            className="self-start"
-            onClick={() => platform.openLink('https://www.querit.ai')}
-          >
-            {t('Get API Key')}
-          </Button>
-
-          {/* Querit Configuration Options */}
-          <Stack mt="md" gap="sm">
-            <Title order={6}>{t('Querit Search Options')}</Title>
-
-            {/* Max Results */}
-            <Stack gap="xs">
-              <Flex align="center" gap="xs">
-                <Text size="sm">{t('Max Results')}</Text>
-                <Tooltip label={t('Maximum number of results to return.')}>
-                  <Text size="sm" c="gray">
-                    ⓘ
-                  </Text>
-                </Tooltip>
-              </Flex>
-              <Select
-                comboboxProps={{ withinPortal: true, withArrow: true }}
-                data={[
-                  { value: '1', label: '1' },
-                  { value: '2', label: '2' },
-                  { value: '3', label: '3' },
-                  { value: '4', label: '4' },
-                  { value: '5', label: '5' },
-                  { value: '6', label: '6' },
-                  { value: '7', label: '7' },
-                  { value: '8', label: '8' },
-                  { value: '9', label: '9' },
-                  { value: '10', label: '10' },
-                ]}
-                value={String(extension.webSearch.queritMaxResults || 5)}
-                onChange={(e) =>
-                  e &&
+          </Stack>
+        )}
+        {/* BoCha API Key */}
+        {extension.webSearch.provider === 'bocha' && (
+          <Stack gap="xs">
+            <Text fw="600">{t('BoCha API Key')}</Text>
+            <Flex align="center" gap="xs">
+              <PasswordInput
+                flex={1}
+                w="100%"
+                value={extension.webSearch.bochaApiKey}
+                onChange={(e) => {
+                  setBochaAvailable(undefined)
                   setSettings({
                     extension: {
                       ...extension,
                       webSearch: {
                         ...extension.webSearch,
-                        queritMaxResults: parseInt(e),
+                        bochaApiKey: e.currentTarget.value,
                       },
                     },
                   })
-                }
-                maw={320}
+                }}
+                error={bochaAvailable === false}
               />
-            </Stack>
+              <Button
+                color="blue"
+                variant="light"
+                onClick={checkBocha}
+                loading={checkingBocha}
+                disabled={!extension.webSearch.bochaApiKey?.trim()}
+              >
+                {t('Check')}
+              </Button>
+            </Flex>
 
-            {/* Time Range */}
-            <Stack gap="xs">
-              <Flex align="center" gap="xs">
-                <Text size="sm">{t('Time Range')}</Text>
-                <Tooltip label={t('Time range of the search. For example, the last month.')}>
-                  <Text size="sm" c="gray">
-                    ⓘ
-                  </Text>
-                </Tooltip>
-              </Flex>
-              <Select
-                comboboxProps={{ withinPortal: true, withArrow: true }}
-                data={[
-                  { value: 'none', label: 'None' },
-                  { value: 'd1', label: 'Day' },
-                  { value: 'w1', label: 'Week' },
-                  { value: 'm1', label: 'Month' },
-                  { value: 'y1', label: 'Year' },
-                ]}
-                value={extension.webSearch.queritTimeRange || 'none'}
-                onChange={(e) =>
-                  e &&
+            {typeof bochaAvailable === 'boolean' ? (
+              bochaAvailable ? (
+                <Text size="xs" c="chatbox-success">
+                  {t('Connection successful!')}
+                </Text>
+              ) : (
+                <Text size="xs" c="chatbox-error">
+                  {t('API key invalid!')}
+                </Text>
+              )
+            ) : null}
+            <Button
+              variant="transparent"
+              size="compact-xs"
+              px={0}
+              className="self-start"
+              onClick={() => platform.openLink('https://open.bochaai.com')}
+            >
+              {t('Get API Key')}
+            </Button>
+          </Stack>
+        )}
+        {/* Querit API Key */}
+        {extension.webSearch.provider === 'querit' && (
+          <Stack gap="xs">
+            <Text fw="600">{t('Querit API Key')}</Text>
+            <Flex align="center" gap="xs">
+              <PasswordInput
+                flex={1}
+                w="100%"
+                value={extension.webSearch.queritApiKey}
+                onChange={(e) => {
+                  setQueritAvailable(undefined)
                   setSettings({
                     extension: {
                       ...extension,
                       webSearch: {
                         ...extension.webSearch,
-                        queritTimeRange: e,
+                        queritApiKey: e.currentTarget.value,
                       },
                     },
                   })
-                }
-                maw={320}
+                }}
+                placeholder={t('Enter your Querit API Key') || 'Enter your Querit API Key'}
+                error={queritAvailable === false}
               />
+              <Button
+                color="blue"
+                variant="light"
+                onClick={checkQuerit}
+                loading={checkingQuerit}
+                disabled={!extension.webSearch.queritApiKey?.trim()}
+              >
+                {t('Check')}
+              </Button>
+            </Flex>
+
+            {typeof queritAvailable === 'boolean' ? (
+              queritAvailable ? (
+                <Text size="xs" c="chatbox-success">
+                  {t('Connection successful!')}
+                </Text>
+              ) : (
+                <Text size="xs" c="chatbox-error">
+                  {t('API key invalid!')}
+                </Text>
+              )
+            ) : null}
+
+            <Button
+              variant="transparent"
+              size="compact-xs"
+              px={0}
+              className="self-start"
+              onClick={() => platform.openLink('https://www.querit.ai')}
+            >
+              {t('Get API Key')}
+            </Button>
+
+            {/* Querit Configuration Options */}
+            <Stack mt="md" gap="sm">
+              <Title order={6}>{t('Querit Search Options')}</Title>
+
+              {/* Max Results */}
+              <Stack gap="xs">
+                <Flex align="center" gap="xs">
+                  <Text size="sm">{t('Max Results')}</Text>
+                  <Tooltip label={t('Maximum number of results to return.')}>
+                    <Text size="sm" c="gray">
+                      ⓘ
+                    </Text>
+                  </Tooltip>
+                </Flex>
+                <Select
+                  comboboxProps={{ withinPortal: true, withArrow: true }}
+                  data={[
+                    { value: '1', label: '1' },
+                    { value: '2', label: '2' },
+                    { value: '3', label: '3' },
+                    { value: '4', label: '4' },
+                    { value: '5', label: '5' },
+                    { value: '6', label: '6' },
+                    { value: '7', label: '7' },
+                    { value: '8', label: '8' },
+                    { value: '9', label: '9' },
+                    { value: '10', label: '10' },
+                  ]}
+                  value={String(extension.webSearch.queritMaxResults || 5)}
+                  onChange={(e) =>
+                    e &&
+                    setSettings({
+                      extension: {
+                        ...extension,
+                        webSearch: {
+                          ...extension.webSearch,
+                          queritMaxResults: parseInt(e),
+                        },
+                      },
+                    })
+                  }
+                  w="100%"
+                />
+              </Stack>
+
+              {/* Time Range */}
+              <Stack gap="xs">
+                <Flex align="center" gap="xs">
+                  <Text size="sm">{t('Time Range')}</Text>
+                  <Tooltip label={t('Time range of the search. For example, the last month.')}>
+                    <Text size="sm" c="gray">
+                      ⓘ
+                    </Text>
+                  </Tooltip>
+                </Flex>
+                <Select
+                  comboboxProps={{ withinPortal: true, withArrow: true }}
+                  data={[
+                    { value: 'none', label: 'None' },
+                    { value: 'd1', label: 'Day' },
+                    { value: 'w1', label: 'Week' },
+                    { value: 'm1', label: 'Month' },
+                    { value: 'y1', label: 'Year' },
+                  ]}
+                  value={extension.webSearch.queritTimeRange || 'none'}
+                  onChange={(e) =>
+                    e &&
+                    setSettings({
+                      extension: {
+                        ...extension,
+                        webSearch: {
+                          ...extension.webSearch,
+                          queritTimeRange: e,
+                        },
+                      },
+                    })
+                  }
+                  w="100%"
+                />
+              </Stack>
             </Stack>
           </Stack>
-        </Stack>
-      )}
-    </Stack>
+        )}
+      </SettingsSection>
+    </SettingsPage>
   )
 }

@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/style/noNonNullAssertion: <todo> */
-import { Flex, Stack, Text, Title } from '@mantine/core'
+import { SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
+import { Flex, Text } from '@mantine/core'
 import { SystemProviders } from '@shared/defaults'
 import { IconSelector } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
@@ -24,12 +25,8 @@ export function RouteComponent() {
   const ocrAutoText = t('None')!
 
   return (
-    <Stack p="md" gap="xl">
-      <Title order={5}>{t('Default Models')}</Title>
-
-      <Stack gap="xs">
-        <Text fw={600}>{t('Default Chat Model')}</Text>
-
+    <SettingsPage title={t('Default Models')} description={t('聊天、Agent 与辅助任务')}>
+      <SettingsSection title={t('Default Chat Model')}>
         <ModelSelector
           position="bottom-start"
           transitionProps={{
@@ -65,11 +62,9 @@ export function RouteComponent() {
         <Text c="chatbox-tertiary" size="xs">
           {productCopy('Chatbox will use this model as the default for new chats.')}
         </Text>
-      </Stack>
+      </SettingsSection>
 
-      <Stack gap="xs">
-        <Text fw={600}>{t('Default Thread Naming Model')}</Text>
-
+      <SettingsSection title={t('Default Thread Naming Model')}>
         <ModelSelector
           position="bottom-start"
           width={320}
@@ -100,11 +95,9 @@ export function RouteComponent() {
         <Text c="chatbox-tertiary" size="xs">
           {productCopy('Chatbox will automatically use this model to rename threads.')}
         </Text>
-      </Stack>
+      </SettingsSection>
 
-      <Stack gap="xs">
-        <Text fw={600}>{t('Search Term Construction Model')}</Text>
-
+      <SettingsSection title={t('Search Term Construction Model')}>
         <ModelSelector
           position="bottom-start"
           width={320}
@@ -135,10 +128,8 @@ export function RouteComponent() {
         <Text c="chatbox-tertiary" size="xs">
           {productCopy('Chatbox will automatically use this model to construct search term.')}
         </Text>
-      </Stack>
-      <Stack gap="xs">
-        <Text fw={600}>{t('OCR Model')}</Text>
-
+      </SettingsSection>
+      <SettingsSection title={t('OCR Model')}>
         <ModelSelector
           position="bottom-start"
           showAuto={true}
@@ -170,8 +161,8 @@ export function RouteComponent() {
         <Text c="chatbox-tertiary" size="xs">
           {productCopy('Chatbox OCRs images with this model and sends the text to models without image support.')}
         </Text>
-      </Stack>
-    </Stack>
+      </SettingsSection>
+    </SettingsPage>
   )
 }
 
@@ -204,13 +195,11 @@ const ModelSelectContent = forwardRef<
   return (
     <Flex
       ref={ref}
-      px={12}
-      py={6}
       component="button"
+      type="button"
       align="center"
       c="chatbox-tertiary"
-      w={320}
-      className="border-solid border border-chatbox-border-primary rounded-sm cursor-pointer bg-transparent"
+      className="settings-model-choice"
       onClick={onClick}
     >
       <Text span flex={1} className=" text-left">

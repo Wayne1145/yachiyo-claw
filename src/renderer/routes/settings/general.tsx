@@ -1,28 +1,13 @@
-import {
-  Alert,
-  Button,
-  Checkbox,
-  Divider,
-  FileButton,
-  Flex,
-  Radio,
-  Select,
-  Stack,
-  Switch,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core'
-import { type Language, type ProviderInfo, type Settings, Theme } from '@shared/types'
-import { formatFileSize } from '@shared/utils'
+import { SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
+import { Alert, Button, Checkbox, FileButton, Flex, Radio, Stack, Text, TextInput, Title } from '@mantine/core'
+import { type Language, type ProviderInfo, type Settings } from '@shared/types'
 import { IconInfoCircle } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import dayjs from 'dayjs'
-import { mapValues, uniqBy } from 'lodash'
-import { useEffect, useMemo, useState } from 'react'
+import { mapValues } from 'lodash'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveSelect } from '@/components/AdaptiveSelect'
-import LazySlider from '@/components/common/LazySlider'
 import { languageNameMap, languages } from '@/i18n/locales'
 import platform from '@/platform'
 import storage, { StorageKey } from '@/storage'
@@ -37,136 +22,44 @@ export const Route = createFileRoute('/settings/general')({
 export function RouteComponent() {
   const { t } = useTranslation()
   const { setSettings, ...settings } = useSettingsStore((state) => state)
-
   return (
-    <Stack p="md" gap="xl">
-      <Title order={5}>{t('General Settings')}</Title>
-
-      {/* Display Settings */}
-      <Stack gap="md">
-        <Title order={5}>{t('Display Settings')}</Title>
-
-        {/* language */}
+    <SettingsPage title={t('General Settings')} description={t('语言、启动与数据备份')}>
+      <SettingsSection title={t('Display Settings')}>
         <AdaptiveSelect
-          maw={320}
-          comboboxProps={{ withinPortal: true }}
-          value={settings.language}
-          data={languages.map((language) => ({
-            value: language,
-            label: languageNameMap[language],
-            // style: language === 'ar' ? { fontFamily: 'Cairo, Arial, sans-serif' } : {},
-          }))}
           label={t('Language')}
-          styles={{
-            label: {
-              fontWeight: 400,
-            },
-          }}
-          onChange={(val) => {
-            if (val) {
-              setSettings({
-                language: val as Language,
-              })
-            }
-          }}
+          value={settings.language}
+          data={languages.map((language) => ({ value: language, label: languageNameMap[language] }))}
+          onChange={(value) => value && setSettings({ language: value as Language })}
         />
-
-        {/* theme */}
-        <AdaptiveSelect
-          maw={320}
-          comboboxProps={{ withinPortal: true, withArrow: true }}
-          label={t('Theme')}
-          styles={{
-            label: {
-              fontWeight: 400,
-            },
-          }}
-          data={[
-            { value: `${Theme.System}`, label: t('Follow System') },
-            { value: `${Theme.Light}`, label: t('Light Mode') },
-            { value: `${Theme.Dark}`, label: t('Dark Mode') },
-          ]}
-          value={`${settings.theme}`}
-          onChange={(val) => {
-            if (val) {
-              setSettings({
-                theme: parseInt(val),
-              })
-            }
-          }}
-        />
-
-        {/* Font Size */}
-        <Stack>
-          <Text>{t('Font Size')}</Text>
-          <LazySlider
-            step={1}
-            min={10}
-            max={22}
-            maw={320}
-            marks={[
-              {
-                value: 14,
-              },
-            ]}
-            value={settings.fontSize}
-            onChange={(val) =>
-              setSettings({
-                fontSize: val,
-              })
-            }
+        <Radio.Group
+          label={t('Startup Page')}
+          value={settings.startupPage}
+          onChange={(value) => setSettings({ startupPage: value as 'home' | 'session' })}
+        >
+          <Flex gap="md" wrap="wrap" mt="xs">
+            <Radio label={t('Home Page')} value="home" />
+            <Radio label={t('Last Session')} value="session" />
+          </Flex>
+        </Radio.Group>
+      </SettingsSection>
+      {platform.type !== 'mobile' && (
+        <SettingsSection title={t('Network Proxy')}>
+          <TextInput
+            aria-label={String(t('Network Proxy'))}
+            placeholder="socks5://127.0.0.1:6153"
+            value={settings.proxy}
+            onChange={(event) => setSettings({ proxy: event.currentTarget.value })}
           />
-        </Stack>
-
-        {/* Startup Page */}
-        <Stack>
-          <Text>{t('Startup Page')}</Text>
-          <Radio.Group
-            value={settings.startupPage}
-            defaultValue="home"
-            onChange={(val) => setSettings({ startupPage: val as any })}
-          >
-            <Flex gap="md">
-              <Radio label={t('Home Page')} value="home" />
-              <Radio label={t('Last Session')} value="session" />
-            </Flex>
-          </Radio.Group>
-        </Stack>
-      </Stack>
-
-      <Divider />
-
-      {/* Network Proxy */}
-      <Stack gap="xs">
-        <Title order={5}>{t('Network Proxy')}</Title>
-        <TextInput
-          maw={320}
-          placeholder="socks5://127.0.0.1:6153"
-          value={settings.proxy}
-          onChange={(e) =>
-            setSettings({
-              proxy: e.currentTarget.value,
-            })
-          }
-        />
-      </Stack>
-
-      <Divider />
-
-      {/* Data Recovery */}
-      <DataRecoverySection />
-
-      <Divider />
-
-      {/* import and export data */}
+        </SettingsSection>
+      )}
       <ImportExportDataSection />
-
-      <Divider />
-
-      {/* Export Logs */}
-      <ExportLogsSection />
-
-    </Stack>
+      <SettingsSection>
+        <DataRecoverySection />
+      </SettingsSection>
+      <SettingsSection>
+        <ExportLogsSection />
+      </SettingsSection>
+    </SettingsPage>
   )
 }
 
@@ -456,32 +349,9 @@ const ImportExportDataSection = () => {
     reader.readAsText(file)
   }
 
-  const [showStorageInfo, setShowStorageInfo] = useState(false)
-  const [storagePersisted, setStoragePersisted] = useState<boolean>()
-  const [storageEstimate, setStorageEstimate] = useState<StorageEstimate>()
-  const storageInfo = useMemo(
-    () =>
-      `Storage persisted: ${storagePersisted}; Storage Estimate: { quota: ${formatFileSize(storageEstimate?.quota || 0)}, usage: ${formatFileSize(storageEstimate?.usage || 0)} }`,
-    [storagePersisted, storageEstimate]
-  )
-  useEffect(() => {
-    if (window?.navigator?.storage) {
-      window.navigator.storage.estimate?.().then((res) => setStorageEstimate(res))
-      window.navigator.storage.persisted?.().then((p) => setStoragePersisted(p))
-    }
-  }, [])
-
   return (
     <>
-      <Stack gap="md">
-        <Title order={5} onDoubleClick={() => setShowStorageInfo(true)}>
-          {t('Data Backup')}
-        </Title>
-        {showStorageInfo && (
-          <Text size="xs" c="chatbox-tertiary">
-            {storageInfo}
-          </Text>
-        )}
+      <SettingsSection title={t('Data Backup')}>
         {[
           { label: t('Settings'), value: ExportDataItem.Setting },
           { label: t('API KEY & License'), value: ExportDataItem.Key },
@@ -506,13 +376,10 @@ const ImportExportDataSection = () => {
         <Button className="self-start" onClick={onExport} disabled={isLoading} loading={isExporting}>
           {isExporting ? t('Exporting...') : t('Export Selected Data')}
         </Button>
-      </Stack>
+      </SettingsSection>
 
-      <Divider />
-
-      <Stack gap="lg">
+      <SettingsSection title={t('Data Restore')}>
         <Stack gap="xxs">
-          <Title order={5}>{t('Data Restore')}</Title>
           <Text c="chatbox-tertiary">
             {t('Upon import, changes will take effect immediately and existing data will be overwritten')}
           </Text>
@@ -533,7 +400,7 @@ const ImportExportDataSection = () => {
             </Button>
           )}
         </FileButton>
-      </Stack>
+      </SettingsSection>
     </>
   )
 }

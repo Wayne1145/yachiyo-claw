@@ -1,9 +1,7 @@
-import { ModelProviderEnum } from '@shared/types'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { zodValidator } from '@tanstack/zod-adapter'
-import { useEffect } from 'react'
 import { z } from 'zod'
-import { useIsSmallScreen } from '@/hooks/useScreenChange'
+import { SettingsNavigation } from '@/components/settings/SettingsNavigation'
 
 const searchSchema = z.object({
   settings: z.string().optional(), // b64 encoded config
@@ -15,17 +13,5 @@ export const Route = createFileRoute('/settings/')({
 })
 
 export function RouteComponent() {
-  const isSmallScreen = useIsSmallScreen()
-  const navigate = useNavigate()
-  useEffect(() => {
-    if (!isSmallScreen) {
-      navigate({
-        to: '/settings/provider/$providerId',
-        params: { providerId: ModelProviderEnum.Yachiyo },
-        replace: true,
-      })
-    }
-  }, [isSmallScreen, navigate])
-
-  return null
+  return <SettingsNavigation />
 }
