@@ -1,7 +1,7 @@
 {
   "name": "yachiyo-claw",
   "productName": "Yachiyo Claw",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22.12.0",
