@@ -40,6 +40,11 @@ final class UbuntuDistributionInstaller {
     File toolchainMarker() { return new File(rootfsDirectory, ".yachiyo-toolchain-v1"); }
     UbuntuDistribution.Spec spec() { return distribution; }
 
+    /** Restores the shared PRoot runtime libraries after Android purges code_cache. */
+    void prepareRuntimeFiles() throws Exception {
+        alpineRuntime.prepareRuntimeFiles();
+    }
+
     boolean isInstalled() {
         return readyMarker.isFile() && new File(rootfsDirectory, "bin/bash").isFile();
     }
@@ -116,7 +121,7 @@ final class UbuntuDistributionInstaller {
     }
 
     private void configureRootfs(File rootfs) throws Exception {
-        write(rootfs, "etc/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
+        GuestDns.sync(context, rootfs);
         boolean mirror = YachiyoDownloadSettingsPlugin.linuxMirror(context);
         String origin = distribution.dpkgArch().equals("arm64")
             ? (mirror ? "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports" : "http://ports.ubuntu.com/ubuntu-ports")

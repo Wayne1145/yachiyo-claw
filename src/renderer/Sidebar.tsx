@@ -4,10 +4,8 @@ import {
   IconCirclePlus,
   IconCode,
   IconDownload,
-  IconHelpCircle,
   IconInfoCircle,
   IconLayoutSidebarLeftCollapse,
-  IconMessageChatbot,
   IconPhotoPlus,
   IconSettingsFilled,
 } from '@tabler/icons-react'
@@ -250,34 +248,6 @@ export default function Sidebar() {
 
           {isSmallScreen ? (
             <Flex gap="md" align="center">
-              <NavLink
-                c="chatbox-secondary"
-                className="rounded"
-                label={t('My Copilots')}
-                leftSection={<ScalableIcon icon={IconMessageChatbot} size={20} />}
-                onClick={() => {
-                  navigate({
-                    to: '/copilots',
-                  })
-                  setShowSidebar(false)
-                }}
-                variant="light"
-                p="xs"
-              />
-
-              {!versionHook.isExceeded && (
-                <ActionIcon
-                  variant="transparent"
-                  color="chatbox-secondary"
-                  size={24}
-                  onClick={() => {
-                    navigate({ to: '/guide' })
-                    setShowSidebar(false)
-                  }}
-                >
-                  <ScalableIcon icon={IconHelpCircle} size={20} />
-                </ActionIcon>
-              )}
               <ActionIcon
                 variant="transparent"
                 color="chatbox-secondary"
@@ -297,39 +267,12 @@ export default function Sidebar() {
               <NavLink
                 c="chatbox-secondary"
                 className="rounded"
-                label={t('My Copilots')}
-                leftSection={<ScalableIcon icon={IconMessageChatbot} size={20} />}
-                onClick={() => {
-                  navigate({
-                    to: '/copilots',
-                  })
-                  if (isSmallScreen) {
-                    setShowSidebar(false)
-                  }
-                }}
-                variant="light"
-                p="xs"
-              />
-              <NavLink
-                c="chatbox-secondary"
-                className="rounded"
                 label={t('Settings')}
                 leftSection={<ScalableIcon icon={IconSettingsFilled} size={20} />}
                 onClick={() => navigateToSettings()}
                 variant="light"
                 p="xs"
               />
-              {!versionHook.isExceeded && (
-                <NavLink
-                  c="chatbox-secondary"
-                  className="rounded"
-                  label={t('Help')}
-                  leftSection={<ScalableIcon icon={IconHelpCircle} size={20} />}
-                  onClick={() => navigate({ to: '/guide' })}
-                  variant="light"
-                  p="xs"
-                />
-              )}
               {FORCE_ENABLE_DEV_PAGES && (
                 <NavLink
                   c="chatbox-secondary"

@@ -139,8 +139,14 @@ export default defineConfig(({ mode }) => {
             const normalizedId = id.split(path.sep).join('/')
             const isNodeModulePackage = (pkg: string) => normalizedId.includes(`/node_modules/${pkg}/`)
             if (!normalizedId.includes('/node_modules/')) return undefined
-            if (isNodeModulePackage('@ai-sdk') || isNodeModulePackage('ai')) return 'vendor-ai'
-            if (isNodeModulePackage('@mantine') || isNodeModulePackage('@tabler')) return 'vendor-ui'
+            if (
+              isNodeModulePackage('@ai-sdk') ||
+              isNodeModulePackage('ai') ||
+              isNodeModulePackage('@mantine') ||
+              isNodeModulePackage('@tabler')
+            ) {
+              return 'vendor-app'
+            }
             if (
               isNodeModulePackage('mermaid') ||
               isNodeModulePackage('d3') ||

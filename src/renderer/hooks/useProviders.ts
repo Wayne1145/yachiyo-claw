@@ -7,37 +7,28 @@ import { enrichModelsFromRegistry, useModelRegistryVersion } from '@/packages/mo
 import platform from '@/platform'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
-import useChatboxAIModels from './useChatboxAIModels'
 
 export const useProviders = () => {
   useModelRegistryVersion()
   const useAndroidAppShell = shouldUseAndroidAppShell(platform.type, CHATBOX_BUILD_PLATFORM)
 
-  const { chatboxAIModels } = useChatboxAIModels({
-    enabled: !shouldUseAndroidAppShell(platform.type, CHATBOX_BUILD_PLATFORM),
-  })
   const { setSettings, ...settings } = useSettingsStore((state) => state)
   const providerSettingsMap = settings.providers
 
   const allProviderBaseInfos = useMemo(
+    // The retired ChatboxAI cloud provider is filtered out on every platform.
     () =>
       [...SystemProviders(), ...(settings.customProviders || [])].filter(
-        (provider) => !useAndroidAppShell || provider.id !== ModelProviderEnum.ChatboxAI,
+        (provider) => provider.id !== ModelProviderEnum.ChatboxAI,
       ),
-    [settings.customProviders, useAndroidAppShell],
+    [settings.customProviders],
   )
   const providers = useMemo(
     () =>
       allProviderBaseInfos
         .map((p) => {
           const providerSettings = mergeSharedOAuthProviderSettings(p.id, providerSettingsMap)
-          if (p.id === ModelProviderEnum.ChatboxAI && settings.licenseKey) {
-            return {
-              ...p,
-              ...providerSettings,
-              models: chatboxAIModels,
-            }
-          } else if (
+          if (
             (!p.isCustom &&
               (providerSettings?.apiKey ||
                 isUsingOAuth(providerSettings || {}, platform.type) ||
@@ -58,7 +49,7 @@ export const useProviders = () => {
           }
         })
         .filter((p) => !!p),
-    [providerSettingsMap, allProviderBaseInfos, chatboxAIModels, settings.licenseKey],
+    [providerSettingsMap, allProviderBaseInfos],
   )
 
   const favoritedModels = useMemo(

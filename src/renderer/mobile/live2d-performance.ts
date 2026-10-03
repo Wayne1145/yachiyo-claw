@@ -68,7 +68,12 @@ export function resolveLive2DAssetUrl(source: string, baseUrl?: string): string 
   }
 }
 
-export type Live2DMocVersion = 4 | 5 | 'unknown'
+/**
+ * Runtime version read from the moc3 header byte. The value matches the core's
+ * MocVersion enum: 3=Cubism 4.0, 4=4.2, 5=5.0, 6=5.3. Newer SDKs keep bumping it,
+ * so any plausible value is reported instead of collapsing to 'unknown'.
+ */
+export type Live2DMocVersion = number | 'unknown'
 
 /** Reads the binary format marker without asking Cubism Core to create a model. */
 export function detectLive2DMocVersion(bytes: ArrayBuffer): Live2DMocVersion {
@@ -76,8 +81,8 @@ export function detectLive2DMocVersion(bytes: ArrayBuffer): Live2DMocVersion {
   if (header.length < 5 || header[0] !== 0x4d || header[1] !== 0x4f || header[2] !== 0x43 || header[3] !== 0x33) {
     return 'unknown'
   }
-  if (header[4] === 4) return 4
-  if (header[4] === 5) return 5
+  // 1=MocVersion_30, 2=3.3, 3=4.0, 4=4.2, 5=5.0, 6=5.3; accept future bumps too.
+  if (header[4] >= 1 && header[4] <= 16) return header[4]
   return 'unknown'
 }
 

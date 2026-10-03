@@ -8,6 +8,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
+import { BUILT_IN_REQUIRED_MOC_VERSION, getCubismCoreSupport } from '@/mobile/live2d-core-info'
 import {
   createLive2DError,
   type Live2DErrorPhase,
@@ -90,6 +91,18 @@ async function ensureCubismRuntime(t: TFunction): Promise<Cubism4Module> {
   if (runtimePromise) return runtimePromise
   const pending = (async () => {
     await loadCubismCore()
+    // A stale APK asset copy can ship a core older than the bundled model
+    // (Cubism 5.0 moc). Detect it here instead of failing later with the
+    // core's opaque "Unknown error" during moc revive.
+    const coreSupport = getCubismCoreSupport()
+    if (
+      typeof coreSupport.latestMocVersion === 'number' &&
+      coreSupport.latestMocVersion < BUILT_IN_REQUIRED_MOC_VERSION
+    ) {
+      throw createLive2DError('L2D-CORE-002', {
+        technicalDetail: `core=${coreSupport.coreVersion ?? 'unknown'} latestMoc=${coreSupport.latestMocVersion} required>=${BUILT_IN_REQUIRED_MOC_VERSION}`,
+      })
+    }
     const runtime = await import('pixi-live2d-display/cubism4')
     runtime.ZipLoader.zipReader = (data: Blob) => JSZip.loadAsync(data)
     runtime.ZipLoader.getFilePaths = async (zip: JSZip) =>
@@ -156,6 +169,24 @@ function getQualityCandidates(quality: Live2DRenderQuality): Live2DRenderQuality
         ? [quality, 'performance']
         : [quality]
   return [...new Set(candidates)]
+}
+
+/**
+ * Best-effort moc version probe. Imported (zip://) models carry the version
+ * detected at import time; remote/bundled sources are fetched. Returns
+ * undefined when probing is impossible — loading must continue regardless.
+ */
+async function probeDescriptorMocVersion(descriptor: Live2DModelDescriptor): Promise<number | undefined> {
+  if (typeof descriptor.mocVersion === 'number') return descriptor.mocVersion
+  if (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source)) {
+    try {
+      const detected = await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
+      return typeof detected === 'number' ? detected : undefined
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
 }
 
 function fitModel(model: ModelInstance, width: number, height: number, transform: Live2DTransform) {
@@ -424,11 +455,21 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
           rendererCleanup = attemptCleanup
 
           phase = 'settings'
-          if (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source)) {
-            // Cubism 5 Core keeps the Cubism 4 C API surface used by the Pixi
-            // adapter. Let the adapter perform the authoritative model parse;
-            // this probe is only used to produce a precise compatibility error.
-            await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
+          // Compatibility probe: fail with a precise L2D-MOC-003 instead of the
+          // core's opaque "Unknown error" when the moc is newer than the runtime.
+          // Probe failures (offline, transient fetch errors) must not block loading —
+          // the adapter below still performs the authoritative model parse.
+          const probedMocVersion = await probeDescriptorMocVersion(descriptor)
+          const coreSupport = getCubismCoreSupport()
+          if (
+            typeof probedMocVersion === 'number' &&
+            typeof coreSupport.latestMocVersion === 'number' &&
+            probedMocVersion > coreSupport.latestMocVersion
+          ) {
+            throw createLive2DError('L2D-MOC-003', {
+              resource: descriptor.builtIn ? descriptor.source : descriptor.name,
+              technicalDetail: `mocRuntimeVersion=${probedMocVersion} coreLatestMoc=${coreSupport.latestMocVersion} core=${coreSupport.coreVersion ?? 'unknown'}`,
+            })
           }
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,

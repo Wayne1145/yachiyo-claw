@@ -253,6 +253,7 @@
     "@lobehub/icons": "^4.0.2",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@pixi/unsafe-eval": "6.5.10",
+    "fast-xml-parser": "5.5.7",
     "framer-motion": "12.42.2",
     "lodash": "^4.17.21",
     "ofetch": "^1.0.1",

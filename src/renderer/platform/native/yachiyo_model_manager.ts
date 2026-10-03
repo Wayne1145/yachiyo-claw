@@ -31,6 +31,13 @@ export interface NativeModelLoadProgressEvent {
   indeterminate?: boolean
 }
 
+/** Token-level delta tailed from the isolated inference process's stream file. */
+export interface NativeModelInferDeltaEvent {
+  modelId: string
+  requestId: string
+  delta: string
+}
+
 export type NativeAccelerationMode = 'auto' | 'extreme'
 export type NativeAccelerationBackend = 'auto' | 'cpu' | 'gpu' | 'npu'
 
@@ -127,6 +134,10 @@ interface NativeModelManagerPlugin {
     eventName: 'loadProgress',
     listener: (event: NativeModelLoadProgressEvent) => void,
   ): Promise<PluginListenerHandle>
+  addListener(
+    eventName: 'inferDelta',
+    listener: (event: NativeModelInferDeltaEvent) => void,
+  ): Promise<PluginListenerHandle>
 }
 
 export interface NativeModelRuntimeState {
@@ -154,6 +165,34 @@ export function createNativeModelDownloadSink() {
   }
 }
 
+/** Markup openers that must never leak into the live stream as partial text. */
+const TOOL_MARKUP_OPENERS = ['<tool_call>', '<start_function_call>'] as const
+
+/**
+ * Length of the prefix of `text` that is safe to show immediately: everything
+ * before the first complete markup opener, and before any trailing substring
+ * that could still grow into one. Held-back text arrives via the final events.
+ */
+function streamSafeLength(text: string): number {
+  let safe = text.length
+  for (const opener of TOOL_MARKUP_OPENERS) {
+    const complete = text.indexOf(opener)
+    if (complete >= 0) safe = Math.min(safe, complete)
+    // Only a suffix that is a strict prefix of an opener can still grow into
+    // markup; hold back from its first possible start character.
+    const earliest = Math.max(0, text.length - opener.length + 1)
+    for (let start = earliest; start < text.length; start++) {
+      if (text[start] === '<' && opener.startsWith(text.slice(start))) {
+        safe = Math.min(safe, start)
+        break
+      }
+    }
+  }
+  return safe
+}
+
+const STREAM_POLL_INTERVAL_MS = 60
+
 export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
   async isAvailable(modelId: string): Promise<boolean> {
     return (await this.checkAvailability(modelId)).available
@@ -180,22 +219,92 @@ export class NativeLocalInferenceAdapter implements LocalInferenceAdapter {
     const requestId = `local-${globalThis.crypto?.randomUUID?.() || Date.now().toString(36)}`
     const cancel = () => void yachiyoModelManagerNative.cancelInference({ requestId }).catch(() => undefined)
     input.signal?.addEventListener('abort', cancel, { once: true })
+
+    type InferResult = Awaited<ReturnType<typeof yachiyoModelManagerNative.infer>>
+    const deltas: string[] = []
+    let settled = false
+    let failure: unknown
+    let finalResult: InferResult | undefined
+    let listener: Awaited<ReturnType<typeof yachiyoModelManagerNative.addListener>> | undefined
     try {
-      const result = await yachiyoModelManagerNative.infer({
+      listener = await yachiyoModelManagerNative.addListener('inferDelta', (event) => {
+        if (event.requestId === requestId && typeof event.delta === 'string' && event.delta) {
+          deltas.push(event.delta)
+        }
+      })
+    } catch {
+      // The final native result remains authoritative when delta events are unavailable.
+    }
+    const inferPromise = yachiyoModelManagerNative
+      .infer({
         modelId,
         requestId,
         messages: serializeLocalModelMessages(input.messages),
         tools: await serializeLocalTools(input.tools),
         maxTokens: input.maxTokens,
       })
+      .then((result) => {
+        finalResult = result
+        settled = true
+      })
+      .catch((reason) => {
+        failure = reason
+        settled = true
+      })
+
+    let pending = ''
+    let streamed = ''
+    try {
+      // Yield text while the isolated process is still sampling tokens.
+      while (!settled || deltas.length > 0) {
+        if (input.signal?.aborted) {
+          void inferPromise.catch(() => undefined)
+          throw new DOMException('Aborted', 'AbortError')
+        }
+        if (deltas.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, STREAM_POLL_INTERVAL_MS))
+          continue
+        }
+        pending += deltas.splice(0, deltas.length).join('')
+        const safe = streamSafeLength(pending)
+        if (safe > streamed.length) {
+          const chunk = pending.slice(streamed.length, safe)
+          streamed = pending.slice(0, safe)
+          yield { type: 'text', text: chunk }
+        }
+      }
+      if (failure) throw failure
       if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      for (const event of result.events) {
+
+      // Reconcile with the authoritative parsed events: text already streamed
+      // is emitted only once, markup never leaks, tool calls pass through.
+      let remainderPending = true
+      for (const event of finalResult?.events ?? []) {
         if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
         // No event is executed here. Tool-call events are consumed by the model
         // orchestration layer and must pass the same Broker as cloud models.
-        yield event
+        if (event.type === 'text') {
+          if (!remainderPending) {
+            yield event
+            continue
+          }
+          remainderPending = false
+          if (event.text.startsWith(streamed)) {
+            const rest = event.text.slice(streamed.length)
+            if (rest) yield { type: 'text', text: rest }
+          } else if (!streamed) {
+            yield event
+          }
+          // A streamed prefix that is not an event prefix means the runtime
+          // rewrote the text; the streamed characters are already on screen.
+        } else {
+          yield event
+        }
       }
     } finally {
+      settled = true
+      void inferPromise.catch(() => undefined)
+      await listener?.remove().catch(() => undefined)
       input.signal?.removeEventListener('abort', cancel)
     }
   }

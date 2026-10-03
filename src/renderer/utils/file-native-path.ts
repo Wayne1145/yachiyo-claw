@@ -2,6 +2,7 @@ const FILE_NATIVE_PATH_PROPERTY = '__chatboxNativePath'
 
 type FileWithRememberedNativePath = File & {
   [FILE_NATIVE_PATH_PROPERTY]?: string
+  path?: string
 }
 
 export function rememberFileNativePath(file: File, nativePath: string): string {
@@ -15,5 +16,6 @@ export function rememberFileNativePath(file: File, nativePath: string): string {
 }
 
 export function getBestEffortFileNativePath(file: File): string {
-  return (file as FileWithRememberedNativePath)[FILE_NATIVE_PATH_PROPERTY] || file.path || ''
+  const nativeFile = file as FileWithRememberedNativePath
+  return nativeFile[FILE_NATIVE_PATH_PROPERTY] || nativeFile.path || ''
 }

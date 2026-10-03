@@ -69,12 +69,9 @@ import {
   speakText,
   stopAndroidSpeechRecognition,
 } from '@/mobile/speech-runtime'
-import {
-  getContextMessageIds,
-  isAutoCompactionEnabled,
-  isCompactionInProgress,
-  useContextTokens,
-} from '@/packages/context-management'
+import { isAutoCompactionEnabled, isCompactionInProgress } from '@/packages/context-management/compaction'
+import { getContextMessageIds } from '@/packages/context-management/context-builder'
+import { useContextTokens } from '@/packages/context-management/context-tokens'
 import { trackingEvent } from '@/packages/event'
 import {
   getModelContextWindowSync,

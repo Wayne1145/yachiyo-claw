@@ -133,6 +133,8 @@ public final class LocalInferenceService extends Service {
         File errorFile = new File(requestFile.getPath() + ".error");
         File heartbeatFile = new File(requestFile.getPath() + ".heartbeat");
         File progressFile = new File(requestFile.getPath() + ".progress");
+        File streamFile = new File(requestFile.getPath() + ".stream");
+        streamFile.delete();
         AtomicReference<String> stage = new AtomicReference<>("starting");
         final long opStartedAt = SystemClock.elapsedRealtime();
         ScheduledFuture<?> monitor = monitorExecutor.scheduleAtFixedRate(() -> {
@@ -236,7 +238,8 @@ public final class LocalInferenceService extends Service {
                     stage.set(loadedModelPath.equals(modelPath) ? "generating" : "loading");
                     JSONArray preparedMessages = LocalToolProtocol.prepareMessages(messages, tools);
                     String text = GgufRunner.infer(
-                        modelPath, preparedMessages, maxTokens, requestId, gpuLayers, cpuThreads);
+                        modelPath, preparedMessages, maxTokens, requestId, gpuLayers, cpuThreads,
+                        streamFile.getAbsolutePath());
                     events = LocalToolProtocol.parseEvents(text, tools, requestId);
                     loadedRuntime = "llama.cpp";
                 }
@@ -269,6 +272,7 @@ public final class LocalInferenceService extends Service {
             resultTemp.delete();
             heartbeatFile.delete();
             progressFile.delete();
+            streamFile.delete();
             requestFile.delete();
             if (loadedModelPath.isEmpty()) {
                 stopForeground(STOP_FOREGROUND_REMOVE);
@@ -315,7 +319,7 @@ public final class LocalInferenceService extends Service {
                 .put("role", "user").put("content", "Reply with a concise factual sentence about Android."));
             int benchmarkTokens = "verify".equals(benchmarkPhase)
                 || AccelerationPolicy.MODE_EXTREME.equals(benchmarkMode) ? 32 : 12;
-            GgufRunner.infer(modelPath, messages, benchmarkTokens, "benchmark-infer", layers, cpuThreads);
+            GgufRunner.infer(modelPath, messages, benchmarkTokens, "benchmark-infer", layers, cpuThreads, null);
             result = GgufRunner.runtimeMetrics()
                 .put("initializationMs", initializationMs)
                 .put("backend", layers > 0 ? AccelerationPolicy.BACKEND_GPU : AccelerationPolicy.BACKEND_CPU)

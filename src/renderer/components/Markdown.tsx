@@ -54,14 +54,11 @@ import {
   IconJson,
   IconPlayerPlayFilled,
   type IconProps,
-  IconWorldUpload,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
 import { SKIP, visit } from 'unist-util-visit'
 import { useCopied } from '@/hooks/useCopied'
-import { deployHtmlToEdgeOne } from '../packages/edgeone'
 import { highlight, highlightSync, type ShikiTheme } from '../packages/shiki'
-import * as toastActions from '../stores/toastActions'
 import { ScalableIcon } from './common/ScalableIcon'
 import IconDart from './icons/Dart'
 import IconJava from './icons/Java'
@@ -517,11 +514,6 @@ const BlockCode = memo(
     const shikiTheme: ShikiTheme = colorScheme !== 'light' ? 'one-dark-pro' : 'one-light'
     const languageName = useMemo(() => language.toUpperCase(), [language])
     const isRenderableCode = useMemo(() => isRenderableCodeLanguage(language), [language])
-    const [deploying, setDeploying] = useState(false)
-    const canDeploy = useMemo(
-      () => isRenderableCode && String(children).trim().length > 0,
-      [children, isRenderableCode]
-    )
 
     const icon = useMemo(() => CodeIcons[languageName] || IconCode, [languageName])
 
@@ -544,28 +536,6 @@ const BlockCode = memo(
         }).catch(() => null)
       },
       [children]
-    )
-
-    const onClickDeploy = useCallback(
-      async (event: React.MouseEvent) => {
-        event.stopPropagation()
-        event.preventDefault()
-        if (!canDeploy) {
-          return
-        }
-        // 应投放侧要求改触发点为分享按钮。但注意现在语义上是 mismatch 的
-        onPreviewWebpage?.()
-        setDeploying(true)
-        try {
-          const url = await deployHtmlToEdgeOne(String(children))
-          await NiceModal.show('edgeone-deploy-success', { url })
-        } catch (error) {
-          toastActions.add((error as Error)?.message || t('Publish failed'))
-        } finally {
-          setDeploying(false)
-        }
-      },
-      [canDeploy, children, t, onPreviewWebpage]
     )
 
     const needCollapse = useMemo(
@@ -617,20 +587,6 @@ const BlockCode = memo(
               <Tooltip label={t('Preview')} withArrow openDelay={1000}>
                 <ActionIcon variant="transparent" color="chatbox-tertiary" size={20} onClick={onClickArtifact}>
                   <IconPlayerPlayFilled />
-                </ActionIcon>
-              </Tooltip>
-            )}
-
-            {canDeploy && (
-              <Tooltip label={t('Publish Webpage')} withArrow openDelay={1000}>
-                <ActionIcon
-                  variant="transparent"
-                  color="chatbox-tertiary"
-                  size={20}
-                  onClick={onClickDeploy}
-                  disabled={deploying}
-                >
-                  {deploying ? <Loader size={12} /> : <IconWorldUpload />}
                 </ActionIcon>
               </Tooltip>
             )}

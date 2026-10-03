@@ -84,6 +84,25 @@ public final class YachiyoAppearancePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setThemePreference(PluginCall call) {
+        String theme = call.getString("theme", "system");
+        if (!"light".equals(theme) && !"dark".equals(theme) && !"system".equals(theme)) {
+            call.reject("theme must be 'light', 'dark' or 'system'");
+            return;
+        }
+        final String requestedTheme = theme;
+        YachiyoThemePreference.write(getContext(), requestedTheme);
+        getActivity().runOnUiThread(() -> {
+            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                YachiyoThemePreference.nightModeFor(requestedTheme)
+            );
+            JSObject result = new JSObject();
+            result.put("applied", true);
+            call.resolve(result);
+        });
+    }
+
+    @PluginMethod
     public void getInteractionState(PluginCall call) {
         getActivity().runOnUiThread(() -> call.resolve(interactionStateJson(currentInteractionState())));
     }

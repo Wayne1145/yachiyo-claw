@@ -7,7 +7,6 @@ import type { ModelDependencies } from '../types/adapters'
 // Import order determines display order in UI (side-effect registration into Map)
 import './definitions/yachiyo'
 import './definitions/local'
-import './definitions/chatboxai'
 import './definitions/openai'
 import './definitions/openai-responses'
 import './definitions/gemini'

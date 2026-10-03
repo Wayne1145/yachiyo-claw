@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import localforage from 'localforage'
 import { createLive2DError, normalizeLive2DError } from './live2d-errors'
+import { detectLive2DMocVersion } from './live2d-performance'
 
 export type Live2DActionKind = 'expression' | 'motion'
 
@@ -19,6 +20,8 @@ export interface Live2DModelDescriptor {
   avatar?: string
   builtIn: boolean
   actions: Live2DAction[]
+  /** Moc runtime version detected at import time; lets the stage check core compatibility without fetching. */
+  mocVersion?: number
 }
 
 interface StoredLive2DModel {
@@ -27,6 +30,7 @@ interface StoredLive2DModel {
   blobKey: string
   actions: Live2DAction[]
   importedAt: number
+  mocVersion?: number
 }
 
 interface Model3Json {
@@ -179,6 +183,7 @@ export async function listLive2DModels(): Promise<Live2DModelDescriptor[]> {
         source: `zip://${source}`,
         builtIn: false,
         actions: stored.actions,
+        mocVersion: stored.mocVersion,
       } as Live2DModelDescriptor
     })
   )
@@ -283,6 +288,25 @@ export async function importLive2DModel(file: File): Promise<Live2DModelDescript
   }
   validateModelReferences(normalizeArchivePath(settingsPath), settings, paths)
   const actions = extractLive2DActions(settings)
+
+  // Detect the moc runtime version at import time: zip:// sources cannot be
+  // probed via fetch later, and an early check gives a precise error instead of
+  // the Cubism Core's generic "Unknown error".
+  const mocReference = settings.FileReferences?.Moc as string
+  const mocPath = resolveModelReference(normalizeArchivePath(settingsPath), mocReference)
+  const mocEntry = zip.file(mocPath)
+  let mocVersion: number | undefined
+  if (mocEntry) {
+    const detected = detectLive2DMocVersion(await mocEntry.async('arraybuffer'))
+    if (detected === 'unknown') {
+      throw createLive2DError('L2D-MOC-001', {
+        resource: mocPath,
+        technicalDetail: 'Moc3 header magic missing or version byte out of range',
+      })
+    }
+    mocVersion = detected
+  }
+
   const id = `live2d-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const name = file.name.replace(/\.zip$/i, '') || '导入模型'
   const blobKey = `model:${id}`
@@ -295,7 +319,7 @@ export async function importLive2DModel(file: File): Promise<Live2DModelDescript
       technicalDetail: normalizeLive2DError(reason, { phase: 'storage' }).technicalDetail,
     })
   }
-  const stored: StoredLive2DModel = { id, name, blobKey, actions, importedAt: Date.now() }
+  const stored: StoredLive2DModel = { id, name, blobKey, actions, importedAt: Date.now(), mocVersion }
   try {
     writeStoredRegistry([...readStoredRegistry(), stored])
   } catch (reason) {
@@ -306,7 +330,7 @@ export async function importLive2DModel(file: File): Promise<Live2DModelDescript
   }
   const source = URL.createObjectURL(blob)
   objectUrls.set(id, source)
-  return { id, name, source: `zip://${source}`, builtIn: false, actions }
+  return { id, name, source: `zip://${source}`, builtIn: false, actions, mocVersion }
 }
 
 export async function deleteLive2DModel(id: string): Promise<void> {

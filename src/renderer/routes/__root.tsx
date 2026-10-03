@@ -2,7 +2,6 @@ import { Theme } from '@shared/types'
 import { z } from 'zod'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import Toasts from '@/components/common/Toasts'
-import DesktopDownloadReminder from '@/components/layout/DesktopDownloadReminder'
 import { AndroidAppShell } from '@/components/yachiyo/AndroidAppShell'
 import { MobileUpdateDialog } from '@/components/yachiyo/MobileUpdateDialog'
 import useAppTheme from '@/hooks/useAppTheme'
@@ -50,7 +49,6 @@ import { shouldUseAndroidAppShell } from '@/mobile/android-app-shell'
 import SettingsModal, { navigateToSettings } from '@/modals/Settings'
 import { prefetchModelRegistry } from '@/packages/model-registry'
 import PictureDialog from '@/pages/PictureDialog'
-import RemoteDialogWindow from '@/pages/RemoteDialogWindow'
 import SearchDialog from '@/pages/SearchDialog'
 import platform from '@/platform'
 import { router } from '@/router'
@@ -148,43 +146,8 @@ function Root() {
 
       // Yachiyo owns onboarding and update surfaces locally. Startup must not
       // contact or navigate through the upstream Chatbox experience.
-      if (useAndroidAppShell) {
-        initialized.current = true
-        if (location.pathname === '/guide') {
-          void router.navigate({ to: '/', replace: true })
-        }
-        return
-      }
-
-      // Skip guide-related checks if already on guide or settings/mcp page
-      if (location.pathname === '/guide' || location.pathname === '/settings/mcp') {
-        initialized.current = true
-        return
-      }
-
-      // On store builds (iOS / Google Play), wait for both version AND remoteConfig.current_version
-      // before making guide/navigation decisions. isExceeded depends on both async data sources;
-      // if we only wait for version, remoteConfig may still be empty, causing isExceeded to be
-      // falsely falsy and letting the guide navigation slip through during store review.
-      const isStoreReviewPlatform =
-        CHATBOX_BUILD_PLATFORM === 'ios' ||
-        (CHATBOX_BUILD_PLATFORM === 'android' && CHATBOX_BUILD_CHANNEL === 'google_play')
-      if (isStoreReviewPlatform && !isExceededResolved) {
-        return
-      }
-
       initialized.current = true
-
-      // Check if user needs onboarding guide
-      // Conditions: not completed onboarding AND no valid config
-      const onboardingCompleted = onboardingStore.getState().completed
-      const needsSetup = settingActions.needEditSetting()
-
-      // Auto-navigate to guide for new users who need setup
-      if (!isExceeded && !onboardingCompleted && needsSetup) {
-        router.navigate({ to: '/guide', replace: true })
-        return
-      }
+      return
 
     })()
   }, [location.pathname, isExceeded, isExceededResolved, useAndroidAppShell])
@@ -305,13 +268,8 @@ function Root() {
       {/* <OpenAttachLinkDialog /> */}
       {/* 图片预览 */}
       <PictureDialog />
-      {/* 似乎是从后端拉一个弹窗的配置 */}
-      {!useAndroidAppShell && <RemoteDialogWindow />}
-      {/* 手机端举报内容 */}
-      {/* <ReportContentDialog /> */}
       {/* 搜索 */}
       <SearchDialog />
-      {!useAndroidAppShell && <DesktopDownloadReminder />}
       {/* 没有配置模型时的欢迎弹窗 */}
       {/* <WelcomeDialog /> */}
       <Toasts /> {/* mui */}

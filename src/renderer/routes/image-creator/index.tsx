@@ -1,4 +1,3 @@
-import NiceModal from '@ebay/nice-modal-react'
 import {
   ActionIcon,
   Box,
@@ -26,8 +25,6 @@ import {
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { JK_PAGE_NAMES } from '@/analytics/jk-events'
-import { ChatboxWelcomeCard } from '@/components/common/ChatboxWelcomeCard'
 import { ImageModelSelect } from '@/components/ImageModelSelect'
 import Page from '@/components/layout/Page'
 import { type ImageModelGroup, useImageModelGroups } from '@/hooks/useImageModelGroups'
@@ -36,7 +33,6 @@ import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { getLogger } from '@/lib/utils'
 import storage from '@/storage'
 import { StorageKeyGenerator } from '@/storage/StoreStorage'
-import { useAuthInfoStore } from '@/stores/authInfoStore'
 import { cancelGeneration, createAndGenerate, resumeGeneration, retryGeneration } from '@/stores/imageGenerationActions'
 import {
   deleteRecord,
@@ -48,9 +44,8 @@ import {
   useImageGenerationRecord,
 } from '@/stores/imageGenerationStore'
 import { queryClient } from '@/stores/queryClient'
-import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import * as toastActions from '@/stores/toastActions'
-import { getHomeWelcomeCardMode } from '@/utils/homeWelcomeCard'
 import {
   getRatioOptionsForModel,
   HISTORY_IMAGE_MODEL_DISPLAY_NAMES,
@@ -213,14 +208,6 @@ function ImageCreatorPage() {
   const isSmallScreen = useIsSmallScreen()
   const { providers } = useProviders()
   const imageModelGroups = useImageModelGroups()
-  const hasLicense = useSettingsStore((s) => Boolean(s.licenseKey))
-  const hasExpiredLicense = useSettingsStore((s) => s.hasExpiredLicense)
-  const isLoggedIn = useAuthInfoStore((s) => Boolean(s.accessToken && s.refreshToken))
-  const welcomeCardMode = useMemo(
-    () => getHomeWelcomeCardMode({ providerCount: providers.length, isLoggedIn, hasLicense, hasExpiredLicense }),
-    [providers.length, isLoggedIn, hasLicense, hasExpiredLicense]
-  )
-
   const [prompt, setPrompt] = useState('')
   const [referenceImages, setReferenceImages] = useState<
     { storageKey: string; sourceRecordId?: string; isTempUpload?: boolean }[]
@@ -230,7 +217,7 @@ function ImageCreatorPage() {
   const tempUploadKeysRef = useRef<Set<string>>(new Set())
   const [showHistory, setShowHistory] = useState(true)
   const [showMobileHistory, setShowMobileHistory] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState<string>(ModelProviderEnum.ChatboxAI)
+  const [selectedProvider, setSelectedProvider] = useState<string>(ModelProviderEnum.OpenAI)
   const [selectedModel, setSelectedModel] = useState<string>('')
   const [selectedRatio, setSelectedRatio] = useState<string>('auto')
   const [showModelDrawer, setShowModelDrawer] = useState(false)
@@ -359,11 +346,6 @@ function ImageCreatorPage() {
       return
     }
 
-    if (selectedProvider === ModelProviderEnum.ChatboxAI && !settingsStore.getState().licenseKey) {
-      toastActions.add(t('Please log in to Chatbox AI first'))
-      return
-    }
-
     try {
       // Collect all unique source record IDs from reference images (DAG support)
       const parentIds = [
@@ -399,11 +381,6 @@ function ImageCreatorPage() {
         return
       }
 
-      if (selectedProvider === ModelProviderEnum.ChatboxAI && !settingsStore.getState().licenseKey) {
-        toastActions.add(t('Please log in to Chatbox AI first'))
-        return
-      }
-
       try {
         await createAndGenerate({
           prompt: quickPrompt,
@@ -427,20 +404,6 @@ function ImageCreatorPage() {
       if (prev.length >= MAX_REFERENCE_IMAGES) return prev
       return [...prev, { storageKey, sourceRecordId, isTempUpload: false }]
     })
-  }, [])
-
-  const handleReportGeneratedImage = useCallback(async (record: ImageGeneration) => {
-    const contentId = [
-      `Image generation prompt: ${record.prompt}`,
-      `Record ID: ${record.id}`,
-      record.taskId ? `Task ID: ${record.taskId}` : undefined,
-      record.generatedImages.length > 0 ? `Images: ${record.generatedImages.join(', ')}` : undefined,
-      `Model: ${record.model.provider}/${record.model.modelId}`,
-    ]
-      .filter((item): item is string => Boolean(item))
-      .join('\n')
-
-    await NiceModal.show('report-content', { contentId })
   }, [])
 
   const handleHistoryClick = useCallback(
@@ -486,9 +449,6 @@ function ImageCreatorPage() {
       const providerModel = providerModels.find((item) => item.modelId === model.modelId)
       const modelName = imageModel?.displayName || providerModel?.nickname || model.modelId || 'Image'
 
-      if (model.provider === ModelProviderEnum.ChatboxAI) {
-        return modelName
-      }
       const providerName = group?.label || provider?.name || model.provider
       return `${providerName} - ${modelName}`
     },
@@ -507,10 +467,6 @@ function ImageCreatorPage() {
     (model: ImageGenerationModel) => {
       const legacyName = HISTORY_IMAGE_MODEL_DISPLAY_NAMES[model.modelId]
       if (!legacyName) return getImageModelDisplayName(model)
-
-      if (model.provider === ModelProviderEnum.ChatboxAI) {
-        return legacyName
-      }
 
       const group = imageModelGroups.find((item) => item.providerId === model.provider)
       const provider = providers.find((item) => item.id === model.provider)
@@ -564,7 +520,7 @@ function ImageCreatorPage() {
                       <GeneratedImagesGallery
                         images={currentRecord.generatedImages}
                         onUseAsReference={(urlOrKey) => handleUseAsReference(urlOrKey, currentRecord.id)}
-                        onReport={isSmallScreen ? () => void handleReportGeneratedImage(currentRecord) : undefined}
+                        onReport={undefined}
                       />
                     </Flex>
                   )}
@@ -598,9 +554,6 @@ function ImageCreatorPage() {
           {/* Input Area */}
           <Box py="md" px="sm">
             <Stack gap="sm" maw={800} mx="auto">
-              {!currentRecord && welcomeCardMode !== 'none' && (
-                <ChatboxWelcomeCard mode={welcomeCardMode} pageName={JK_PAGE_NAMES.IMAGE_PAGE} />
-              )}
 
               <ReferenceImagesPreview
                 images={referenceImages}

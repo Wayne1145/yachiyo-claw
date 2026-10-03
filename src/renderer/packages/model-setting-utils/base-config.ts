@@ -13,7 +13,6 @@ import {
   getProviderModelsFromRegistry,
   getRegistry,
 } from '../../packages/model-registry'
-import * as remote from '../../packages/remote'
 import type { ModelSettingUtil } from './interface'
 
 export default abstract class BaseConfig implements ModelSettingUtil {
@@ -27,20 +26,7 @@ export default abstract class BaseConfig implements ModelSettingUtil {
 
   protected abstract listProviderModels(settings: ProviderSettings): Promise<ProviderModelInfo[]>
 
-  private async listRemoteProviderModels(): Promise<ProviderModelInfo[]> {
-    return await remote
-      .getModelManifest({
-        aiProvider: this.provider,
-      })
-      .then((res) => {
-        return Array.isArray(res.models) ? res.models : []
-      })
-      .catch(() => {
-        return []
-      })
-  }
-
-  // 有四个来源：本地写死、后端配置、服务商模型列表、models.dev registry（fallback + enrichment）
+  // 有三个来源：本地写死、服务商模型列表、models.dev registry（fallback + enrichment）
   public async getMergeOptionGroups(providerSettings: ProviderSettings): Promise<ProviderModelInfo[]> {
     const definition = getProviderDefinition(this.provider)
     if (definition?.modelsDevProviderId) {
@@ -48,18 +34,11 @@ export default abstract class BaseConfig implements ModelSettingUtil {
     }
 
     const localOptionGroups = providerSettings.models || []
-    const [remoteModels, providerApiModels] = await Promise.all([
-      this.listRemoteProviderModels().catch((e) => {
-        Sentry.captureException(e)
-        return []
-      }),
-      this.listProviderModels(providerSettings).catch((e) => {
-        Sentry.captureException(e)
-        return []
-      }),
-    ])
+    const providerApiModels = await this.listProviderModels(providerSettings).catch((e) => {
+      Sentry.captureException(e)
+      return []
+    })
 
-    const safeRemoteModels = Array.isArray(remoteModels) ? remoteModels : []
     let safeProviderModels = Array.isArray(providerApiModels) ? providerApiModels : []
 
     // Fallback: 当 provider API 返回空时，使用 models.dev registry 的 curated model list
@@ -74,8 +53,7 @@ export default abstract class BaseConfig implements ModelSettingUtil {
       }
     }
 
-    const remoteOptionGroups = [...safeRemoteModels, ...safeProviderModels]
-    const mergedModels = this.mergeOptionGroups(localOptionGroups, remoteOptionGroups)
+    const mergedModels = this.mergeOptionGroups(localOptionGroups, safeProviderModels)
 
     // 使用 models.dev registry 丰富模型元数据（同步，无网络调用）
     const enrichedModels = enrichModelsFromRegistry(mergedModels, this.provider)

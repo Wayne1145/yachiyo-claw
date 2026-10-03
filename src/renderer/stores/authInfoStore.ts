@@ -1,8 +1,12 @@
 import { createStore, useStore } from 'zustand'
 import { createJSONStorage, persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import type { AuthTokens } from '../routes/settings/provider/chatbox-ai/-components/types'
 import { AUTH_INFO_STORAGE_KEY, getAuthInfoStateStorage } from './authInfoStorage'
+
+interface AuthTokens {
+  accessToken: string
+  refreshToken: string
+}
 
 interface AuthTokensState {
   accessToken: string | null

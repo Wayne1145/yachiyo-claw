@@ -11,7 +11,6 @@ import { getLogger } from '@/lib/utils'
 import { getDisabledAgentCapabilityPrompt } from '@/mobile/agent-disabled-prompt'
 import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from '@/mobile/automatic-memory'
 import { buildSharedUserContextPrompt } from '@/mobile/shared-user-context'
-import * as appleAppStore from '@/packages/apple_app_store'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { estimateTokensFromMessages } from '@/packages/token'
 import platform from '@/platform'
@@ -321,7 +320,6 @@ export async function orchestrateGeneration(
     }
 
     await persistStreamingMessage(sessionId, targetMsg, { refreshCounting: true })
-    appleAppStore.tickAfterMessageGenerated()
   } catch (err: unknown) {
     if (controller.signal.aborted) {
       targetMsg = {

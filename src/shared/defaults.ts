@@ -86,7 +86,7 @@ export function settings(): Settings {
     userAvatarKey: '',
     defaultAssistantAvatarKey: '',
     backgroundImageKey: '',
-    theme: Theme.Light,
+    theme: Theme.System,
     language: 'en',
     fontSize: 14,
     spellCheck: true,
@@ -181,7 +181,7 @@ export function chatSessionSettings(): SessionSettings {
 
 export function pictureSessionSettings(): SessionSettings {
   return {
-    provider: ModelProviderEnum.ChatboxAI,
+    provider: ModelProviderEnum.OpenAI,
     modelId: 'DALL-E-3',
     imageGenerateNum: 1,
     dalleStyle: 'vivid',

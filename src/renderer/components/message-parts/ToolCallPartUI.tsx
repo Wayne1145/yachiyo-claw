@@ -23,7 +23,6 @@ import clsx from 'clsx'
 import { type FC, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChatboxAIErrorMessage } from '@/components/common/ChatboxAIErrorMessage'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { formatElapsedTime, useThinkingTimer } from '@/hooks/useThinkingTimer'
 import { getToolName } from '@/packages/tools'
@@ -43,13 +42,14 @@ function extractToolError(part: MessageToolCallPart): { errorCode?: number; erro
 const ToolCallErrorDetails: FC<{ part: MessageToolCallPart }> = ({ part }) => {
   const { t } = useTranslation()
   const { errorCode, errorText } = extractToolError(part)
-  // Only render the rich i18n message if the code is one we know about — unknown
-  // codes (e.g. NetworkError, generic ApiError) would render as null and silently
-  // hide the underlying error text.
-  if (errorCode && ChatboxAIAPIError.getDetail(errorCode)) {
+  // Unknown codes (e.g. NetworkError, generic ApiError) fall through to the raw error text.
+  const detail = errorCode ? ChatboxAIAPIError.getDetail(errorCode) : undefined
+  if (detail) {
+    // Interactive i18n placeholders (settings links) are flattened into plain text here.
+    const plainKey = detail.i18nKey.replace(/<\/?[A-Za-z][^>]*>/g, '')
     return (
-      <Text size="sm" c="chatbox-error" component="div">
-        <ChatboxAIErrorMessage errorCode={errorCode} trackingSource="msg_tool_error" />
+      <Text size="sm" c="chatbox-error">
+        {t(plainKey)}
       </Text>
     )
   }

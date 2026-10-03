@@ -8,7 +8,6 @@ import LinkTargetBlank from '@/components/common/Link'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { navigateToSettings } from '@/modals/Settings'
 import { trackingEvent } from '@/packages/event'
-import { buildChatboxUrl } from '@/packages/remote'
 import platform from '@/platform'
 import {
   isSessionAttachmentRagAuthError,
@@ -18,6 +17,9 @@ import {
   SESSION_ATTACHMENT_RAG_REQUIRES_TOOL_USE_MODEL_ERROR,
 } from '@/stores/sessionHelpers'
 import * as settingActions from '@/stores/settingActions'
+
+const CHATBOX_ORIGIN = 'https://chatboxai.app'
+const buildChatboxUrl = (path: string) => `${CHATBOX_ORIGIN}${path}`
 
 interface FileParseErrorProps {
   errorCode: string

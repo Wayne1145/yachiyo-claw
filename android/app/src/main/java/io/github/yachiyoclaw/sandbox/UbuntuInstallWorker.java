@@ -27,6 +27,11 @@ public final class UbuntuInstallWorker extends Worker {
         WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.KEEP, request);
     }
 
+    /** Called on uninstall so a queued worker cannot keep retrying a download the user discarded. */
+    static void cancel(Context context) {
+        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK);
+    }
+
     @NonNull @Override public Result doWork() {
         try {
             UbuntuDistribution.Spec distribution = UbuntuDistribution.current(getApplicationContext().getApplicationInfo().nativeLibraryDir);
@@ -36,7 +41,12 @@ public final class UbuntuInstallWorker extends Worker {
             if (!installer.isInstalled()) {
                 String state = installer.downloadState();
                 if ("failed".equals(state) || "cancelled".equals(state)) return Result.failure();
-                if (!"completed".equals(state)) return Result.retry();
+                if (!"completed".equals(state)) {
+                    // A discarded download (not_downloaded) never completes; an in-flight
+                    // one may. Bound the retries either way so this worker cannot loop
+                    // forever after the user removes the distribution.
+                    return getRunAttemptCount() < 20 ? Result.retry() : Result.failure();
+                }
                 installer.installDownloaded((stage, percent, transferred, total) -> {});
             }
             SandboxJobStore store = new SandboxJobStore(getApplicationContext());

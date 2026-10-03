@@ -78,7 +78,18 @@
       // The product corner contract is deliberately the regular R corner.
       // Do not let a WebView's optional squircle implementation change it.
       document.documentElement.setAttribute("data-yachiyo-corners", "round");
+      var themeSetting = localStorage.getItem("theme-setting");
       var initialTheme = localStorage.getItem("initial-theme");
+      if (themeSetting === "system" || (!themeSetting && !initialTheme)) {
+        // The default setting follows the system; resolve it live so a system
+        // light/dark change made while the app was closed cannot paint one
+        // frame in the stale theme.
+        initialTheme =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+      }
       if (initialTheme === "light" || initialTheme === "dark") {
         document.documentElement.setAttribute("data-theme", initialTheme);
         document.documentElement.setAttribute(

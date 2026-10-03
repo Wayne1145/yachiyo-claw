@@ -163,6 +163,10 @@ public final class YachiyoSandboxService extends Service {
             if (distribution == null) throw new IllegalStateException("ubuntu_abi_unsupported");
             UbuntuDistributionInstaller installer = new UbuntuDistributionInstaller(this, distribution);
             if (!installer.isInstalled()) throw new IllegalStateException("ubuntu_not_installed");
+            // Android may purge code_cache at any time; restore the PRoot runtime
+            // libraries before launching or a recovered job dies with a link error.
+            installer.prepareRuntimeFiles();
+            syncGuestDnsQuietly(installer.rootfsDirectory());
             return new RuntimeFiles(installer.rootfsDirectory(), installer.runtimeDirectory(), SandboxProcessFactory.RuntimeConfig.ubuntu());
         }
         SandboxDistribution.Spec distribution = SandboxDistribution.current(getApplicationInfo().nativeLibraryDir);
@@ -174,7 +178,17 @@ public final class YachiyoSandboxService extends Service {
         if (!installer.isInstalled()) {
             throw new IllegalStateException("sandbox_not_ready");
         }
+        installer.prepareRuntimeFiles();
+        syncGuestDnsQuietly(installer.rootfsDirectory());
         return new RuntimeFiles(installer.rootfsDirectory(), installer.runtimeDirectory(), SandboxProcessFactory.RuntimeConfig.alpine());
+    }
+
+    private void syncGuestDnsQuietly(File rootfs) {
+        try {
+            GuestDns.sync(this, rootfs);
+        } catch (Exception ignored) {
+            // A stale resolv.conf must not block job startup.
+        }
     }
 
     private void stopJob(String id) {

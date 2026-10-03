@@ -36,6 +36,7 @@ object GgufRunner {
     requestId: String,
     gpuLayers: Int,
     cpuThreads: Int,
+    streamPath: String? = null,
   ): String {
     require(File(modelPath).isFile) { "local_model_file_missing" }
     require(LocalModelFormat.isRunnableGgufPath(modelPath)) { "local_model_not_gguf" }
@@ -58,6 +59,7 @@ object GgufRunner {
       requestId,
       gpuLayers.coerceAtLeast(0),
       cpuThreads.coerceAtLeast(1),
+      streamPath,
     )
   }
 
@@ -112,6 +114,7 @@ object GgufRunner {
     requestId: String,
     gpuLayers: Int,
     cpuThreads: Int,
+    streamPath: String?,
   ): String
 
   @JvmStatic private external fun nativeCancel(requestId: String)

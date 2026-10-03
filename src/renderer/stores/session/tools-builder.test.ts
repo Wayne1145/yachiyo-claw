@@ -220,7 +220,7 @@ describe('buildToolsForSession web search tools', () => {
   })
 
   it('should mention parse_link only when the selected search provider exposes it', async () => {
-    mockSettings.provider = 'build-in'
+    mockSettings.provider = 'tavily'
 
     const result = await buildToolsForSession(makeModel(true), {
       webBrowsing: true,

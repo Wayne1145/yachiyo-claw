@@ -411,10 +411,12 @@ public final class YachiyoModelManagerPlugin extends Plugin {
         File errorFile = new File(request.getPath() + ".error");
         File heartbeatFile = new File(request.getPath() + ".heartbeat");
         File progressFile = new File(request.getPath() + ".progress");
+        File streamFile = new File(request.getPath() + ".stream");
         Files.deleteIfExists(resultFile.toPath());
         Files.deleteIfExists(errorFile.toPath());
         Files.deleteIfExists(heartbeatFile.toPath());
         Files.deleteIfExists(progressFile.toPath());
+        Files.deleteIfExists(streamFile.toPath());
         boolean track = requestId != null && !requestId.isEmpty();
         if (track) cancelledRequests.remove(requestId); // clear any stale flag before a fresh run
         try {
@@ -424,6 +426,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             long deadline = startedAt + INFERENCE_TIMEOUT_MS;
             boolean heartbeatSeen = false;
             long progressModified = 0L;
+            long streamOffset = 0L;
             while (!resultFile.isFile() && !errorFile.isFile()) {
                 if (track && cancelledRequests.remove(requestId)) throw new IllegalStateException("local_inference_cancelled");
                 long now = System.currentTimeMillis();
@@ -436,6 +439,27 @@ public final class YachiyoModelManagerPlugin extends Plugin {
                     if (heartbeatAge > HEARTBEAT_STALL_MS) {
                         throw new IllegalStateException("local_inference_stalled");
                     }
+                }
+                // Tail the token stream file so the WebView renders text as it is sampled.
+                long streamLength = streamFile.isFile() ? streamFile.length() : 0L;
+                if (streamLength > streamOffset) {
+                    try (java.io.RandomAccessFile tail = new java.io.RandomAccessFile(streamFile, "r")) {
+                        tail.seek(streamOffset);
+                        byte[] chunk = new byte[(int) Math.min(streamLength - streamOffset, 256 * 1024)];
+                        int read = tail.read(chunk);
+                        if (read > 0) {
+                            streamOffset += read;
+                            JSObject delta = new JSObject();
+                            delta.put("modelId", modelId);
+                            delta.put("requestId", safeId);
+                            delta.put("delta", new String(chunk, 0, read, StandardCharsets.UTF_8));
+                            notifyListeners("inferDelta", delta);
+                        }
+                    } catch (Exception ignored) {
+                        // The writer may be replacing the file; the next tick retries.
+                    }
+                } else if (streamLength > 0L && streamLength < streamOffset) {
+                    streamOffset = 0L; // The stream file was truncated by a newer attempt.
                 }
                 if (progressFile.isFile() && progressFile.lastModified() != progressModified) {
                     progressModified = progressFile.lastModified();
@@ -459,6 +483,7 @@ public final class YachiyoModelManagerPlugin extends Plugin {
             errorFile.delete();
             heartbeatFile.delete();
             progressFile.delete();
+            streamFile.delete();
             request.delete();
         }
     }

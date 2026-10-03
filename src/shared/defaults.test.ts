@@ -9,7 +9,7 @@ describe('defaults', () => {
   it('settings() returns expected default values', () => {
     const result: Settings = settings()
 
-    expect(result.theme).toBe(Theme.Light)
+    expect(result.theme).toBe(Theme.System)
     expect(result.language).toBe('en')
     expect(result.fontSize).toBe(14)
     expect(result.spellCheck).toBe(true)
@@ -71,7 +71,7 @@ describe('defaults', () => {
   it('pictureSessionSettings() returns provider, modelId, dalleStyle, imageGenerateNum', () => {
     const result: SessionSettings = pictureSessionSettings()
 
-    expect(result.provider).toBe(ModelProviderEnum.ChatboxAI)
+    expect(result.provider).toBe(ModelProviderEnum.OpenAI)
     expect(result.modelId).toBe('DALL-E-3')
     expect(result.dalleStyle).toBe('vivid')
     expect(result.imageGenerateNum).toBe(1)

@@ -200,6 +200,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
         if (ubuntuInstaller == null) { call.reject("ubuntu_abi_unsupported"); return; }
         executor.execute(() -> {
             try {
+                UbuntuInstallWorker.cancel(getContext());
                 for (SandboxJobStore.Job job : jobStore.list()) {
                     if (UbuntuDistribution.RUNTIME_ID.equals(job.runtimeId)
                         && (SandboxJobStore.STATE_RUNNING.equals(job.state) || SandboxJobStore.STATE_QUEUED.equals(job.state))) {
@@ -750,34 +751,32 @@ public final class YachiyoSandboxPlugin extends Plugin {
 
     private void killProcessTree(Process process) {
         process.destroy();
-        killSandboxProcesses();
+        // Kill only this process's own tree. A global /proc scan previously
+        // matched every PRoot on the device, so cancelling one Alpine exec
+        // also killed unrelated Ubuntu builds and concurrent sandbox jobs.
+        Integer pid = processIdOf(process);
+        if (pid != null) killProcessTree(pid, new HashSet<>());
         process.destroyForcibly();
     }
 
-    private void killSandboxProcesses() {
-        File[] entries = new File("/proc").listFiles();
-        if (entries == null) return;
-        String sandboxPath = new File(getContext().getFilesDir(), "linux-sandbox").getAbsolutePath();
-        Set<Integer> visited = new HashSet<>();
-        for (File entry : entries) {
-            int processId;
+    private static Integer processIdOf(Process process) {
+        try {
+            java.lang.reflect.Field field = process.getClass().getDeclaredField("pid");
+            field.setAccessible(true);
+            Object value = field.get(process);
+            if (value instanceof Number) return ((Number) value).intValue();
+        } catch (Exception ignored) {
+            // Fall through to the toString probe below.
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("pid=(\\d+)").matcher(process.toString());
+        if (matcher.find()) {
             try {
-                processId = Integer.parseInt(entry.getName());
+                return Integer.parseInt(matcher.group(1));
             } catch (NumberFormatException ignored) {
-                continue;
-            }
-            try {
-                String command = new String(
-                    Files.readAllBytes(new File(entry, "cmdline").toPath()),
-                    StandardCharsets.UTF_8
-                );
-                if (command.contains("libyachiyo_proot.so") && command.contains(sandboxPath)) {
-                    killProcessTree(processId, visited);
-                }
-            } catch (IOException | SecurityException ignored) {
-                // The process may exit between listing /proc and reading it.
+                // No reliable pid; destroyForcibly in the caller still applies.
             }
         }
+        return null;
     }
 
     private static void killProcessTree(int processId, Set<Integer> visited) {
@@ -805,24 +804,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
     }
 
     private void syncGuestDns() throws Exception {
-        ConnectivityManager manager = getContext().getSystemService(ConnectivityManager.class);
-        Network activeNetwork = manager == null ? null : manager.getActiveNetwork();
-        LinkProperties properties = manager == null || activeNetwork == null ? null : manager.getLinkProperties(activeNetwork);
-        List<InetAddress> servers = properties == null ? java.util.Collections.emptyList() : properties.getDnsServers();
-        StringBuilder content = new StringBuilder();
-        for (InetAddress server : servers) {
-            String address = server.getHostAddress();
-            if (address != null && !address.trim().isEmpty() && address.indexOf('%') < 0) {
-                content.append("nameserver ").append(address).append('\n');
-            }
-        }
-        if (content.length() == 0) content.append("nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
-        File resolv = new File(installer.rootfsDirectory(), "etc/resolv.conf");
-        if (Files.isSymbolicLink(resolv.toPath())) Files.delete(resolv.toPath());
-        try (FileOutputStream output = new FileOutputStream(resolv)) {
-            output.write(content.toString().getBytes(StandardCharsets.US_ASCII));
-            output.getFD().sync();
-        }
+        GuestDns.sync(getContext(), installer.rootfsDirectory());
     }
 
     private File workspaceFor(String requested) throws Exception {

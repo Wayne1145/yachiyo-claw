@@ -36,6 +36,7 @@ interface YachiyoAppearancePlugin {
       edgeToEdge: true
     }
   >
+  setThemePreference(options: { theme: 'light' | 'dark' | 'system' }): Promise<{ applied: boolean }>
   getInteractionState(): Promise<NativeAndroidInteractionState>
   addListener(
     eventName: 'interactionStateChanged',
@@ -78,6 +79,15 @@ export async function syncAndroidSystemBars(options: AndroidSystemBarOptions): P
 export async function getAndroidInteractionState(): Promise<AndroidInteractionState> {
   if (!isNativeAndroid()) return NOT_ANDROID_INTERACTION_STATE
   return yachiyoAppearanceNative.getInteractionState()
+}
+
+/**
+ * Persists the in-app theme setting natively so the Android window/splash
+ * follows the user's choice instead of always tracking the system scheme.
+ */
+export async function setAndroidThemePreference(theme: 'light' | 'dark' | 'system'): Promise<void> {
+  if (!isNativeAndroid()) return
+  await yachiyoAppearanceNative.setThemePreference({ theme })
 }
 
 export async function onAndroidInteractionStateChanged(

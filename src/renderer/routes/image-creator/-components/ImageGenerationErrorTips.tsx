@@ -7,9 +7,10 @@ import LinkTargetBlank from '@/components/common/Link'
 import { useCopied } from '@/hooks/useCopied'
 import { navigateToSettings } from '@/modals/Settings'
 import { trackingEvent } from '@/packages/event'
-import { buildChatboxUrl } from '@/packages/remote'
 import platform from '@/platform'
 import * as settingActions from '@/stores/settingActions'
+
+const buildChatboxUrl = (path: string) => `https://chatboxai.app${path}`
 
 export interface ImageGenerationErrorTipsProps {
   record: ImageGeneration

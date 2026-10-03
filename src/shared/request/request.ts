@@ -1,6 +1,19 @@
 import { ApiError, BaseError, ChatboxAIAPIError, NetworkError } from '../models/errors'
 import { parseJsonOrEmpty } from '../utils/json_utils'
-import { isChatboxAPI } from './chatboxai_pool'
+
+// Retired Chatbox cloud API hosts, kept only so legacy code paths still
+// receive the platform headers they expect when they are eventually removed.
+const CHATBOX_API_ORIGINS = [
+  'https://api.chatboxai.app',
+  'https://chatboxai.app',
+  'https://api.ai-chatbox.com',
+  'https://api.chatboxapp.xyz',
+]
+
+function isChatboxAPI(input: RequestInfo | URL): boolean {
+  const url = typeof input === 'string' ? input : ((input as Request).url ?? input.toString())
+  return CHATBOX_API_ORIGINS.some((origin) => url.startsWith(origin))
+}
 
 interface PlatformInfo {
   type: string

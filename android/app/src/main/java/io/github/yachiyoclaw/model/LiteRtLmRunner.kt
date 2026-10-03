@@ -184,8 +184,15 @@ object LiteRtLmRunner {
   ): Engine {
     val normalized = AccelerationPolicy.normalizeBackend(requestedBackend)
     val normalizedBackend = if (normalized == AccelerationPolicy.BACKEND_AUTO) AccelerationPolicy.BACKEND_CPU else normalized
+    // Bucket the engine context size: an NPU graph compile takes tens of seconds,
+    // so rebuilding the engine for every distinct maxTokens request is not viable.
+    val engineMaxTokens = when {
+      maxTokens <= 2048 -> 2048
+      maxTokens <= 4096 -> 4096
+      else -> 8192
+    }
     loaded?.takeIf {
-      it.path == path && it.maxNumTokens >= maxTokens && it.backend.lowercase() == normalizedBackend
+      it.path == path && it.maxNumTokens >= engineMaxTokens && it.backend.lowercase() == normalizedBackend
     }?.let { return it.engine }
     unload()
     val candidates = mutableListOf(normalizedBackend)
@@ -198,7 +205,7 @@ object LiteRtLmRunner {
         Engine(EngineConfig(
           modelPath = path,
           backend = createBackend(context, path, candidate, declaredNpuCompatible, cpuThreads),
-          maxNumTokens = maxTokens,
+          maxNumTokens = engineMaxTokens,
         ))
       } catch (error: Throwable) {
         if (error is VirtualMachineError || error is ThreadDeath) throw error
@@ -214,7 +221,7 @@ object LiteRtLmRunner {
         engine.initialize()
         loaded = LoadedEngine(
           path,
-          maxTokens,
+          engineMaxTokens,
           engine,
           candidate.uppercase(),
           failures.takeIf { it.isNotEmpty() }?.joinToString(","),

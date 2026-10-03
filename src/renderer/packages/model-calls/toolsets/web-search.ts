@@ -1,9 +1,7 @@
 import { ChatboxAIAPIError } from '@shared/models/errors'
 import { tool } from 'ai'
 import z from 'zod'
-import * as remote from '@/packages/remote'
 import { getParseLinkProvider, webSearchExecutor } from '@/packages/web-search'
-import platform from '@/platform'
 import * as settingActions from '@/stores/settingActions'
 
 const webSearchDescription = `
@@ -54,30 +52,11 @@ export const parseLinkTool = tool({
 
     const searchProvider = settingActions.getExtensionSettings().webSearch.provider
 
-    // Chatbox AI (build-in) path: requires a license key (any tier — backend has no Pro gate).
+    // The Chatbox-cloud backed built-in search was retired; 'build-in' now
+    // behaves as Bing search, which offers no parse_link capability.
     if (searchProvider === 'build-in') {
-      const licenseKey = settingActions.getLicenseKey()
-      if (!licenseKey) {
-        throw ChatboxAIAPIError.fromCodeName(
-          'parse_link via Chatbox AI requires a license key, but none is configured',
-          'chatbox_search_license_key_required'
-        )
-      }
-      const parsed = await remote.parseUserLinkPro({ licenseKey, url: input.url, abortSignal })
-      const storedContent = await platform.getStoreBlob(parsed.storageKey)
-      if (storedContent == null) {
-        const technical = `parse_link storage blob missing for URL ${input.url} (storageKey: ${parsed.storageKey})`
-        throw ChatboxAIAPIError.fromCodeName(technical, 'parse_link_failed') ?? new Error(technical)
-      }
-      const content = storedContent.trim()
-      const truncatedContent = content.slice(0, normalizedMaxLength)
-      return {
-        url: input.url,
-        title: parsed.title,
-        content: truncatedContent,
-        originalLength: content.length,
-        truncated: content.length > truncatedContent.length,
-      }
+      const technical = 'parse_link is not supported by the retired built-in search provider'
+      throw ChatboxAIAPIError.fromCodeName(technical, 'parse_link_not_supported') ?? new Error(technical)
     }
 
     // Third-party provider path (e.g. Tavily). Throws if API key missing or extraction fails.

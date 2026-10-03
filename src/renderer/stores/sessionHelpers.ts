@@ -16,8 +16,6 @@ import i18n from '@/i18n'
 import { formatChatAsHtml, formatChatAsMarkdown, formatChatAsTxt } from '@/lib/format-chat'
 import { getLogger } from '@/lib/utils'
 import { PREVIEW_LINES } from '@/packages/context-management/attachment-payload'
-import * as localParser from '@/packages/local-parser'
-import * as remote from '@/packages/remote'
 import { estimateTokens } from '@/packages/token'
 import platform from '@/platform'
 import storage from '@/storage'
@@ -125,10 +123,6 @@ function hasParsedText(content: string): boolean {
   return content.trim().length > 0
 }
 
-function canFallbackToChatboxAI(): boolean {
-  return Boolean(settingActions.getLicenseKey())
-}
-
 export function isSessionAttachmentRagAuthError(errorCode: string | undefined): boolean {
   if (!errorCode) {
     return false
@@ -148,45 +142,10 @@ export function isSessionAttachmentRagIndexingError(errorCode: string | undefine
   return SESSION_ATTACHMENT_RAG_INDEXING_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern))
 }
 
-function hasUsableSessionAttachmentRagLicense(): boolean {
-  const settings = settingsStore.getState()
-  if (!settings.licenseKey) {
-    return false
-  }
-  if (settings.licenseActivationMethod === 'login') {
-    return !!authInfoStore.getState().getTokens()
-  }
-  return true
-}
-
 async function canUseSessionAttachmentRag(): Promise<boolean> {
-  // Android has a local lexical RAG index and does not depend on the retired Chatbox paid capability.
-  if (platform.type === 'mobile') return true
-  const licenseKey = settingActions.getLicenseKey() || ''
-  const hasUsableLicense = hasUsableSessionAttachmentRagLicense()
-  const capabilityCacheKey = `${licenseKey}:${hasUsableLicense ? 'active' : 'inactive'}`
-  if (sessionRagCapabilityCache?.key === capabilityCacheKey) {
-    log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability cache hit: embedding=${sessionRagCapabilityCache.value}, hasLicense=${Boolean(licenseKey)}`,
-    )
-    return sessionRagCapabilityCache.value
-  }
-
-  if (!hasUsableLicense) {
-    log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability skipped: missing active Chatbox license, hasLicense=${Boolean(licenseKey)}, method=${settingsStore.getState().licenseActivationMethod ?? 'none'}, platform=${platform.type}`,
-    )
-    sessionRagCapabilityCache = { key: capabilityCacheKey, value: false }
-    return false
-  }
-
-  const value = !!(await remote.getSessionRagConfig({ licenseKey: licenseKey || undefined }).catch(() => undefined))
-    ?.capabilities?.session_attachment_embedding
-  log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability fetched: embedding=${value}, hasLicense=${Boolean(licenseKey)}, platform=${platform.type}`,
-  )
-  sessionRagCapabilityCache = { key: capabilityCacheKey, value }
-  return value
+  // Android has a local lexical RAG index and never depended on the retired
+  // Chatbox cloud capability; other platforms have no session RAG backend.
+  return platform.type === 'mobile'
 }
 
 /**
@@ -213,61 +172,16 @@ async function parseFileWithLocalParser(
   return { content, storageKey: uniqKey, tokenCountMap: {}, parserType: 'local' }
 }
 
-async function fallbackToChatboxAIParser(
-  file: File,
-  uniqKey: string,
-  reason: 'local_parser_failed' | 'empty_content',
-): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
-  log.warn(`Falling back to Chatbox AI parser for "${file.name}" due to ${reason}`)
-
-  try {
-    return await parseFileWithChatboxAI(file, uniqKey)
-  } catch (error) {
-    log.error(`Chatbox AI fallback parsing failed for "${file.name}":`, error)
-    throw new Error('chatbox_ai_parser_failed')
-  }
-}
-
 async function parseFileWithLocalFallback(
   file: File,
   uniqKey: string,
 ): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
   try {
-    const result = await parseFileWithLocalParser(file, uniqKey)
-    if (!hasParsedText(result.content) && canFallbackToChatboxAI()) {
-      return await fallbackToChatboxAIParser(file, uniqKey, 'empty_content')
-    }
-    return result
+    return await parseFileWithLocalParser(file, uniqKey)
   } catch (error) {
     log.error(`Local parsing failed for "${file.name}":`, error)
-
-    if (canFallbackToChatboxAI()) {
-      return await fallbackToChatboxAIParser(file, uniqKey, 'local_parser_failed')
-    }
-
     throw new Error('local_parser_failed')
   }
-}
-
-/**
- * Parse file using Chatbox AI cloud service
- */
-async function parseFileWithChatboxAI(
-  file: File,
-  uniqKey: string,
-): Promise<{ content: string; storageKey: string; tokenCountMap: Record<string, number>; parserType: string }> {
-  const licenseKey = settingActions.getLicenseKey()
-  const uploadedKey = await remote.uploadAndCreateUserFile(licenseKey || '', file)
-
-  // Get uploaded file content
-  const content = (await storage.getBlob(uploadedKey).catch(() => '')) || ''
-
-  // Store content to unique key
-  if (content) {
-    await storage.setBlob(uniqKey, content)
-  }
-
-  return { content, storageKey: uniqKey, tokenCountMap: {}, parserType: 'chatbox-ai' }
 }
 
 /**
@@ -391,13 +305,9 @@ export async function prepareFileAttachment(
         }
 
         case 'chatbox-ai': {
-          try {
-            result = await parseFileWithChatboxAI(file, uniqKey)
-          } catch (error) {
-            log.error(`Chatbox AI parsing failed for "${file.name}":`, error)
-            throw new Error('chatbox_ai_parser_failed')
-          }
-          break
+          // The Chatbox cloud document parser was retired; treat the persisted
+          // legacy choice as unconfigured so the user re-picks a parser.
+          throw new Error('document_parser_not_configured')
         }
 
         case 'mineru': {
@@ -529,64 +439,12 @@ export async function preprocessLink(
     }
 
     if (isPro) {
-      // ChatboxAI 方案：使用远程解析
-      const licenseKey = settingActions.getLicenseKey()
-      const parsed = await remote.parseUserLinkPro({ licenseKey: licenseKey || '', url })
-
-      // 获取解析后的内容
-      const content = (await storage.getBlob(parsed.storageKey).catch(() => '')) || ''
-
-      // 将内容存储到唯一键下
-      if (content) {
-        await storage.setBlob(uniqKey, content)
-      }
-
-      // Calculate token counts including preview metadata
-      const { lineCount, byteLength, tokenCountMap } = content
-        ? computePreviewMetadata(content)
-        : { lineCount: undefined, byteLength: undefined, tokenCountMap: {} }
-
-      // Store token map for future use
-      if (content) {
-        await storage.setItem(`${uniqKey}_tokenMap`, tokenCountMap)
-      }
-
-      return {
-        url,
-        title: parsed.title,
-        content,
-        storageKey: uniqKey,
-        tokenCountMap,
-        lineCount,
-        byteLength,
-      }
+      // The Chatbox cloud link parser was retired; link attachments require a
+      // local parser, which is not available for URLs.
+      throw new Error('link_parsing_unsupported')
     } else {
-      // 本地方案：解析链接内容
-      const { key, title } = await localParser.parseUrl(url)
-      const content = (await storage.getBlob(key).catch(() => '')) || ''
-
-      // 将内容存储到唯一键下
-      if (content) {
-        await storage.setBlob(uniqKey, content)
-      }
-
-      const { lineCount, byteLength, tokenCountMap } = content
-        ? computePreviewMetadata(content)
-        : { lineCount: undefined, byteLength: undefined, tokenCountMap: {} }
-
-      if (content) {
-        await storage.setItem(`${uniqKey}_tokenMap`, tokenCountMap)
-      }
-
-      return {
-        url,
-        title,
-        content,
-        storageKey: uniqKey,
-        tokenCountMap,
-        lineCount,
-        byteLength,
-      }
+      // 本地方案：解析链接内容（云端解析已下线）
+      throw new Error('link_parsing_unsupported')
     }
   } catch (error) {
     return {

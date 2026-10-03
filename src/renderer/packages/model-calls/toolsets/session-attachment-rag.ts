@@ -2,17 +2,14 @@ import { tool } from 'ai'
 import type { SessionAttachmentQueryPlan } from '@shared/types'
 import { z } from 'zod'
 import platform from '@/platform'
-import * as remote from '@/packages/remote'
-import * as settingActions from '@/stores/settingActions'
 
 export async function getToolSet(attachmentIds: number[]) {
   const controller = platform.getSessionAttachmentRagController()
   const attachments = await controller.getAttachments(attachmentIds)
-  const sessionRagConfig = await remote
-    .getSessionRagConfig({ licenseKey: settingActions.getLicenseKey() || undefined })
-    .catch(() => undefined)
-  const useRerank = !!sessionRagConfig?.capabilities?.session_attachment_rerank
-  const rerankModel = useRerank ? sessionRagConfig?.models?.rerank : undefined
+  // Cloud-provided rerank models were retired with the Chatbox backend; local
+  // retrieval always uses the built-in ranking.
+  const useRerank = false
+  const rerankModel = undefined
   const readyAttachments = attachments.filter((attachment) => attachment.status === 'ready')
   const indexingAttachments = attachments.filter(
     (attachment) => attachment.status === 'pending' || attachment.status === 'indexing'

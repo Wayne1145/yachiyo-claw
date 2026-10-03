@@ -23,6 +23,7 @@ import type { SessionMetaStorage } from '@/storage/SessionMetaStorage'
 import { SQLiteImageGenerationStorage } from '@/storage/SQLiteImageGenerationStorage'
 import { SQLiteSessionMetaStorage } from '@/storage/SQLiteSessionMetaStorage'
 import { IndexedDBTaskSessionStorage, type TaskSessionStorage } from '@/storage/TaskSessionStorage'
+import { getBestEffortFileNativePath } from '@/utils/file-native-path'
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { getBrowser, getOS } from '../packages/navigator'
 import type { Platform, PlatformType } from './interfaces'
@@ -295,7 +296,7 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
   }
 
   getLocalFilePath(file: File): string {
-    return file.path || ''
+    return getBestEffortFileNativePath(file)
   }
 
   public async parseUrl(url: string): Promise<{ key: string; title: string }> {

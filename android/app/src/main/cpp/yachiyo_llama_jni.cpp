@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -338,12 +339,20 @@ std::string generate(
     const std::vector<std::string> & contents,
     int32_t max_tokens,
     int32_t gpu_layers,
-    int32_t cpu_threads
+    int32_t cpu_threads,
+    const std::string & stream_path
 ) {
     std::lock_guard<std::mutex> model_lock(g_model_mutex);
     ensure_backend();
     ensure_model(path, false, gpu_layers, cpu_threads);
     const double inference_started_ms = static_cast<double>(llama_time_us()) / 1000.0;
+
+    // Token-level streaming channel: the UI process tails this file so the
+    // first token is visible immediately instead of after the whole reply.
+    std::ofstream stream;
+    if (!stream_path.empty()) {
+        stream.open(stream_path, std::ios::binary | std::ios::trunc);
+    }
 
     const llama_vocab * vocab = llama_model_get_vocab(g_model);
     std::vector<llama_token> prompt_tokens = tokenize(vocab, apply_chat_template(roles, contents));
@@ -395,7 +404,12 @@ std::string generate(
         llama_token token = llama_sampler_sample(sampler.get(), context.get(), -1);
         if (llama_vocab_is_eog(vocab, token)) break;
         if (g_first_token_ms == 0.0) g_first_token_ms = static_cast<double>(llama_time_us()) / 1000.0 - inference_started_ms;
-        response += token_piece(vocab, token);
+        const std::string piece = token_piece(vocab, token);
+        response += piece;
+        if (stream.is_open()) {
+            stream << piece;
+            stream.flush();
+        }
         llama_batch batch = llama_batch_get_one(&token, 1);
         if (llama_decode(context.get(), batch) != 0) {
             if (g_cancelled.load(std::memory_order_relaxed)) throw std::runtime_error("local_inference_cancelled");
@@ -504,11 +518,13 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeInfer(
     jint max_tokens,
     jstring request_id,
     jint gpu_layers,
-    jint cpu_threads
+    jint cpu_threads,
+    jstring stream_path
 ) {
     try {
         std::string path = from_jstring(env, model_path);
         std::string request = from_jstring(env, request_id);
+        std::string stream_file = from_jstring(env, stream_path);
         std::vector<std::string> role_values = from_jstring_array(env, roles);
         std::vector<std::string> content_values = from_jstring_array(env, contents);
         if (role_values.empty() || role_values.size() != content_values.size()) {
@@ -519,7 +535,8 @@ Java_io_github_yachiyoclaw_model_GgufRunner_nativeInfer(
             std::string result = generate(path, role_values, content_values,
                 std::max(1, static_cast<int32_t>(max_tokens)),
                 std::max(0, static_cast<int32_t>(gpu_layers)),
-                std::max(1, static_cast<int32_t>(cpu_threads)));
+                std::max(1, static_cast<int32_t>(cpu_threads)),
+                stream_file);
             end_request();
             return to_jstring(env, result);
         } catch (...) {

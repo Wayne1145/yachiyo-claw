@@ -1,5 +1,6 @@
 import { createTheme, type ThemeOptions } from '@mui/material/styles'
 import { useLayoutEffect, useMemo } from 'react'
+import { setAndroidThemePreference } from '@/platform/native/yachiyo_appearance'
 import { settingsStore, useLanguage, useSettingsStore } from '@/stores/settingsStore'
 import { uiStore, useUIStore } from '@/stores/uiStore'
 import { type Language, Theme } from '../../shared/types'
@@ -15,7 +16,13 @@ export const switchTheme = async (theme: Theme) => {
   uiStore.setState({
     realTheme: finalTheme,
   })
+  // Persist both the raw setting and the resolved theme: the early-paint script
+  // in index.html re-resolves 'system' live so a system light/dark change made
+  // while the app was closed cannot paint one frame in the stale theme.
+  localStorage.setItem('theme-setting', theme === Theme.System ? 'system' : finalTheme)
   localStorage.setItem('initial-theme', finalTheme)
+  // Keep the native window/splash scheme in sync with the in-app setting.
+  void setAndroidThemePreference(theme === Theme.System ? 'system' : finalTheme).catch(() => undefined)
 }
 
 export default function useAppTheme(forceLight = false) {

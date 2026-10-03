@@ -6,6 +6,7 @@ import { parseLocale } from '@/i18n/parser'
 import { type ImageGenerationStorage, IndexedDBImageGenerationStorage } from '@/storage/ImageGenerationStorage'
 import { IndexedDBSessionMetaStorage, type SessionMetaStorage } from '@/storage/SessionMetaStorage'
 import { IndexedDBTaskSessionStorage, type TaskSessionStorage } from '@/storage/TaskSessionStorage'
+import { getBestEffortFileNativePath } from '@/utils/file-native-path'
 import { getBrowser, getOS } from '../packages/navigator'
 import type { Platform, PlatformType } from './interfaces'
 import type { KnowledgeBaseController } from './knowledge-base/interface'
@@ -140,7 +141,7 @@ export default class WebPlatform extends IndexedDBStorage implements Platform {
   }
 
   getLocalFilePath(file: File): string {
-    return file.path || ''
+    return getBestEffortFileNativePath(file)
   }
 
   public async parseUrl(url: string): Promise<{ key: string; title: string }> {
