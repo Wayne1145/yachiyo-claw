@@ -69,10 +69,11 @@ export function resolveLiquidGlassQualityDecision(
     return { quality: 'reduced', reason: 'device-memory' }
   if (capabilities.hardwareConcurrency !== undefined && capabilities.hardwareConcurrency < 4)
     return { quality: 'reduced', reason: 'hardware-concurrency' }
-  // Android WebViews can advertise backdrop filters while exhausting the GPU
-  // tile budget during rapid streamed DOM updates. Auto uses the translucent,
-  // no-filter path; Balanced and Full remain explicit choices.
-  if (capabilities.androidMajorVersion !== undefined) return { quality: 'reduced', reason: 'android-version' }
+  // Balanced blurs only the floating chrome. Content surfaces are never glass,
+  // so streamed messages no longer multiply composited layers inside the
+  // scroller, which is what exhausted the WebView tile budget. The SVG
+  // refraction of Full stays an explicit choice on Android.
+  if (capabilities.androidMajorVersion !== undefined) return { quality: 'balanced', reason: 'android-version' }
   if (capabilities.prefersReducedMotion) return { quality: 'balanced', reason: 'reduced-motion' }
   if (!capabilities.supportsSvgDisplacement) return { quality: 'balanced', reason: 'missing-svg-displacement' }
   if (capabilities.hardwareConcurrency === undefined || capabilities.deviceMemoryGb === undefined)

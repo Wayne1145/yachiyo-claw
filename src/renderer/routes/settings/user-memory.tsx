@@ -1,19 +1,18 @@
-import { ActionIcon, Badge, Button, Divider, Group, Loader, Stack, Text, Textarea, Title } from '@mantine/core'
+import { useSettingsConfirmation } from '@/components/settings/useSettingsConfirmation'
+import { SettingsActions, SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
+import { ActionIcon, Badge, Button, Group, Loader, Stack, Text, Textarea } from '@mantine/core'
 import type { MemoryItem } from '@shared/memory'
 import { IconRefresh, IconTrash } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createDefaultLongTermMemoryService } from '@/mobile/long-term-memory'
-import {
-  getSharedUserContext,
-  saveSharedUserContext,
-  type SharedUserContext,
-} from '@/mobile/shared-user-context'
+import { getSharedUserContext, saveSharedUserContext, type SharedUserContext } from '@/mobile/shared-user-context'
 
 export const Route = createFileRoute('/settings/user-memory')({ component: UserMemorySettingsPage })
 
 function UserMemorySettingsPage() {
+  const { confirm, confirmation } = useSettingsConfirmation()
   const { t } = useTranslation()
   const [value, setValue] = useState(getSharedUserContext)
   const [saved, setSaved] = useState(false)
@@ -81,14 +80,13 @@ function UserMemorySettingsPage() {
   }
 
   return (
-    <main className="yachiyo-character-settings">
-      <Title order={1}>{t('用户与记忆')}</Title>
-      <Text c="dimmed" mb="md">
-        {t('这些内容会作为隐藏上下文用于普通聊天和 Agent，不会显示在聊天记录中。')}
-      </Text>
-      <section className="yachiyo-character-editor">
+    <SettingsPage
+      title={t('用户与记忆')}
+      description={t('这些内容会作为隐藏上下文用于普通聊天和 Agent，不会显示在聊天记录中。')}
+    >
+      <SettingsSection title={t('用户画像')}>
         <Textarea
-          label={t('用户画像')}
+          aria-label={String(t('用户画像'))}
           description={t('填写称呼、偏好、背景和沟通习惯。')}
           placeholder={String(t('例如：称呼我为 Wayne；优先使用中文回答。'))}
           autosize
@@ -97,8 +95,10 @@ function UserMemorySettingsPage() {
           value={value.userProfile}
           onChange={(event) => patch({ userProfile: event.currentTarget.value })}
         />
+      </SettingsSection>
+      <SettingsSection title={t('长期记忆')}>
         <Textarea
-          label={t('长期记忆')}
+          aria-label={String(t('长期记忆'))}
           description={t('记录需要跨对话保留的事实和约定。')}
           placeholder={String(t('例如：项目默认使用 pnpm；修改后运行 Android 检查。'))}
           autosize
@@ -107,15 +107,16 @@ function UserMemorySettingsPage() {
           value={value.memory}
           onChange={(event) => patch({ memory: event.currentTarget.value })}
         />
-        <Stack gap="xs">
+        <SettingsActions>
           <Button onClick={save}>{t('保存用户与记忆')}</Button>
           {saved && (
-            <Text size="sm" c="green">
+            <Text size="sm" c="green" role="status">
               {t('已保存，将从下一次模型请求开始生效。')}
             </Text>
           )}
-        </Stack>
-        <Divider my="sm" />
+        </SettingsActions>
+      </SettingsSection>
+      <SettingsSection>
         <Group justify="space-between" align="center">
           <div>
             <Text fw={700}>{t('自动长期记忆')}</Text>
@@ -123,12 +124,21 @@ function UserMemorySettingsPage() {
               {t('模型和宿主从明确表达中保存的稳定信息。凭据和敏感内容不会写入。')}
             </Text>
           </div>
-          <ActionIcon variant="subtle" color="gray" aria-label={t('刷新长期记忆')} onClick={() => void refreshRecords()}>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={t('刷新长期记忆')}
+            onClick={() => void refreshRecords()}
+          >
             <IconRefresh size={18} />
           </ActionIcon>
         </Group>
         {lastDeleted && (
-          <Group justify="space-between" p="sm" style={{ borderRadius: 'var(--yachiyo-r-sm)', background: 'var(--chatbox-background-brand-secondary)' }}>
+          <Group
+            justify="space-between"
+            p="sm"
+            style={{ borderRadius: 'var(--yachiyo-r-sm)', background: 'var(--chatbox-background-brand-secondary)' }}
+          >
             <Text size="sm">{t('已删除一条记忆')}</Text>
             <Button size="compact-sm" variant="subtle" color="chatbox-brand" onClick={() => void undoDelete()}>
               {t('撤销')}
@@ -143,19 +153,37 @@ function UserMemorySettingsPage() {
         {loadingRecords ? (
           <Loader color="chatbox-brand" size="sm" />
         ) : records.length === 0 ? (
-          <Text size="sm" c="dimmed">{t('还没有自动长期记忆。')}</Text>
+          <Text size="sm" c="dimmed">
+            {t('还没有自动长期记忆。')}
+          </Text>
         ) : (
           <Stack gap="sm">
             {records.map((record) => (
-              <section key={record.id} style={{ border: '1px solid var(--chatbox-border-primary)', borderRadius: 'var(--yachiyo-r-control)', padding: 14 }}>
+              <section
+                key={record.id}
+                style={{
+                  border: '1px solid var(--chatbox-border-primary)',
+                  borderRadius: 'var(--yachiyo-r-control)',
+                  padding: 14,
+                }}
+              >
                 <Group justify="space-between" mb="xs">
                   <Group gap={6}>
-                    <Badge color="chatbox-brand" variant="light">{record.kind}</Badge>
+                    <Badge color="chatbox-brand" variant="light">
+                      {record.kind}
+                    </Badge>
                     {record.tags.map((tag) => (
-                      <Badge key={tag} color="gray" variant="light">{tag}</Badge>
+                      <Badge key={tag} color="gray" variant="light">
+                        {tag}
+                      </Badge>
                     ))}
                   </Group>
-                  <ActionIcon color="red" variant="subtle" aria-label={t('删除记忆')} onClick={() => void deleteRecord(record)}>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    aria-label={t('删除记忆')}
+                    onClick={() => void deleteRecord(record)}
+                  >
                     <IconTrash size={17} />
                   </ActionIcon>
                 </Group>
@@ -166,7 +194,9 @@ function UserMemorySettingsPage() {
                   value={record.content}
                   onChange={(event) => {
                     const content = event.currentTarget.value
-                    setRecords((current) => current.map((item) => item.id === record.id ? { ...item, content } : item))
+                    setRecords((current) =>
+                      current.map((item) => (item.id === record.id ? { ...item, content } : item))
+                    )
                   }}
                 />
                 <Group justify="space-between" mt="xs">
@@ -174,7 +204,13 @@ function UserMemorySettingsPage() {
                     {record.sourceSessionId ? `${t('来源对话')} ${record.sourceSessionId.slice(0, 8)} · ` : ''}
                     {new Date(record.updatedAt).toLocaleString()}
                   </Text>
-                  <Button size="compact-sm" radius="xl" variant="light" color="chatbox-brand" onClick={() => void updateRecord(record)}>
+                  <Button
+                    size="compact-sm"
+                    radius="xl"
+                    variant="light"
+                    color="chatbox-brand"
+                    onClick={() => void updateRecord(record)}
+                  >
                     {t('保存修改')}
                   </Button>
                 </Group>
@@ -183,16 +219,22 @@ function UserMemorySettingsPage() {
             <Button
               variant="subtle"
               color="red"
-              onClick={() => {
-                if (!window.confirm(String(t('确定清空全部自动长期记忆吗？此操作不可撤销。')))) return
-                void memoryService.clear().then(refreshRecords)
+              onClick={async () => {
+                if (!(await confirm(String(t('确定清空全部自动长期记忆吗？此操作不可撤销。'))))) return
+                try {
+                  await memoryService.clear()
+                  await refreshRecords()
+                } catch (cause) {
+                  setRecordError(cause instanceof Error ? cause.message : String(t('无法清空记忆')))
+                }
               }}
             >
               {t('清空自动长期记忆')}
             </Button>
           </Stack>
         )}
-      </section>
-    </main>
+      </SettingsSection>
+      {confirmation}
+    </SettingsPage>
   )
 }

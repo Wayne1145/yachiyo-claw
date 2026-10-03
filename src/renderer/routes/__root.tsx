@@ -14,6 +14,7 @@ import useVersion from '@/hooks/useVersion'
 import '@/modals'
 import NiceModal from '@ebay/nice-modal-react'
 import {
+  ActionIcon,
   Avatar,
   Button,
   Checkbox,
@@ -30,10 +31,12 @@ import {
   NativeSelect,
   Popover,
   rem,
+  SegmentedControl,
   Select,
   Slider,
   Switch,
   Text,
+  Textarea,
   TextInput,
   Title,
   Tooltip,
@@ -55,11 +58,10 @@ import { router } from '@/router'
 import Sidebar from '@/Sidebar'
 import storage from '@/storage'
 import { useSession } from '@/stores/chatStore'
-import { initOnboardingStore, onboardingStore } from '@/stores/onboardingStore'
-import * as settingActions from '@/stores/settingActions'
+import { initOnboardingStore } from '@/stores/onboardingStore'
 import { initSettingsStore, settingsStore, useLanguage, useSettingsStore, useTheme } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
-import { CHATBOX_BUILD_CHANNEL, CHATBOX_BUILD_PLATFORM } from '@/variables'
+import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { blobToDataUrl } from './image-creator/-components/constants'
 
 function BackgroundImageOverlay() {
@@ -128,7 +130,7 @@ function BackgroundImageOverlay() {
 
 function Root() {
   const useAndroidAppShell = shouldUseAndroidAppShell(platform.type, CHATBOX_BUILD_PLATFORM)
-  const { isExceeded, isExceededResolved } = useVersion({ checkRemoteUpdates: true })
+  useVersion({ checkRemoteUpdates: true })
   const location = useLocation()
   const spellCheck = useSettingsStore((state) => state.spellCheck)
   const language = useLanguage()
@@ -147,10 +149,8 @@ function Root() {
       // Yachiyo owns onboarding and update surfaces locally. Startup must not
       // contact or navigate through the upstream Chatbox experience.
       initialized.current = true
-      return
-
     })()
-  }, [location.pathname, isExceeded, isExceededResolved, useAndroidAppShell])
+  }, [])
 
   const showSidebar = useUIStore((s) => s.showSidebar)
   const sidebarWidth = useSidebarWidth()
@@ -222,7 +222,11 @@ function Root() {
   }, [needRoomForMacWindowControls])
 
   return (
-    <Box className="box-border App relative" spellCheck={spellCheck} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <Box
+      className={`box-border App relative${useAndroidAppShell ? ' yachiyo-app-shell-root' : ''}`}
+      spellCheck={spellCheck}
+      dir={language === 'ar' ? 'rtl' : 'ltr'}
+    >
       {!useAndroidAppShell && <BackgroundImageOverlay />}
       {useAndroidAppShell ? (
         <AndroidAppShell>
@@ -268,6 +272,9 @@ function Root() {
       {/* <OpenAttachLinkDialog /> */}
       {/* 图片预览 */}
       <PictureDialog />
+      {/* 似乎是从后端拉一个弹窗的配置 */}
+      {/* 手机端举报内容 */}
+      {/* <ReportContentDialog /> */}
       {/* 搜索 */}
       <SearchDialog />
       {/* 没有配置模型时的欢迎弹窗 */}
@@ -342,13 +349,14 @@ const creteMantineTheme = (scale = 1) =>
       xl: '1.6', // 32px
     },
     // One corner scale for the whole app (see --yachiyo-r-* in globals.css).
+    // `xl` is the capsule: avatars, icon buttons and badges become circles/capsules.
     radius: {
       xs: 'var(--yachiyo-r-xs)',
       sm: 'var(--yachiyo-r-sm)',
       md: 'var(--yachiyo-r-control)',
       lg: 'var(--yachiyo-r-surface)',
-      xl: 'var(--yachiyo-r-shell)',
-      xxl: 'var(--yachiyo-r-shell)',
+      xl: 'var(--yachiyo-r-pill)',
+      xxl: 'var(--yachiyo-r-pill)',
     },
     spacing: {
       '3xs': 'calc(0.125rem * var(--mantine-scale))',
@@ -375,7 +383,7 @@ const creteMantineTheme = (scale = 1) =>
       Button: Button.extend({
         defaultProps: {
           color: 'chatbox-brand',
-          radius: 'md',
+          radius: 'xl',
         },
         styles: () => ({
           root: {
@@ -415,7 +423,7 @@ const creteMantineTheme = (scale = 1) =>
           },
         }),
       }),
-      Textarea: TextInput.extend({
+      Textarea: Textarea.extend({
         defaultProps: {
           size: 'sm',
           radius: 'md',
@@ -470,6 +478,7 @@ const creteMantineTheme = (scale = 1) =>
       Checkbox: Checkbox.extend({
         defaultProps: {
           size: 'sm',
+          radius: 'xs',
         },
         styles: (_theme, props) => ({
           label: {
@@ -494,7 +503,7 @@ const creteMantineTheme = (scale = 1) =>
           },
           content: {
             backgroundColor: 'var(--chatbox-background-primary)',
-            borderRadius: 'var(--yachiyo-r-surface)',
+            borderRadius: 'var(--yachiyo-r-sheet)',
           },
           overlay: {
             '--overlay-bg': 'var(--chatbox-background-mask-overlay)',
@@ -518,6 +527,7 @@ const creteMantineTheme = (scale = 1) =>
           },
           content: {
             backgroundColor: 'var(--chatbox-background-primary)',
+            borderRadius: 'var(--yachiyo-r-sheet)',
           },
           overlay: {
             '--overlay-bg': 'var(--chatbox-background-mask-overlay)',
@@ -530,7 +540,21 @@ const creteMantineTheme = (scale = 1) =>
           zIndex: 2100,
         },
       }),
+      // Icon-only buttons are circles and segmented controls are capsules, as on iOS.
+      ActionIcon: ActionIcon.extend({
+        defaultProps: {
+          radius: 'xl',
+        },
+      }),
+      SegmentedControl: SegmentedControl.extend({
+        defaultProps: {
+          radius: 'xl',
+        },
+      }),
       Avatar: Avatar.extend({
+        defaultProps: {
+          radius: 'xl',
+        },
         styles: () => ({
           image: {
             objectFit: 'contain',

@@ -65,6 +65,9 @@ interface Props {
   small?: boolean
   assistantAvatarKey?: string
   sessionPicUrl?: string
+  // Task messages live in a different store. Their presentation must never
+  // invoke the ordinary conversation's edit, retry or avatar-settings actions.
+  readOnly?: boolean
 }
 
 const _Message: FC<Props> = (props) => {
@@ -77,6 +80,7 @@ const _Message: FC<Props> = (props) => {
     small,
     assistantAvatarKey,
     sessionPicUrl,
+    readOnly = false,
   } = props
 
   const { t } = useTranslation()
@@ -525,7 +529,7 @@ const _Message: FC<Props> = (props) => {
         )}
         <MessageErrTips
           msg={msg}
-          onRetry={msg.role === 'assistant' ? handleRefresh : undefined}
+          onRetry={!readOnly && msg.role === 'assistant' ? handleRefresh : undefined}
           isBubbleLayout={usesBubblePresentation}
         />
         {needCollapse && !isCollapsed && CollapseButton}
@@ -561,7 +565,7 @@ const _Message: FC<Props> = (props) => {
       )
     })
 
-  const actionButtons = buttonGroup !== 'none' && !msg.generating && (
+  const actionButtons = !readOnly && buttonGroup !== 'none' && !msg.generating && (
     <Flex
       gap={0}
       m="4px -4px -4px -4px"
@@ -707,13 +711,18 @@ const _Message: FC<Props> = (props) => {
                       avatarKey={assistantAvatarKey}
                       picUrl={sessionPicUrl}
                       sessionType={props.sessionType}
-                      onClick={onClickAssistantAvatar}
+                      onClick={readOnly ? undefined : onClickAssistantAvatar}
                     />
                   ),
                   user: !usesBubblePresentation ? (
                     <UserAvatar avatarKey={userAvatarKey} onClick={() => navigateToSettings('/chat')} />
                   ) : null,
-                  system: <SystemAvatar sessionType={props.sessionType} onClick={onClickAssistantAvatar} />,
+                  system: (
+                    <SystemAvatar
+                      sessionType={props.sessionType}
+                      onClick={readOnly ? undefined : onClickAssistantAvatar}
+                    />
+                  ),
                   tool: null,
                 }[msg.role]
               }

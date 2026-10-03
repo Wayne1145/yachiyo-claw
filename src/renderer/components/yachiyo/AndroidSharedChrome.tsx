@@ -35,8 +35,8 @@ export function AndroidInteractiveChrome({ children }: { children: ReactNode }) 
         if (node) node.inert = false
       }}
       style={{
-        opacity,
-        transform,
+        opacity: presentation.transitioning ? opacity : 1,
+        transform: presentation.transitioning ? transform : 'none',
         pointerEvents: 'auto',
       }}
     >
@@ -83,8 +83,8 @@ export function AndroidStandardChromeLayer({
         if (node) node.inert = activeInteractive
       }}
       style={{
-        opacity,
-        transform,
+        opacity: transition ? opacity : activeInteractive ? 0 : 1,
+        transform: transition ? transform : 'none',
         pointerEvents: activeInteractive || crossesInteractive ? 'none' : 'auto',
       }}
     >

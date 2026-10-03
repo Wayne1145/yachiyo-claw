@@ -1,14 +1,14 @@
-import { ActionIcon, Alert, Badge, Group, Stack, Switch, Text, Title } from '@mantine/core'
-import { IconArrowLeft, IconBlocks, IconShieldLock } from '@tabler/icons-react'
+import { useSettingsConfirmation } from '@/components/settings/useSettingsConfirmation'
+import { SettingsPage } from '@/components/settings/SettingsPage'
+import { Alert, Badge, Group, Stack, Switch, Text } from '@mantine/core'
+import { IconShieldLock } from '@tabler/icons-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { FeatureManifest, FeaturePlatform } from '@shared/features/contract'
 import { BUILTIN_FEATURES } from '@/features/builtin-features'
 import { previewFeatureToggle, setFeatureEnabled } from '@/features/feature-settings'
 import { getEnabledFeatureIds, resolveRendererFeaturePlatform } from '@/features/feature-runtime'
-import { router } from '@/router'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { useInAndroidAppShell } from './AndroidAppShellContext'
 
 const FEATURE_LABELS: Record<string, string> = {
   'core-agent': 'Agent 核心',
@@ -61,8 +61,8 @@ function trustLabel(feature: FeatureManifest): { key: string; color: string } {
 }
 
 export function FeatureManager() {
+  const { confirm, confirmation } = useSettingsConfirmation()
   const { t } = useTranslation()
-  const inAndroidAppShell = useInAndroidAppShell()
   const overrides = useSettingsStore((state) => state.featureOverrides)
   const platform = resolveRendererFeaturePlatform() as FeaturePlatform
   const enabled = useMemo(() => getEnabledFeatureIds(platform, overrides), [overrides, platform])
@@ -92,14 +92,14 @@ export function FeatureManager() {
         .map((item) => t(FEATURE_LABELS[item.feature] ?? item.feature))
       if (
         affected.length > 0 &&
-        !window.confirm(
+        !(await confirm(
           String(
             t('关闭“{{feature}}”后，以下依赖能力也将不可用：{{affected}}。继续吗？', {
               feature: t(FEATURE_LABELS[feature.id] ?? feature.displayName),
               affected: affected.join(String(t('、'))),
             })
           )
-        )
+        ))
       ) {
         return
       }
@@ -115,30 +115,11 @@ export function FeatureManager() {
   }
 
   return (
-    <main className="yachiyo-settings-subpage yachiyo-feature-manager">
-      <header className="yachiyo-subpage-heading">
-        {!inAndroidAppShell && (
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size={38}
-            aria-label={t('返回设置')}
-            onClick={() => void router.navigate({ to: '/settings' })}
-          >
-            <IconArrowLeft size={21} />
-          </ActionIcon>
-        )}
-        <span className="yachiyo-subpage-icon" aria-hidden="true">
-          <IconBlocks size={22} />
-        </span>
-        <div>
-          <Title order={2}>{t('功能模块')}</Title>
-          <Text size="sm" c="dimmed">
-            {t('按需启用应用能力；关闭依赖项时会先说明影响范围')}
-          </Text>
-        </div>
-      </header>
-
+    <SettingsPage
+      title={t('功能模块')}
+      description={t('按需启用应用能力；关闭依赖项时会先说明影响范围')}
+      className="yachiyo-feature-manager"
+    >
       {error && (
         <Alert color="red" title={t('无法更改设置')}>
           {error}
@@ -190,6 +171,7 @@ export function FeatureManager() {
           })}
         </Stack>
       </section>
-    </main>
+      {confirmation}
+    </SettingsPage>
   )
 }

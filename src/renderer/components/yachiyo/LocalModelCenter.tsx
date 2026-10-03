@@ -728,8 +728,8 @@ export function LocalModelCenter() {
 
   if (view === 'installed' && !downloadQueueOpened) {
     return (
-      <main className="local-model-center local-model-installed">
-        <header className="local-model-heading">
+      <main className="settings-surface local-model-center local-model-installed">
+        <header className="local-model-heading settings-page-heading">
           <div>
             <Text className="local-model-eyebrow">ON-DEVICE MODELS</Text>
             <Title order={1}>{t('已安装模型')}</Title>
@@ -1201,8 +1201,8 @@ export function LocalModelCenter() {
 
   if (downloadQueueOpened) {
     return (
-      <main className="local-model-center local-model-download-queue">
-        <header className="local-model-queue-heading">
+      <main className="settings-surface local-model-center local-model-download-queue">
+        <header className="local-model-queue-heading settings-page-heading">
           <Group gap="sm" wrap="nowrap">
             <ActionIcon
               variant="subtle"
@@ -1497,7 +1497,7 @@ export function LocalModelCenter() {
         ]
       : []
     return (
-      <main className="local-model-center local-model-detail">
+      <main className="settings-surface local-model-center local-model-detail">
         <Group gap="sm" wrap="nowrap">
           <ActionIcon
             variant="subtle"
@@ -1744,8 +1744,8 @@ export function LocalModelCenter() {
   }
 
   return (
-    <main className="local-model-center">
-      <header className="local-model-heading">
+    <main className="settings-surface local-model-center">
+      <header className="local-model-heading settings-page-heading">
         <div>
           <Text className="local-model-eyebrow">ON-DEVICE MODELS</Text>
           <Title order={1}>{t('发现本地模型')}</Title>

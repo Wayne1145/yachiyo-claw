@@ -3,7 +3,6 @@ import {
   Button,
   FileButton,
   Loader,
-  Menu,
   SegmentedControl,
   Select,
   Text,
@@ -12,13 +11,11 @@ import {
 } from '@mantine/core'
 import { createMessage, ModelProviderEnum, type ReasoningStrength } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
-import { getSessionReasoningStrength, REASONING_STRENGTHS } from '@shared/utils/reasoning-strength'
 import {
   IconCamera,
   IconBrain,
   IconArrowUp,
   IconArrowsMove,
-  IconCheck,
   IconChevronDown,
   IconCpu,
   IconHistory,
@@ -26,7 +23,6 @@ import {
   IconPlayerStop,
   IconSettings,
   IconUpload,
-  IconUserCircle,
   IconVolume,
   IconVolumeOff,
   IconX,
@@ -40,15 +36,14 @@ import ModelSelector from '@/components/ModelSelector'
 import { useProviders } from '@/hooks/useProviders'
 import { getAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import { registerCameraCaptureProvider, unregisterCameraCaptureProvider } from '@/mobile/camera-tool'
-import { listCharacterProfiles, selectSessionCharacter } from '@/mobile/character-profiles'
 import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conversation-bridge'
 import { applyLive2DPromptToSession } from '@/mobile/interactive-conversation'
 import { resolveInteractiveModelSelection, updateInteractiveModelSelection } from '@/mobile/interactive-model-selection'
 import {
   completeLive2DOnboarding,
+  BUILT_IN_YACHIYO_MODEL,
   deleteLive2DModel,
   getSelectedLive2DModelId,
-  hasCompletedLive2DOnboarding,
   hideValidLive2DMarkers,
   importLive2DModel,
   type Live2DModelDescriptor,
@@ -77,16 +72,16 @@ import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import { submitNewUserMessage } from '@/stores/session/messages'
 import { createEmpty } from '@/stores/sessionActions'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { submitTaskMessage } from '@/stores/taskSessionActions'
+import { cancelTaskGeneration, submitTaskMessage } from '@/stores/taskSessionActions'
 import { updateTaskSession, useTaskSessionRecord } from '@/stores/taskSessionStore'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
-import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { AgentWorkspaceSelector } from './AgentConfigurationPanel'
 import { AndroidInteractiveChrome } from './AndroidSharedChrome'
 import { CharacterSelector } from './CharacterSelector'
 import { Live2DStage, type Live2DStageHandle } from './Live2DStage'
 import { Live2DErrorPanel } from './Live2DErrorPanel'
 import { useAndroidRetainedState } from './android-retained-state'
+import './interactive-layout.css'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
 
 export function AndroidInteractive({
@@ -100,9 +95,12 @@ export function AndroidInteractive({
 }) {
   const { t } = useTranslation()
   const retainedSessionKey = sessionId || 'new'
-  const [models, setModels] = useState<Live2DModelDescriptor[]>([])
+  // The bundled model never depends on IndexedDB or imported ZIPs being readable.
+  const [models, setModels] = useState<Live2DModelDescriptor[]>([BUILT_IN_YACHIYO_MODEL])
   const [selectedModelId, setSelectedModelId] = useState(getSelectedLive2DModelId)
-  const [modelPickerOpen, setModelPickerOpen] = useState(() => activity === 'active' && !hasCompletedLive2DOnboarding())
+  const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [inputFocused, setInputFocused] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [muted, setMuted] = useState(false)
   const [ttsSpeaking, setTtsSpeaking] = useState(false)
@@ -129,6 +127,8 @@ export function AndroidInteractive({
   const [live2dTransform, setLive2dTransform] = useState<Live2DTransform>(() => loadLive2DTransform(selectedModelId))
   const [live2dMoveMode, setLive2dMoveMode] = useState(false)
   const stageRef = useRef<Live2DStageHandle>(null)
+  const pageRef = useRef<HTMLElement>(null)
+  const controlsRef = useRef<HTMLElement>(null)
   const live2dTransformSnapshotRef = useRef<Live2DTransform>()
   const videoRef = useRef<HTMLVideoElement>(null)
   const cameraStreamRef = useRef<MediaStream>()
@@ -146,7 +146,6 @@ export function AndroidInteractive({
   const onSessionChangeRef = useRef(onSessionChange)
   const sessionCreationGenerationRef = useRef(0)
   const sessionCreationRef = useRef<Promise<{ id: string }>>()
-  const onboardingPromptedRef = useRef(activity === 'active')
   const spokenRef = useRef<{ id?: string; length: number }>({ length: 0 })
   const speechQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechGenerationRef = useRef(0)
@@ -163,13 +162,35 @@ export function AndroidInteractive({
   onSessionChangeRef.current = onSessionChange
 
   useEffect(() => {
-    if (activity !== 'active' || onboardingPromptedRef.current) return
-    onboardingPromptedRef.current = true
-    if (!hasCompletedLive2DOnboarding()) setModelPickerOpen(true)
+    const page = pageRef.current
+    const controls = controlsRef.current
+    const header = document.querySelector('.yachiyo-interactive-header')
+    if (!page || !controls || !header || typeof ResizeObserver === 'undefined') return
+    const measure = () => {
+      const bounds = page.getBoundingClientRect()
+      const top = Math.max(0, header.getBoundingClientRect().bottom - bounds.top) + 12
+      const bottom = Math.max(0, bounds.bottom - controls.getBoundingClientRect().top) + 12
+      page.style.setProperty('--interactive-stage-top', `${top}px`)
+      page.style.setProperty('--interactive-stage-bottom', `${bottom}px`)
+    }
+    const observer = new ResizeObserver(measure)
+    for (const element of [page, controls, header]) observer.observe(element)
+    measure()
+    return () => observer.disconnect()
   }, [activity])
 
   useEffect(() => {
-    void listLive2DModels().then(setModels)
+    let disposed = false
+    void listLive2DModels()
+      .then((available) => {
+        if (!disposed) setModels(available)
+      })
+      .catch((reason) => {
+        if (!disposed) setLive2dImportError(normalizeLive2DError(reason, { phase: 'storage' }))
+      })
+    return () => {
+      disposed = true
+    }
   }, [])
 
   useEffect(() => {
@@ -194,7 +215,9 @@ export function AndroidInteractive({
         }
         onSessionChangeRef.current(created.id)
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (activityRef.current === 'active') setNotice(String(t('会话初始化失败，请重新打开此页面')))
+      })
       .finally(() => {
         if (sessionCreationRef.current === creation) sessionCreationRef.current = undefined
       })
@@ -202,7 +225,7 @@ export function AndroidInteractive({
     return () => {
       if (sessionCreationGenerationRef.current === generation) sessionCreationGenerationRef.current += 1
     }
-  }, [activity, sessionId])
+  }, [activity, sessionId, t])
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId) || models[0],
@@ -293,9 +316,7 @@ export function AndroidInteractive({
       return
     }
     setBubbleVisible(true)
-    const timeout = window.setTimeout(() => setBubbleVisible(false), 5000)
-    return () => window.clearTimeout(timeout)
-  }, [bubbleText])
+  }, [Boolean(bubbleText), latestAssistant?.id])
 
   useEffect(() => {
     if (!voiceTranscript || recording) return
@@ -462,7 +483,7 @@ export function AndroidInteractive({
       saveAgentSessionConfig(agentTask.id, { ...config, enabled: true, configured: true })
       setTaskId(agentTask.id)
       setAgentMode(true)
-      if (!config.configured) setModelPickerOpen(true)
+      if (!config.configured) setSettingsOpen(true)
     } else {
       if (taskId) await ensureChatSessionForTask(taskId)
       setAgentMode(false)
@@ -518,6 +539,9 @@ export function AndroidInteractive({
           needGenerating: true,
         })
       }
+    } catch {
+      setInput(text)
+      setNotice(String(t('消息发送失败，请检查模型设置后重试')))
     } finally {
       setSubmitting(false)
     }
@@ -547,224 +571,37 @@ export function AndroidInteractive({
     setLive2dTransform(reset)
   }
 
-  const interactiveHeaderActions: AdaptiveActionDescriptor[] = [
-    {
-      id: 'character',
-      label: String(t('切换人格')),
-      icon: IconUserCircle,
-      priority: 20,
-      group: 'identity',
-      collapseStrategy: 'icon-then-overflow',
-      renderControl: ({ presentation }) => (
-        <CharacterSelector sessionId={sessionId} compact={presentation === 'icon'} />
-      ),
-      menuAction: {
-        render: ({ closeMenu }) => (
-          <>
-            <Menu.Label>{t('切换人格')}</Menu.Label>
-            {listCharacterProfiles().map((profile) => (
-              <Menu.Item
-                key={profile.id}
-                leftSection={<img src={profile.avatar} alt="" className="yachiyo-character-menu-avatar" />}
-                onClick={() => {
-                  closeMenu()
-                  if (sessionId) void selectSessionCharacter(sessionId, profile)
-                }}
-              >
-                {profile.name}
-              </Menu.Item>
-            ))}
-          </>
-        ),
-      },
-    },
-    {
-      id: 'reasoning',
-      label: String(t('推理强度')),
-      icon: IconBrain,
-      priority: 30,
-      group: 'identity',
-      collapseStrategy: 'icon-then-overflow',
-      renderControl: () => (
-        <ReasoningStrengthControl
-          settings={agentMode ? task?.settings : session?.settings}
-          onChange={(value) => void updateReasoningStrength(value)}
-          compact
-        />
-      ),
-      menuAction: {
-        render: ({ closeMenu }) => {
-          const selectedStrength =
-            getSessionReasoningStrength(agentMode ? task?.settings : session?.settings) || 'medium'
-          const labels: Record<ReasoningStrength, string> = {
-            off: String(t('不思考')),
-            minimal: String(t('极低')),
-            low: String(t('低')),
-            medium: String(t('中')),
-            high: String(t('高')),
-            max: 'MAX',
-          }
-          return (
-            <>
-              <Menu.Label>{t('推理强度')}</Menu.Label>
-              {REASONING_STRENGTHS.map((strength) => (
-                <Menu.Item
-                  key={strength}
-                  rightSection={selectedStrength === strength ? <IconCheck size={15} /> : undefined}
-                  onClick={() => {
-                    closeMenu()
-                    void updateReasoningStrength(strength)
-                  }}
-                >
-                  {labels[strength]}
-                </Menu.Item>
-              ))}
-            </>
-          )
-        },
-      },
-    },
-    {
-      id: 'mode',
-      label: String(t('对话模式')),
-      priority: 100,
-      group: 'mode',
-      collapseStrategy: 'keep',
-      renderControl: () => (
-        <SegmentedControl
-          className="yachiyo-interactive-mode-control"
-          size="xs"
-          value={agentMode ? 'agent' : 'chat'}
-          data={[
-            { label: t('聊天'), value: 'chat' },
-            { label: t('Agent'), value: 'agent' },
-          ]}
-          onChange={(value) => void toggleAgent(value)}
-        />
-      ),
-    },
-    {
-      id: 'mute',
-      label: String(muted ? t('取消静音') : t('静音')),
-      priority: 90,
-      group: 'media',
-      collapseStrategy: 'keep',
-      renderControl: () => (
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          size={44}
-          aria-label={muted ? t('取消静音') : t('静音')}
-          data-active={muted ? 'true' : 'false'}
-          onClick={() => setMuted(!muted)}
-        >
-          {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
-        </ActionIcon>
-      ),
-    },
-    {
-      id: 'camera',
-      label: String(t('摄像头')),
-      priority: 80,
-      group: 'media',
-      collapseStrategy: 'keep',
-      renderControl: () => (
-        <ActionIcon
-          variant="subtle"
-          color={cameraEnabled ? 'chatbox-brand' : 'gray'}
-          size={44}
-          aria-label={t('摄像头')}
-          data-active={cameraEnabled ? 'true' : 'false'}
-          data-yachiyo-tab-swipe="block"
-          onClick={() => setCameraEnabled(!cameraEnabled)}
-        >
-          <IconCamera size={21} />
-        </ActionIcon>
-      ),
-    },
-    {
-      id: 'move-live2d',
-      label: String(t('移动 Live2D')),
-      icon: IconArrowsMove,
-      priority: 5,
-      group: 'secondary',
-      collapseStrategy: 'overflow',
-      renderControl: () => null,
-      menuAction: { onSelect: startLive2DMoveMode },
-    },
-    {
-      id: 'settings',
-      label: String(t('交互设置')),
-      icon: IconSettings,
-      priority: 10,
-      group: 'secondary',
-      collapseStrategy: 'overflow',
-      renderControl: () => (
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          size={44}
-          aria-label={t('交互设置')}
-          onClick={() => setModelPickerOpen(true)}
-        >
-          <IconSettings size={21} />
-        </ActionIcon>
-      ),
-      menuAction: { onSelect: () => setModelPickerOpen(true) },
-    },
-  ]
-
   const interactiveChrome = (
     <AndroidInteractiveChrome>
-      <div className="yachiyo-interactive-header-main">
-        <ActionIcon
-          size={44}
-          variant="subtle"
-          color="gray"
-          aria-label={t('会话记录')}
-          onClick={() => setHistoryOpen(true)}
-        >
-          <IconHistory size={21} />
-        </ActionIcon>
-        <button type="button" className="yachiyo-interactive-title" onClick={() => setModelPickerOpen(true)}>
-          <strong>{selectedModel?.name || t('交互式对话')}</strong>
-          <span>{session?.name || t('交互式对话')}</span>
-        </button>
-        <ModelSelector
-          onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
-          selectedProviderId={conversationModel?.provider}
-          selectedModelId={conversationModel?.modelId}
-          modelFilter={(model, providerId) =>
-            !agentMode ||
-            providerId === ModelProviderEnum.Yachiyo ||
-            providerId === ModelProviderEnum.Local ||
-            Boolean(model.capabilities?.includes('tool_use'))
-          }
-          position="bottom-end"
-          transitionProps={{ transition: 'fade-down', duration: 180 }}
-        >
-          <UnstyledButton
-            className="yachiyo-interactive-llm-selector"
-            aria-label={t('切换模型：{{model}}', { model: conversationModelName })}
-            title={conversationModelName}
-          >
-            {conversationModel?.provider === ModelProviderEnum.Local ? (
-              <IconCpu size={18} aria-hidden="true" />
-            ) : conversationModel ? (
-              <ProviderImageIcon size={18} provider={conversationModel.provider} />
-            ) : (
-              <IconBrain size={18} aria-hidden="true" />
-            )}
-            <span>{conversationModelName}</span>
-            <IconChevronDown size={14} />
-          </UnstyledButton>
-        </ModelSelector>
-      </div>
-      <AdaptiveActionCluster
-        className="yachiyo-interactive-header-actions"
-        ariaLabel={String(t('交互操作'))}
-        actions={interactiveHeaderActions}
-      />
+      <ActionIcon
+        size={44}
+        variant="subtle"
+        aria-label={String(t('会话记录'))}
+        title={t('会话记录')}
+        onClick={() => setHistoryOpen(true)}
+      >
+        <IconHistory size={21} />
+      </ActionIcon>
+      <button
+        type="button"
+        className="yachiyo-interactive-title"
+        onClick={() => setModelPickerOpen(true)}
+        aria-label={String(t('切换形象'))}
+      >
+        <strong>
+          {selectedModel?.name || t('交互式对话')} <IconChevronDown size={14} />
+        </strong>
+        <span>{t('切换形象')}</span>
+      </button>
+      <ActionIcon
+        size={44}
+        variant="subtle"
+        aria-label={String(t('交互设置'))}
+        title={t('交互设置')}
+        onClick={() => setSettingsOpen(true)}
+      >
+        <IconSettings size={21} />
+      </ActionIcon>
     </AndroidInteractiveChrome>
   )
 
@@ -780,7 +617,7 @@ export function AndroidInteractive({
   }
 
   return (
-    <main className="yachiyo-interactive-page" data-activity={activity}>
+    <main ref={pageRef} className="yachiyo-interactive-page" data-activity={activity}>
       {interactiveChrome}
 
       <section className="yachiyo-interactive-scene">
@@ -794,7 +631,7 @@ export function AndroidInteractive({
           speaking={ttsSpeaking}
           muted={muted}
           quality={renderQuality}
-          activity={activity}
+          activity={activity === 'active' && (settingsOpen || modelPickerOpen || inputFocused) ? 'preview' : activity}
           transform={live2dTransform}
           editMode={live2dMoveMode}
         />
@@ -880,10 +717,23 @@ export function AndroidInteractive({
             <video ref={videoRef} muted playsInline draggable={false} />
           </div>
         )}
-        {bubbleText && bubbleVisible && (
-          <div className="yachiyo-live-bubble" aria-live="polite">
-            <div>{bubbleText}</div>
-          </div>
+        {bubbleText && (
+          <aside className="yachiyo-interactive-response" data-expanded={bubbleVisible}>
+            <button
+              type="button"
+              aria-expanded={bubbleVisible}
+              aria-controls="interactive-latest-response"
+              onClick={() => setBubbleVisible(!bubbleVisible)}
+            >
+              <span>{t('最新回复')}</span>
+              {bubbleVisible ? <IconX size={16} /> : <IconChevronDown size={16} />}
+            </button>
+            {bubbleVisible && (
+              <div id="interactive-latest-response" className="yachiyo-interactive-response-text">
+                {bubbleText}
+              </div>
+            )}
+          </aside>
         )}
         {voiceTranscript && (
           <div className="yachiyo-live-transcript" aria-live="polite">
@@ -898,91 +748,248 @@ export function AndroidInteractive({
         )}
       </section>
 
-      <footer className="yachiyo-interactive-controls">
-        <button
-          type="button"
-          className="yachiyo-interactive-round-button yachiyo-interactive-mic"
-          aria-label={String(t(recording ? '松开发送' : '按住说话'))}
-          data-yachiyo-tab-swipe="block"
-          data-recording={recording ? 'true' : 'false'}
-          onPointerDown={(event) => {
-            if (activityRef.current !== 'active' || interactiveRecognitionActiveRef.current) return
-            event.currentTarget.setPointerCapture(event.pointerId)
-            const attempt = ++voiceRecognitionAttemptRef.current
-            interactiveRecognitionActiveRef.current = true
-            setRecording(true)
-            setVoiceTranscript('')
-            void recognizeAndroidSpeech({
-              onPartial: (text) => {
-                if (voiceRecognitionAttemptRef.current === attempt) setVoiceTranscript(text)
-              },
-            })
-              .then((text) => {
-                if (voiceRecognitionAttemptRef.current !== attempt || !text) return
-                setVoiceTranscript(text)
-                void submit(text)
+      <footer ref={controlsRef} className="yachiyo-interactive-controls" data-yachiyo-tab-swipe="block">
+        <div className="yachiyo-interactive-composer-toolbar">
+          <SegmentedControl
+            className="yachiyo-interactive-mode-control"
+            aria-label={String(t('对话模式'))}
+            size="xs"
+            value={agentMode ? 'agent' : 'chat'}
+            data={[
+              { label: t('聊天'), value: 'chat' },
+              { label: t('Agent'), value: 'agent' },
+            ]}
+            onChange={(value) => void toggleAgent(value)}
+          />
+          <button
+            type="button"
+            className="yachiyo-interactive-model-shortcut"
+            onClick={() => setSettingsOpen(true)}
+            aria-label={String(t('切换模型：{{model}}', { model: conversationModelName }))}
+          >
+            <span>{conversationModelName}</span>
+            <IconChevronDown size={14} />
+          </button>
+        </div>
+        <div className="yachiyo-interactive-composer-row">
+          <button
+            type="button"
+            className="yachiyo-interactive-round-button yachiyo-interactive-mic"
+            aria-label={String(t(recording ? '松开发送' : '按住说话'))}
+            data-yachiyo-tab-swipe="block"
+            data-recording={recording ? 'true' : 'false'}
+            onPointerDown={(event) => {
+              if (activityRef.current !== 'active' || interactiveRecognitionActiveRef.current) return
+              event.currentTarget.setPointerCapture(event.pointerId)
+              const attempt = ++voiceRecognitionAttemptRef.current
+              interactiveRecognitionActiveRef.current = true
+              setRecording(true)
+              setVoiceTranscript('')
+              void recognizeAndroidSpeech({
+                onPartial: (text) => {
+                  if (voiceRecognitionAttemptRef.current === attempt) setVoiceTranscript(text)
+                },
               })
-              .catch((error) => {
-                if (voiceRecognitionAttemptRef.current !== attempt) return
-                const message = getSpeechRecognitionErrorMessage(error)
-                // The speech runtime formats HTTP failures before this UI can translate them.
-                const httpFailure = message.match(/^语音识别 API 请求失败（HTTP (.+)）。$/)
-                setNotice(
-                  String(
-                    httpFailure
-                      ? t('语音识别 API 请求失败（HTTP {{status}}）。', { status: httpFailure[1] })
-                      : t(message)
+                .then((text) => {
+                  if (voiceRecognitionAttemptRef.current !== attempt || !text) return
+                  setVoiceTranscript(text)
+                  void submit(text)
+                })
+                .catch((error) => {
+                  if (voiceRecognitionAttemptRef.current !== attempt) return
+                  const message = getSpeechRecognitionErrorMessage(error)
+                  // The speech runtime formats HTTP failures before this UI can translate them.
+                  const httpFailure = message.match(/^语音识别 API 请求失败（HTTP (.+)）。$/)
+                  setNotice(
+                    String(
+                      httpFailure
+                        ? t('语音识别 API 请求失败（HTTP {{status}}）。', { status: httpFailure[1] })
+                        : t(message)
+                    )
                   )
-                )
-              })
-              .finally(() => {
-                if (voiceRecognitionAttemptRef.current === attempt) {
-                  interactiveRecognitionActiveRef.current = false
-                  setRecording(false)
-                }
-              })
-          }}
-          onPointerUp={(event) => {
-            setRecording(false)
-            void stopAndroidSpeechRecognition()
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId)
-            }
-          }}
-          onPointerCancel={() => {
-            setRecording(false)
-            void stopAndroidSpeechRecognition()
-          }}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
-        </button>
-        <Textarea
-          className="yachiyo-interactive-keyboard-input"
-          data-yachiyo-tab-swipe="block"
-          value={input}
-          onChange={(event) => setInput(event.currentTarget.value)}
-          placeholder={String(t('输入消息'))}
-          autosize
-          minRows={1}
-          maxRows={4}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void submit()
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="yachiyo-interactive-round-button yachiyo-interactive-send"
-          aria-label={String(t('发送消息'))}
-          disabled={!input.trim() || submitting}
-          onClick={() => void submit()}
-        >
-          <IconArrowUp size={24} />
-        </button>
+                })
+                .finally(() => {
+                  if (voiceRecognitionAttemptRef.current === attempt) {
+                    interactiveRecognitionActiveRef.current = false
+                    setRecording(false)
+                  }
+                })
+            }}
+            onPointerUp={(event) => {
+              setRecording(false)
+              void stopAndroidSpeechRecognition()
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId)
+              }
+            }}
+            onPointerCancel={() => {
+              setRecording(false)
+              void stopAndroidSpeechRecognition()
+            }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
+          </button>
+          <Textarea
+            className="yachiyo-interactive-keyboard-input"
+            data-yachiyo-tab-swipe="block"
+            value={input}
+            onChange={(event) => setInput(event.currentTarget.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            placeholder={String(t('输入消息'))}
+            autosize
+            minRows={1}
+            maxRows={4}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault()
+                void submit()
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="yachiyo-interactive-round-button yachiyo-interactive-send"
+            aria-label={String(t(generating ? '停止生成' : '发送消息'))}
+            disabled={!generating && (!input.trim() || submitting)}
+            onClick={() => {
+              if (generating) {
+                if (agentMode) void cancelTaskGeneration(taskId)
+                else latestAssistant?.cancel?.()
+              } else void submit()
+            }}
+          >
+            {generating ? <IconPlayerStop size={20} /> : <IconArrowUp size={24} />}
+          </button>
+        </div>
+        <div className="yachiyo-interactive-composer-hint" role="status">
+          {recording ? t('松开发送') : generating ? t('正在回复…') : t('按住麦克风说话，或输入消息')}
+        </div>
       </footer>
+
+      <AdaptiveModal
+        opened={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={
+          <div className="yachiyo-interactive-sheet-heading">
+            <Text fw={650}>{t('交互设置')}</Text>
+            <ActionIcon
+              size={44}
+              radius="xl"
+              variant="subtle"
+              aria-label={String(t('关闭交互设置'))}
+              onClick={() => setSettingsOpen(false)}
+            >
+              <IconX size={20} />
+            </ActionIcon>
+          </div>
+        }
+        centered
+      >
+        <div className="yachiyo-interactive-settings">
+          <section className="yachiyo-interactive-settings-group" aria-label={String(t('对话设置'))}>
+            <h3>{t('对话设置')}</h3>
+            <div className="yachiyo-interactive-setting-row">
+              <span>{t('AI 模型')}</span>{' '}
+              <ModelSelector
+                onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
+                selectedProviderId={conversationModel?.provider}
+                selectedModelId={conversationModel?.modelId}
+                modelFilter={(model, providerId) =>
+                  !agentMode ||
+                  providerId === ModelProviderEnum.Yachiyo ||
+                  providerId === ModelProviderEnum.Local ||
+                  Boolean(model.capabilities?.includes('tool_use'))
+                }
+                position="bottom-end"
+                transitionProps={{ transition: 'fade-down', duration: 180 }}
+              >
+                <UnstyledButton
+                  className="yachiyo-interactive-llm-selector"
+                  aria-label={String(t('切换模型：{{model}}', { model: conversationModelName }))}
+                  title={conversationModelName}
+                >
+                  {conversationModel?.provider === ModelProviderEnum.Local ? (
+                    <IconCpu size={18} aria-hidden="true" />
+                  ) : conversationModel ? (
+                    <ProviderImageIcon size={18} provider={conversationModel.provider} />
+                  ) : (
+                    <IconBrain size={18} aria-hidden="true" />
+                  )}
+                  <span>{conversationModelName}</span>
+                  <IconChevronDown size={14} />
+                </UnstyledButton>
+              </ModelSelector>
+            </div>
+            <div className="yachiyo-interactive-setting-row">
+              <span>{t('推理强度')}</span>
+              <ReasoningStrengthControl
+                settings={agentMode ? task?.settings : session?.settings}
+                onChange={(value) => void updateReasoningStrength(value)}
+                compact
+              />
+            </div>
+            <div className="yachiyo-interactive-setting-row">
+              <span>{t('切换人格')}</span>
+              <CharacterSelector sessionId={sessionId} />
+            </div>
+            {agentMode && <AgentWorkspaceSelector sessionId={taskId || sessionId} />}
+          </section>
+          <section className="yachiyo-interactive-settings-group" aria-label={String(t('声音与画面'))}>
+            <h3>{t('声音与画面')}</h3>
+            <button
+              type="button"
+              className="yachiyo-interactive-setting-row"
+              aria-label={String(muted ? t('取消静音') : t('静音'))}
+              aria-pressed={!muted}
+              onClick={() => setMuted(!muted)}
+            >
+              {muted ? <IconVolumeOff size={21} /> : <IconVolume size={21} />}
+              <span>{t('语音播放')}</span>
+              <small>{muted ? t('已关闭') : t('已开启')}</small>
+            </button>
+            <button
+              type="button"
+              className="yachiyo-interactive-setting-row"
+              aria-label={String(t('摄像头'))}
+              aria-pressed={cameraEnabled}
+              onClick={() => {
+                setCameraEnabled(!cameraEnabled)
+                setSettingsOpen(false)
+              }}
+            >
+              <IconCamera size={21} />
+              <span>{t('摄像头')}</span>
+              <small>{cameraEnabled ? t('已开启') : t('已关闭')}</small>
+            </button>
+            <button
+              type="button"
+              className="yachiyo-interactive-setting-row"
+              onClick={() => {
+                setSettingsOpen(false)
+                startLive2DMoveMode()
+              }}
+            >
+              <IconArrowsMove size={21} />
+              <span>{t('调整角色位置')}</span>
+              <IconChevronDown size={16} />
+            </button>
+            <button
+              type="button"
+              className="yachiyo-interactive-setting-row"
+              onClick={() => {
+                setSettingsOpen(false)
+                setModelPickerOpen(true)
+              }}
+            >
+              <IconSettings size={21} />
+              <span>{t('形象与背景')}</span>
+              <IconChevronDown size={16} />
+            </button>
+          </section>
+        </div>
+      </AdaptiveModal>
 
       <AndroidConversationHistory
         opened={historyOpen}
@@ -995,7 +1002,20 @@ export function AndroidInteractive({
       <AdaptiveModal
         opened={modelPickerOpen}
         onClose={() => setModelPickerOpen(false)}
-        title={t('Live2D 模型')}
+        title={
+          <div className="yachiyo-interactive-sheet-heading">
+            <Text fw={650}>{t('形象与背景')}</Text>
+            <ActionIcon
+              size={44}
+              radius="xl"
+              variant="subtle"
+              aria-label={String(t('关闭形象设置'))}
+              onClick={() => setModelPickerOpen(false)}
+            >
+              <IconX size={20} />
+            </ActionIcon>
+          </div>
+        }
         className="yachiyo-live2d-picker-modal"
         centered
       >
@@ -1021,7 +1041,6 @@ export function AndroidInteractive({
               setLive2DRenderQuality(quality)
             }}
           />
-          {agentMode && <AgentWorkspaceSelector sessionId={taskId || sessionId} />}
           {models.map((model) => (
             <button
               key={model.id}
@@ -1039,7 +1058,7 @@ export function AndroidInteractive({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  aria-label={t('删除 {{name}}', { name: model.name })}
+                  aria-label={String(t('删除 {{name}}', { name: model.name }))}
                   onClick={(event) => {
                     event.stopPropagation()
                     void deleteLive2DModel(model.id).then(async () => setModels(await listLive2DModels()))

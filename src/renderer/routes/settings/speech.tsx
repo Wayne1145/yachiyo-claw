@@ -1,4 +1,5 @@
-import { Button, PasswordInput, Select, Stack, Text, Textarea, TextInput, Title } from '@mantine/core'
+import { SettingsActions, SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
+import { Button, PasswordInput, Select, Text, Textarea, TextInput } from '@mantine/core'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -33,7 +34,7 @@ const TTS_PROVIDERS = [
   { value: 'custom', label: '自定义 HTTP API' },
 ]
 
-function SpeechSettingsPage() {
+export function SpeechSettingsPage() {
   const { t } = useTranslation()
   const [value, setValue] = useState(getSpeechSettings)
   const [credentials, setCredentials] = useState<SpeechCredentials>({
@@ -44,19 +45,44 @@ function SpeechSettingsPage() {
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const patch = (next: Partial<SpeechSettings>) => setValue((current) => ({ ...current, ...next }))
+  const [error, setError] = useState('')
+  const [credentialsState, setCredentialsState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const patch = (next: Partial<SpeechSettings>) => {
+    setSaved(false)
+    setValue((current) => ({ ...current, ...next }))
+  }
 
   useEffect(() => {
-    void getSpeechCredentials().then((stored) => {
-      // Versions before 0.0.11 stored custom headers in plaintext settings. Keep them visible until
-      // the next save, which moves them into the context-bound Keystore envelope.
-      setCredentials({
-        ...stored,
-        asrHeaders: stored.asrHeaders || value.asrHeaders,
-        ttsHeaders: stored.ttsHeaders || value.ttsHeaders,
+    let active = true
+    setCredentialsState('loading')
+    setError('')
+    void getSpeechCredentials()
+      .then((stored) => {
+        if (!active) return
+        // Versions before 0.0.11 stored custom headers in plaintext settings. Keep them visible until
+        // the next save, which moves them into the context-bound Keystore envelope.
+        setCredentials({
+          ...stored,
+          asrHeaders: stored.asrHeaders || value.asrHeaders,
+          ttsHeaders: stored.ttsHeaders || value.ttsHeaders,
+        })
+        setCredentialsState('ready')
       })
-    })
-  }, [])
+      .catch((cause) => {
+        if (!active) return
+        setCredentialsState('error')
+        setError(cause instanceof Error ? cause.message : String(t('无法读取语音配置')))
+      })
+    return () => {
+      active = false
+    }
+  }, [loadAttempt])
+
+  const patchCredentials = (next: Partial<SpeechCredentials>) => {
+    setSaved(false)
+    setCredentials((current) => ({ ...current, ...next }))
+  }
 
   const changeAsrProvider = (provider: ASRProvider) => {
     const defaults = getSpeechProviderDefaults(provider, 'asr')
@@ -69,12 +95,16 @@ function SpeechSettingsPage() {
   }
 
   const save = async () => {
+    if (credentialsState !== 'ready' || saving) return
     setSaving(true)
     setSaved(false)
     try {
       await saveSpeechCredentials(credentials)
       saveSpeechSettings(value)
       setSaved(true)
+      setError('')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(t('语音设置保存失败')))
     } finally {
       setSaving(false)
     }
@@ -84,13 +114,8 @@ function SpeechSettingsPage() {
   const remoteTts = value.ttsProvider !== 'bing' && value.ttsProvider !== 'android-system'
 
   return (
-    <main className="yachiyo-character-settings">
-      <Title order={1}>{t('语音服务')}</Title>
-      <Text c="dimmed" mb="md">
-        {t('ASR 与 TTS 独立配置。API Key 在 Android 上由系统 Keystore 加密保存。')}
-      </Text>
-      <section className="yachiyo-character-editor">
-        <Title order={2}>{t('语音识别（ASR）')}</Title>
+    <SettingsPage title={t('语音服务')} description={t('识别你的声音，选择角色的音色')}>
+      <SettingsSection title={t('语音识别（ASR）')}>
         <Select
           label={t('ASR 提供商')}
           value={value.asrProvider}
@@ -114,23 +139,31 @@ function SpeechSettingsPage() {
             <PasswordInput
               label={t('ASR API Key')}
               value={credentials.asrApiKey}
-              onChange={(event) => setCredentials((current) => ({ ...current, asrApiKey: event.currentTarget.value }))}
+              disabled={credentialsState !== 'ready' || saving}
+              onChange={(event) => patchCredentials({ asrApiKey: event.currentTarget.value })}
             />
-            <TextInput label={t('ASR 模型')} value={value.asrModel} onChange={(event) => patch({ asrModel: event.currentTarget.value })} />
+            <TextInput
+              label={t('ASR 模型')}
+              value={value.asrModel}
+              onChange={(event) => patch({ asrModel: event.currentTarget.value })}
+            />
             <Textarea
               label={t('ASR 附加请求头（JSON，可选）')}
               value={credentials.asrHeaders}
+              disabled={credentialsState !== 'ready' || saving}
               autosize
               minRows={2}
-              onChange={(event) =>
-                setCredentials((current) => ({ ...current, asrHeaders: event.currentTarget.value }))
-              }
+              onChange={(event) => patchCredentials({ asrHeaders: event.currentTarget.value })}
             />
           </>
         )}
-        <TextInput label={t('识别语言')} value={value.language} onChange={(event) => patch({ language: event.currentTarget.value })} />
-
-        <Title order={2}>{t('语音合成（TTS）')}</Title>
+        <TextInput
+          label={t('识别语言')}
+          value={value.language}
+          onChange={(event) => patch({ language: event.currentTarget.value })}
+        />
+      </SettingsSection>
+      <SettingsSection title={t('语音合成（TTS）')}>
         <Select
           label={t('TTS 提供商')}
           value={value.ttsProvider}
@@ -149,34 +182,57 @@ function SpeechSettingsPage() {
             <PasswordInput
               label={t('TTS API Key（可选）')}
               value={credentials.ttsApiKey}
-              onChange={(event) => setCredentials((current) => ({ ...current, ttsApiKey: event.currentTarget.value }))}
+              disabled={credentialsState !== 'ready' || saving}
+              onChange={(event) => patchCredentials({ ttsApiKey: event.currentTarget.value })}
             />
             <Textarea
               label={t('TTS 附加请求头（JSON，可选）')}
               value={credentials.ttsHeaders}
+              disabled={credentialsState !== 'ready' || saving}
               autosize
               minRows={2}
-              onChange={(event) =>
-                setCredentials((current) => ({ ...current, ttsHeaders: event.currentTarget.value }))
-              }
+              onChange={(event) => patchCredentials({ ttsHeaders: event.currentTarget.value })}
             />
           </>
         )}
         {value.ttsProvider !== 'bing' && value.ttsProvider !== 'android-system' && (
-          <TextInput label={t('TTS 模型')} value={value.ttsModel} onChange={(event) => patch({ ttsModel: event.currentTarget.value })} />
+          <TextInput
+            label={t('TTS 模型')}
+            value={value.ttsModel}
+            onChange={(event) => patch({ ttsModel: event.currentTarget.value })}
+          />
         )}
         <TextInput
           label={value.ttsProvider === 'gpt-sovits' ? t('参考音频路径') : t('音色')}
           value={value.voice}
           onChange={(event) => patch({ voice: event.currentTarget.value })}
         />
-        <Stack gap="xs">
-          <Button loading={saving} onClick={() => void save()}>
-            {t('保存语音设置')}
+      </SettingsSection>
+      <SettingsActions>
+        {credentialsState === 'loading' && (
+          <Text role="status" size="sm">
+            {t('正在读取语音配置…')}
+          </Text>
+        )}
+        {credentialsState === 'error' && (
+          <Button variant="light" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+            {t('重试')}
           </Button>
-          {saved && <Text size="sm" c="green">{t('语音设置已保存')}</Text>}
-        </Stack>
-      </section>
-    </main>
+        )}
+        <Button loading={saving} disabled={credentialsState !== 'ready'} onClick={() => void save()}>
+          {t('保存语音设置')}
+        </Button>
+        {saved && (
+          <Text size="sm" c="green" role="status">
+            {t('语音设置已保存')}
+          </Text>
+        )}
+        {error && (
+          <Text size="sm" c="red" role="alert">
+            {error}
+          </Text>
+        )}
+      </SettingsActions>
+    </SettingsPage>
   )
 }

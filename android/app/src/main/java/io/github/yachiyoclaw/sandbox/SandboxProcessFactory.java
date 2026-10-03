@@ -37,6 +37,11 @@ final class SandboxProcessFactory {
         RuntimeConfig config
     ) throws Exception {
         File nativeDirectory = new File(context.getApplicationInfo().nativeLibraryDir);
+        // Android may purge code_cache on APK upgrades. Rehydrate the signed
+        // runtime dependencies even when the guest rootfs is already installed.
+        SandboxDistribution.Spec distribution = SandboxDistribution.current(nativeDirectory.getAbsolutePath());
+        if (distribution == null) throw new IllegalStateException("sandbox_abi_unsupported");
+        new AlpineSandboxInstaller(context, distribution).prepareRuntimeFiles();
         File proot = new File(nativeDirectory, "libyachiyo_proot.so");
         File loader = new File(nativeDirectory, "libyachiyo_proot_loader.so");
         if (!proot.isFile() || !loader.isFile()) throw new IllegalStateException("sandbox_native_runtime_missing");

@@ -10,6 +10,15 @@ is LGPL-3.0-or-later, and libandroid-shmem uses its upstream permissive license.
 Package recipes and corresponding sources are available at
 https://github.com/termux/termux-packages.
 
+The x86_64 PRoot executable is built from Termux PRoot tag `v5.1.107.86`,
+commit `6c09638b65797997e33b218a42e5e2c7645cb788`, with the patch in
+`scripts/patches/proot-android-syscalls.patch`. It translates legacy fork/vfork
+requests to equivalent clone requests. When legacy rename returns ENOSYS it
+reuses PRoot's existing renameat translation and guest path handling.
+Android's syscall filter and the existing workspace bindings remain enabled.
+The Windows build recipe is `scripts/build-proot-x86_64.py`; the talloc header
+retains its LGPL-3.0-or-later notice in `scripts/native/talloc/talloc.h`.
+
 The sandbox downloads the official Alpine Linux 3.24 mini root filesystem on
 first use. Alpine package copyrights and licenses remain available inside the
 installed root filesystem and at https://www.alpinelinux.org.

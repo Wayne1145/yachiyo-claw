@@ -41,10 +41,12 @@ describe('Liquid Glass quality', () => {
   })
 
   it('uses capability hints for automatic quality', () => {
-    expect(resolveLiquidGlassQuality('auto', capable)).toBe('reduced')
-    expect(resolveLiquidGlassQuality('auto', { ...capable, hardwareConcurrency: 6 })).toBe('reduced')
-    expect(resolveLiquidGlassQuality('auto', { ...capable, androidMajorVersion: 12 })).toBe('reduced')
+    expect(resolveLiquidGlassQuality('auto', capable)).toBe('balanced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, hardwareConcurrency: 6 })).toBe('balanced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, androidMajorVersion: 12 })).toBe('balanced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, hardwareConcurrency: 3 })).toBe('reduced')
     expect(resolveLiquidGlassQuality('auto', { ...capable, deviceMemoryGb: 2 })).toBe('reduced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, saveData: true })).toBe('reduced')
   })
 
   it('always reduces transparency when the platform or user requires it', () => {
@@ -54,19 +56,19 @@ describe('Liquid Glass quality', () => {
     expect(resolveLiquidGlassQuality('auto', { ...capable, forcedColors: true })).toBe('reduced')
   })
 
-  it('keeps Android auto on its no-filter path even without SVG filters or with reduced motion', () => {
-    expect(resolveLiquidGlassQuality('auto', { ...capable, supportsSvgDisplacement: false })).toBe('reduced')
-    expect(resolveLiquidGlassQuality('auto', { ...capable, prefersReducedMotion: true })).toBe('reduced')
+  it('keeps Android auto on chrome-only blur and never on SVG refraction', () => {
+    expect(resolveLiquidGlassQuality('auto', { ...capable, supportsSvgDisplacement: false })).toBe('balanced')
+    expect(resolveLiquidGlassQuality('auto', { ...capable, prefersReducedMotion: true })).toBe('balanced')
     expect(resolveLiquidGlassQuality('auto', { ...capable, androidMajorVersion: undefined, supportsSvgDisplacement: false })).toBe('balanced')
   })
 
   it('mirrors requested and resolved quality for first-paint attributes', () => {
-    expect(applyLiquidGlassQuality('auto', capable)).toBe('reduced')
+    expect(applyLiquidGlassQuality('auto', capable)).toBe('balanced')
     expect(document.documentElement.dataset.yachiyoLiquidGlassQualityPreference).toBe('auto')
-    expect(document.documentElement.dataset.yachiyoLiquidGlassQuality).toBe('reduced')
+    expect(document.documentElement.dataset.yachiyoLiquidGlassQuality).toBe('balanced')
     expect(document.documentElement.dataset.yachiyoLiquidGlassFallback).toBe('android-version')
     expect(localStorage.getItem(LIQUID_GLASS_QUALITY_STORAGE_KEY)).toBe('auto')
-    expect(localStorage.getItem(LIQUID_GLASS_RESOLVED_QUALITY_STORAGE_KEY)).toBe('reduced')
+    expect(localStorage.getItem(LIQUID_GLASS_RESOLVED_QUALITY_STORAGE_KEY)).toBe('balanced')
   })
 
   it('re-resolves quality when an accessibility media preference changes', () => {

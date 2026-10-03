@@ -1,12 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import {
-  type ButtonHTMLAttributes,
-  forwardRef,
-  type ReactNode,
-  type TextareaHTMLAttributes,
-} from 'react'
+import { type ButtonHTMLAttributes, forwardRef, type ReactNode, type TextareaHTMLAttributes } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AndroidInteractive } from './AndroidInteractive'
 
@@ -16,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   stopAndroidSpeechRecognition: vi.fn(),
   stopSpeaking: vi.fn(),
   createEmpty: vi.fn(),
+  listLive2DModels: vi.fn(),
   registerCameraCaptureProvider: vi.fn(),
   unregisterCameraCaptureProvider: vi.fn(),
   translate: (key: string) => key,
@@ -32,7 +28,11 @@ vi.mock('@mantine/core', () => ({
       {children}
     </button>
   ),
-  Button: ({ children, leftSection, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { leftSection?: ReactNode }) => (
+  Button: ({
+    children,
+    leftSection,
+    ...props
+  }: ButtonHTMLAttributes<HTMLButtonElement> & { leftSection?: ReactNode }) => (
     <button type="button" {...props}>
       {leftSection}
       {children}
@@ -56,7 +56,15 @@ vi.mock('@shared/types', () => ({
 }))
 vi.mock('@shared/utils/message', () => ({ getMessageText: () => '' }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: mocks.translate }) }))
-vi.mock('@/components/common/AdaptiveModal', () => ({ AdaptiveModal: () => null }))
+vi.mock('@/components/common/AdaptiveModal', () => ({
+  AdaptiveModal: ({ opened, children, title }: { opened: boolean; children: ReactNode; title: ReactNode }) =>
+    opened ? (
+      <section role="dialog" aria-label={typeof title === 'string' ? title : '交互设置'}>
+        {title}
+        {children}
+      </section>
+    ) : null,
+}))
 vi.mock('@/components/ReasoningStrengthControl', () => ({ ReasoningStrengthControl: () => null }))
 vi.mock('@/components/icons/ProviderImageIcon', () => ({ default: () => null }))
 vi.mock('@/components/ModelSelector', () => ({ default: ({ children }: { children: ReactNode }) => children }))
@@ -80,13 +88,14 @@ vi.mock('@/mobile/interactive-model-selection', () => ({
   updateInteractiveModelSelection: vi.fn(),
 }))
 vi.mock('@/mobile/live2d-models', () => ({
+  BUILT_IN_YACHIYO_MODEL: { id: 'built-in', name: 'Built in', source: 'model.json', actions: [], builtIn: true },
   completeLive2DOnboarding: vi.fn(),
   deleteLive2DModel: vi.fn(),
   getSelectedLive2DModelId: () => 'model-1',
   hasCompletedLive2DOnboarding: () => true,
   hideValidLive2DMarkers: (text: string) => text,
   importLive2DModel: vi.fn(),
-  listLive2DModels: async () => [{ id: 'model-1', name: 'Model', source: 'model.json', actions: [], builtIn: true }],
+  listLive2DModels: mocks.listLive2DModels,
   parseLive2DActionMarkers: () => [],
   setSelectedLive2DModelId: vi.fn(),
 }))
@@ -134,8 +143,32 @@ function dispatchPointerEvent(
 }
 
 describe('AndroidInteractive transient resources', () => {
+  it('keeps secondary controls in settings and the conversation mode beside the composer', async () => {
+    const { container } = render(<AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: '摄像头' })).toBeNull()
+    expect(container.querySelector('.yachiyo-interactive-header')?.querySelectorAll('button')).toHaveLength(3)
+    expect(container.querySelector('.yachiyo-interactive-controls .yachiyo-interactive-composer-toolbar')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '交互设置' }))
+    expect(await screen.findByRole('dialog', { name: '交互设置' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '摄像头' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '关闭交互设置' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps the built-in stage and header available when imported model storage fails', async () => {
+    mocks.listLive2DModels.mockRejectedValueOnce(new Error('storage unavailable'))
+    const { container } = render(<AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} />)
+    await waitFor(() => expect(mocks.listLive2DModels).toHaveBeenCalled())
+    expect(screen.getByTestId('live2d-stage')).toBeTruthy()
+    expect(container.querySelector('.yachiyo-interactive-header')).toBeTruthy()
+    expect(container.querySelector('.yachiyo-interactive-loading')).toBeNull()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.listLive2DModels.mockResolvedValue([
+      { id: 'model-1', name: 'Model', source: 'model.json', actions: [], builtIn: true },
+    ])
     mocks.stopAndroidSpeechRecognition.mockResolvedValue(undefined)
     mocks.stopSpeaking.mockResolvedValue(undefined)
     mocks.createEmpty.mockResolvedValue({ id: 'created-session' })
@@ -163,9 +196,7 @@ describe('AndroidInteractive transient resources', () => {
         })
     )
     const onSessionChange = vi.fn()
-    const { rerender } = render(
-      <AndroidInteractive onSessionChange={onSessionChange} activity="preview" />
-    )
+    const { rerender } = render(<AndroidInteractive onSessionChange={onSessionChange} activity="preview" />)
 
     expect(mocks.createEmpty).not.toHaveBeenCalled()
     rerender(<AndroidInteractive onSessionChange={onSessionChange} activity="active" />)
@@ -185,6 +216,7 @@ describe('AndroidInteractive transient resources', () => {
       <AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} activity="active" />
     )
 
+    fireEvent.click(screen.getByRole('button', { name: '交互设置' }))
     await screen.findByRole('button', { name: '摄像头' })
     fireEvent.click(screen.getByRole('button', { name: '摄像头' }))
     const video = await waitFor(() => {
@@ -216,10 +248,9 @@ describe('AndroidInteractive transient resources', () => {
     const track = { stop: vi.fn() }
     const stream = { getTracks: () => [track] } as unknown as MediaStream
     mocks.getUserMedia.mockResolvedValue(stream)
-    const { container, unmount } = render(
-      <AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} />
-    )
+    const { container, unmount } = render(<AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} />)
 
+    fireEvent.click(screen.getByRole('button', { name: '交互设置' }))
     fireEvent.click(await screen.findByRole('button', { name: '摄像头' }))
     const preview = await waitFor(() => {
       const element = container.querySelector('.yachiyo-camera-preview')
@@ -255,6 +286,7 @@ describe('AndroidInteractive transient resources', () => {
       <AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} activity="active" />
     )
 
+    fireEvent.click(screen.getByRole('button', { name: '交互设置' }))
     fireEvent.click(await screen.findByRole('button', { name: '摄像头' }))
     await waitFor(() => expect((container.querySelector('video') as HTMLVideoElement).srcObject).toBe(stream))
     const microphone = screen.getByRole('button', { name: /按住说话/ })

@@ -1,3 +1,4 @@
+import { SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
 import NiceModal from '@ebay/nice-modal-react'
 import {
   Badge,
@@ -10,7 +11,6 @@ import {
   Switch,
   Text,
   TextInput,
-  Title,
   Tooltip,
 } from '@mantine/core'
 import { SystemProviders } from '@shared/defaults'
@@ -481,11 +481,8 @@ function ProviderSettings({ providerId }: { providerId: string }) {
   }
 
   return (
-    <Stack key={baseInfo.id} gap="xxl">
+    <SettingsPage key={baseInfo.id} title={t(baseInfo.name)} description={t('连接、凭据与可用模型')}>
       <Flex gap="xs" align="center">
-        <Title order={3} c="chatbox-secondary">
-          {t(baseInfo.name)}
-        </Title>
         {providerWebsite && (
           <Button
             variant="transparent"
@@ -528,7 +525,7 @@ function ProviderSettings({ providerId }: { providerId: string }) {
         </Flex>
       )}
 
-      <Stack gap="xl">
+      <SettingsSection>
         {/* custom provider base info */}
         {baseInfo.isCustom && (
           <>
@@ -932,13 +929,11 @@ function ProviderSettings({ providerId }: { providerId: string }) {
             </Flex>
           </>
         )}
-
+      </SettingsSection>
+      <SettingsSection title={t('Models')}>
         {/* Models */}
         <Stack gap="xxs">
           <Flex justify="space-between" align="center">
-            <Text span fw="600">
-              {t('Model')}
-            </Text>
             <Flex gap="sm" align="center" justify="flex-end">
               <Button
                 variant="light"
@@ -1233,7 +1228,7 @@ function ProviderSettings({ providerId }: { providerId: string }) {
             </Button>
           </AdaptiveModal.Actions>
         </AdaptiveModal>
-      </Stack>
-    </Stack>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

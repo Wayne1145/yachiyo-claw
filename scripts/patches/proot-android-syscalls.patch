@@ -1,0 +1,67 @@
+diff --git a/src/extension/ashmem_memfd/ashmem_memfd.c b/src/extension/ashmem_memfd/ashmem_memfd.c
+index b215af8..9e93cd4 100644
+--- a/src/extension/ashmem_memfd/ashmem_memfd.c
++++ b/src/extension/ashmem_memfd/ashmem_memfd.c
+@@ -1,6 +1,7 @@
+ #if defined(__ANDROID__) || defined(__BIONIC__)
+ 
+ #include <stdlib.h>
++#include <string.h>
+ #include <signal.h>
+ #include <unistd.h>
+ #include <sys/syscall.h>  /* __NR_memfd_create,  */
+diff --git a/src/syscall/exit.c b/src/syscall/exit.c
+index d3bc07b..d6b0b31 100644
+--- a/src/syscall/exit.c
++++ b/src/syscall/exit.c
+@@ -270,6 +270,15 @@ void translate_syscall_exit(Tracee *tracee)
+ 		Reg new_reg;
+ 		char *tmp;
+ 
++		/* Android can reject the legacy rename syscall with ENOSYS instead
++		 * of SIGSYS. Reuse the existing renameat translation and normal
++		 * PRoot path handling; a failed replacement is not retried here. */
++		if (syscall_number == PR_rename && (int) syscall_result == -ENOSYS
++		    && !tracee->restore_original_regs_after_seccomp_event) {
++			fix_and_restart_enosys_syscall(tracee);
++			goto end;
++		}
++
+ 		/* Error reported by the kernel.  */
+ 		if ((int) syscall_result < 0)
+ 			goto end;
+diff --git a/src/tracee/seccomp.c b/src/tracee/seccomp.c
+index 66dfef3..67f6e07 100644
+--- a/src/tracee/seccomp.c
++++ b/src/tracee/seccomp.c
+@@ -7,6 +7,7 @@
+ #include <linux/net.h> /* SYS_SENDMMSG */
+ #include <assert.h>    /* assert(3), */
+ #include <time.h>      /* time(2), */
++#include <linux/sched.h>
+ 
+ #include "extension/extension.h"
+ #include "cli/note.h"
+@@ -197,6 +198,22 @@ static int handle_seccomp_event_common(Tracee *tracee)
+ 		restart_syscall_after_seccomp(tracee);
+ 		break;
+ 
++	/* Android permits clone but traps the legacy x86 fork/vfork syscalls. */
++	case PR_fork:
++	case PR_vfork: {
++		word_t flags = SIGCHLD;
++		if (get_sysnum(tracee, CURRENT) == PR_vfork)
++			flags |= CLONE_VM | CLONE_VFORK;
++		set_sysnum(tracee, PR_clone);
++		poke_reg(tracee, SYSARG_1, flags);
++		poke_reg(tracee, SYSARG_2, 0);
++		poke_reg(tracee, SYSARG_3, 0);
++		poke_reg(tracee, SYSARG_4, 0);
++		poke_reg(tracee, SYSARG_5, 0);
++		restart_syscall_after_seccomp(tracee);
++		break;
++	}
++
+ 	case PR_setgroups:
+ 	case PR_setgroups32:
+ 		set_result_after_seccomp(tracee, 0);

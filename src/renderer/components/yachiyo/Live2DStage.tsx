@@ -8,7 +8,6 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { Live2DAction, Live2DModelDescriptor } from '@/mobile/live2d-models'
-import { BUILT_IN_REQUIRED_MOC_VERSION, getCubismCoreSupport } from '@/mobile/live2d-core-info'
 import {
   createLive2DError,
   type Live2DErrorPhase,
@@ -17,9 +16,10 @@ import {
   YachiyoLive2DError,
 } from '@/mobile/live2d-errors'
 import {
-  detectLive2DMocVersionFromModel,
+  describeLive2DMocFormat,
   getLive2DResolution,
   type Live2DRenderQuality,
+  probeLive2DMocFormat,
   resolveLive2DAssetUrl,
 } from '@/mobile/live2d-performance'
 import { DEFAULT_LIVE2D_TRANSFORM, type Live2DTransform, normalizeLive2DTransform } from '@/mobile/live2d-transform'
@@ -65,6 +65,13 @@ function hasCubismCore(): boolean {
   return Boolean((window as Window & { Live2DCubismCore?: unknown }).Live2DCubismCore)
 }
 
+function replaceCanvas(host: HTMLDivElement, canvas?: HTMLCanvasElement) {
+  // Element.replaceChildren is unavailable in Android 11's stock WebView 83.
+  // This dedicated host contains only Pixi nodes, never React status UI.
+  host.textContent = ''
+  if (canvas) host.appendChild(canvas)
+}
+
 async function loadCubismCore(): Promise<void> {
   if (hasCubismCore()) return
 
@@ -91,18 +98,6 @@ async function ensureCubismRuntime(t: TFunction): Promise<Cubism4Module> {
   if (runtimePromise) return runtimePromise
   const pending = (async () => {
     await loadCubismCore()
-    // A stale APK asset copy can ship a core older than the bundled model
-    // (Cubism 5.0 moc). Detect it here instead of failing later with the
-    // core's opaque "Unknown error" during moc revive.
-    const coreSupport = getCubismCoreSupport()
-    if (
-      typeof coreSupport.latestMocVersion === 'number' &&
-      coreSupport.latestMocVersion < BUILT_IN_REQUIRED_MOC_VERSION
-    ) {
-      throw createLive2DError('L2D-CORE-002', {
-        technicalDetail: `core=${coreSupport.coreVersion ?? 'unknown'} latestMoc=${coreSupport.latestMocVersion} required>=${BUILT_IN_REQUIRED_MOC_VERSION}`,
-      })
-    }
     const runtime = await import('pixi-live2d-display/cubism4')
     runtime.ZipLoader.zipReader = (data: Blob) => JSZip.loadAsync(data)
     runtime.ZipLoader.getFilePaths = async (zip: JSZip) =>
@@ -171,31 +166,13 @@ function getQualityCandidates(quality: Live2DRenderQuality): Live2DRenderQuality
   return [...new Set(candidates)]
 }
 
-/**
- * Best-effort moc version probe. Imported (zip://) models carry the version
- * detected at import time; remote/bundled sources are fetched. Returns
- * undefined when probing is impossible — loading must continue regardless.
- */
-async function probeDescriptorMocVersion(descriptor: Live2DModelDescriptor): Promise<number | undefined> {
-  if (typeof descriptor.mocVersion === 'number') return descriptor.mocVersion
-  if (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source)) {
-    try {
-      const detected = await detectLive2DMocVersionFromModel(resolveLive2DAssetUrl(descriptor.source))
-      return typeof detected === 'number' ? detected : undefined
-    } catch {
-      return undefined
-    }
-  }
-  return undefined
-}
-
 function fitModel(model: ModelInstance, width: number, height: number, transform: Live2DTransform) {
   const naturalWidth = Math.max(1, model.width / Math.max(model.scale.x, 0.0001))
   const naturalHeight = Math.max(1, model.height / Math.max(model.scale.y, 0.0001))
-  const scale = Math.min(width / naturalWidth, height / naturalHeight) * 1.08 * transform.scale
+  const scale = Math.min(width / naturalWidth, height / naturalHeight) * 0.96 * transform.scale
   model.anchor.set(0.5, 0.5)
   model.scale.set(scale)
-  model.position.set(width / 2 + transform.offsetX * width, height / 2 + height * 0.04 + transform.offsetY * height)
+  model.position.set(width / 2 + transform.offsetX * width, height / 2 + transform.offsetY * height)
 }
 
 export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(function Live2DStage(
@@ -361,7 +338,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
     if (!renderEnabled) {
       setReady(false)
       setError(undefined)
-      host.replaceChildren()
+      replaceCanvas(host)
       return
     }
     let disposed = false
@@ -429,7 +406,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
           app.view.style.width = '100%'
           app.view.style.height = '100%'
           app.view.style.display = 'block'
-          host.replaceChildren(app.view)
+          replaceCanvas(host, app.view)
           appRef.current = app
           if (activityRef.current !== 'active' || document.visibilityState === 'hidden') app.ticker.stop()
 
@@ -455,22 +432,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
           rendererCleanup = attemptCleanup
 
           phase = 'settings'
-          // Compatibility probe: fail with a precise L2D-MOC-003 instead of the
-          // core's opaque "Unknown error" when the moc is newer than the runtime.
-          // Probe failures (offline, transient fetch errors) must not block loading —
-          // the adapter below still performs the authoritative model parse.
-          const probedMocVersion = await probeDescriptorMocVersion(descriptor)
-          const coreSupport = getCubismCoreSupport()
-          if (
-            typeof probedMocVersion === 'number' &&
-            typeof coreSupport.latestMocVersion === 'number' &&
-            probedMocVersion > coreSupport.latestMocVersion
-          ) {
-            throw createLive2DError('L2D-MOC-003', {
-              resource: descriptor.builtIn ? descriptor.source : descriptor.name,
-              technicalDetail: `mocRuntimeVersion=${probedMocVersion} coreLatestMoc=${coreSupport.latestMocVersion} core=${coreSupport.coreVersion ?? 'unknown'}`,
-            })
-          }
           const loadedInstance = await runtime.Live2DModel.from(resolveLive2DAssetUrl(descriptor.source), {
             autoInteract: false,
           })
@@ -559,6 +520,25 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
         }
       }
 
+      // Only after a failed load: tell a model exported by a newer Cubism
+      // editor apart from a damaged file, using the Core's own format limit.
+      if (
+        lastFailure?.phase === 'settings' &&
+        !(lastFailure.reason instanceof YachiyoLive2DError) &&
+        (descriptor.builtIn || /^https?:|^file:|^capacitor:/i.test(descriptor.source))
+      ) {
+        const format = await probeLive2DMocFormat(resolveLive2DAssetUrl(descriptor.source)).catch(() => undefined)
+        const latest = (
+          window as { Live2DCubismCore?: { Version?: { csmGetLatestMocVersion?: () => number } } }
+        ).Live2DCubismCore?.Version?.csmGetLatestMocVersion?.()
+        if (format && latest && format > latest) {
+          throw createLive2DError('L2D-MOC-003', {
+            resource: descriptor.builtIn ? descriptor.source : descriptor.name,
+            technicalDetail: `${describeLive2DMocFormat(format)} model; runtime supports up to ${describeLive2DMocFormat(latest)}`,
+          })
+        }
+      }
+
       const diagnostic = normalizeLive2DError(lastFailure?.reason, {
         phase: lastFailure?.phase || 'render',
         resource: descriptor.builtIn ? descriptor.source : descriptor.name,
@@ -578,7 +558,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
       rendererCleanup?.()
       observer?.disconnect()
       disposeResources()
-      host.replaceChildren()
+      replaceCanvas(host)
     }
   }, [descriptor.source, onReady, quality, renderEnabled, retryKey, t])
 

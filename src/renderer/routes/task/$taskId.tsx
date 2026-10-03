@@ -21,15 +21,18 @@ import { trackJkClickEvent } from '@/analytics/jk'
 import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
 import Divider from '@/components/common/Divider'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
+import TaskMessageRenderer from '@/components/chat/Message'
 import { MessageAttachmentGrid } from '@/components/chat/MessageAttachmentGrid'
 import { ImageInStorage } from '@/components/Image'
 import InputBox, { type InputBoxPayload } from '@/components/InputBox'
 import TokenCountMenu from '@/components/InputBox/TokenCountMenu'
 import { ReasoningStrengthControl } from '@/components/ReasoningStrengthControl'
 import WindowControls from '@/components/layout/WindowControls'
-import Markdown, { BlockCodeCollapsedStateProvider } from '@/components/Markdown'
+import { BlockCodeCollapsedStateProvider } from '@/components/Markdown'
+import Markdown from '@/components/Markdown'
 import DirectoryMenu from '@/components/task/DirectoryMenu'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
+import { YachiyoChatLanding } from '@/components/yachiyo/YachiyoChatLanding'
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import useNeedRoomForWinControls from '@/hooks/useNeedRoomForWinControls'
 import { useProviders } from '@/hooks/useProviders'
@@ -41,6 +44,7 @@ import {
   useModelRegistryVersion,
 } from '@/packages/model-registry'
 import platform from '@/platform'
+import { useSession } from '@/stores/chatStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import * as settingActions from '@/stores/settingActions'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -357,6 +361,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
   const modelRegistryVersion = useModelRegistryVersion()
   const inAndroidAppShell = useInAndroidAppShell()
   const mobileAgentConfig = getAgentSessionConfig(session.id)
+  const { session: linkedChat } = useSession(session.linkedSessionId || null)
 
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -368,6 +373,10 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
 
   const generating = session.messages.some((m) => m.generating)
+  const visibleMessages = useMemo(
+    () => session.messages.filter((message) => !inAndroidAppShell || message.role !== 'system'),
+    [session.messages, inAndroidAppShell]
+  )
 
   // Model state from session settings or lastUsedModelStore.task
   const model = useMemo(() => {
@@ -494,6 +503,32 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
     })
   }, [session.messages])
 
+  useEffect(() => {
+    const element = scrollAreaRef.current
+    if (!element || !inAndroidAppShell) return
+    const header = element.closest('.yachiyo-mobile-shell')?.querySelector('.yachiyo-mobile-header-drawer')
+    // Match ordinary chat's header clearance, including the expanded Agent controls.
+    const measure = () => {
+      const overlap = header
+        ? Math.max(0, header.getBoundingClientRect().bottom - element.getBoundingClientRect().top + 10)
+        : 0
+      element.style.setProperty('--yachiyo-message-header-clearance', `${overlap}px`)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    observer?.observe(element)
+    if (header) observer?.observe(header)
+    window.addEventListener('resize', measure)
+    window.addEventListener('orientationchange', measure)
+    window.visualViewport?.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('orientationchange', measure)
+      window.visualViewport?.removeEventListener('resize', measure)
+    }
+  }, [inAndroidAppShell])
+
   // Auto-naming trigger
   useEffect(() => {
     const autoGenerateTitle = settingActions.getAutoGenerateTitle()
@@ -509,7 +544,11 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
   }, [session])
 
   return (
-    <Flex direction="column" h="100%" className="yachiyo-task-chat overflow-hidden">
+    <Flex
+      direction="column"
+      h="100%"
+      className={inAndroidAppShell ? 'flex flex-col h-full overflow-hidden' : 'yachiyo-task-chat overflow-hidden'}
+    >
       {!inAndroidAppShell && (
         <Flex h={48} align="center" px="md" className="shrink-0 title-bar">
           {(!showSidebar || isSmallScreen) && (
@@ -542,62 +581,96 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
       {!inAndroidAppShell && <Divider />}
 
       <BlockCodeCollapsedStateProvider defaultCollapsed={false}>
-        <ScrollArea flex={1} ref={scrollAreaRef} type="auto">
-          <Stack gap="sm" maw={800} mx="auto" py="md" px="md" className="min-h-full">
-            {session.messages.length === 0 && (
-              <Center py="xl">
-                <Stack align="center" gap="md">
-                  {session.workingDirectory === TASK_DEFAULT_DIRECTORY ? (
-                    <>
-                      <Box
-                        className="flex items-center justify-center rounded-full"
-                        style={{ width: 72, height: 72, backgroundColor: 'var(--chatbox-background-secondary)' }}
-                      >
-                        <IconRocket size={48} className="text-[var(--mantine-color-dimmed)]" stroke={1.5} />
-                      </Box>
-                      <Text c="dimmed" size="md" ta="center">
-                        {t('Send a message to start. Choose a working directory for file access.')}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Box
-                        className="flex items-center justify-center rounded-full"
-                        style={{ width: 72, height: 72, backgroundColor: 'var(--chatbox-background-secondary)' }}
-                      >
-                        <IconFolder size={48} className="text-[var(--mantine-color-dimmed)]" stroke={1.5} />
-                      </Box>
-                      <Text c="dimmed" size="md" ta="center">
-                        {inAndroidAppShell
-                          ? mobileAgentConfig.deviceControlEnabled
-                            ? t('描述你希望手机完成的事情，Agent 会观察界面并调用设备工具。')
-                            : t('描述你希望完成的任务，Agent 可使用内部工具、Skills、MCP 和 Linux 沙箱。')
-                          : t('Send a message to start working in this directory.')}
-                      </Text>
-                      <Text c="dimmed" size="xs" ta="center" className="font-mono">
-                        {session.workingDirectory}
-                      </Text>
-                    </>
-                  )}
+        <ScrollArea
+          flex={1}
+          ref={scrollAreaRef}
+          type="auto"
+          className={inAndroidAppShell ? 'yachiyo-android-message-list min-h-0' : undefined}
+        >
+          <Stack
+            gap={inAndroidAppShell ? 0 : 'sm'}
+            maw={inAndroidAppShell ? 896 : 800}
+            mx="auto"
+            py={inAndroidAppShell ? 0 : 'md'}
+            px={inAndroidAppShell ? 0 : 'md'}
+            className="min-h-full"
+          >
+            {inAndroidAppShell && <div className="yachiyo-message-list-header-clearance" aria-hidden="true" />}
+            {visibleMessages.length === 0 &&
+              (inAndroidAppShell ? (
+                <Stack align="center" justify="center" gap="sm" flex={1} className="yachiyo-chat-landing-slot">
+                  <YachiyoChatLanding />
                 </Stack>
-              </Center>
+              ) : (
+                <Center py="xl">
+                  <Stack align="center" gap="md">
+                    {session.workingDirectory === TASK_DEFAULT_DIRECTORY ? (
+                      <>
+                        <Box
+                          className="flex items-center justify-center rounded-full"
+                          style={{ width: 72, height: 72, backgroundColor: 'var(--chatbox-background-secondary)' }}
+                        >
+                          <IconRocket size={48} className="text-[var(--mantine-color-dimmed)]" stroke={1.5} />
+                        </Box>
+                        <Text c="dimmed" size="md" ta="center">
+                          {t('Send a message to start. Choose a working directory for file access.')}
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Box
+                          className="flex items-center justify-center rounded-full"
+                          style={{ width: 72, height: 72, backgroundColor: 'var(--chatbox-background-secondary)' }}
+                        >
+                          <IconFolder size={48} className="text-[var(--mantine-color-dimmed)]" stroke={1.5} />
+                        </Box>
+                        <Text c="dimmed" size="md" ta="center">
+                          {inAndroidAppShell
+                            ? mobileAgentConfig.deviceControlEnabled
+                              ? t('描述你希望手机完成的事情，Agent 会观察界面并调用设备工具。')
+                              : t('描述你希望完成的任务，Agent 可使用内部工具、Skills、MCP 和 Linux 沙箱。')
+                            : t('Send a message to start working in this directory.')}
+                        </Text>
+                        <Text c="dimmed" size="xs" ta="center" className="font-mono">
+                          {session.workingDirectory}
+                        </Text>
+                      </>
+                    )}
+                  </Stack>
+                </Center>
+              ))}
+            {visibleMessages.map((msg) =>
+              inAndroidAppShell ? (
+                <TaskMessageRenderer
+                  key={msg.id}
+                  id={msg.id}
+                  sessionId={session.linkedSessionId || session.id}
+                  sessionType="chat"
+                  msg={msg}
+                  buttonGroup="none"
+                  readOnly
+                  assistantAvatarKey={linkedChat?.assistantAvatarKey}
+                  sessionPicUrl={linkedChat?.picUrl}
+                />
+              ) : (
+                <TaskMessageBubble key={msg.id} message={msg} sessionName={session.name} />
+              )
             )}
-            {session.messages.map((msg) => (
-              <TaskMessageBubble key={msg.id} message={msg} sessionName={session.name} />
-            ))}
           </Stack>
         </ScrollArea>
       </BlockCodeCollapsedStateProvider>
 
-      <Box className="yachiyo-task-composer py-3 px-4 shrink-0">
-        <Box maw={800} mx="auto">
-          <Stack gap={4} className="yachiyo-task-composer-panel">
+      <Box className={inAndroidAppShell ? 'relative shrink-0' : 'yachiyo-task-composer py-3 px-4 shrink-0'}>
+        <Box maw={inAndroidAppShell ? undefined : 800} mx="auto">
+          <Stack gap={4} className={inAndroidAppShell ? undefined : 'yachiyo-task-composer-panel'}>
             <InputBox
               sessionType="chat"
               sessionId={session.linkedSessionId || session.id}
               generating={generating}
               model={model}
-              fullWidth
+              fullWidth={!inAndroidAppShell}
+              reasoningSettings={{ ...session.settings, provider: model?.provider, modelId: model?.modelId }}
+              onReasoningStrengthChange={handleReasoningStrength}
               onSelectModel={handleSelectModel}
               onSubmit={handleSend}
               onStopGenerating={handleStop}

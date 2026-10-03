@@ -1,4 +1,3 @@
-import { Box, Flex } from '@mantine/core'
 import { SystemProviders } from '@shared/defaults'
 import type { ModelProviderEnum, ProviderInfo, ProviderSettings } from '@shared/types'
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
@@ -160,14 +159,14 @@ export function RouteComponent() {
   }
 
   return (
-    <Flex h="100%" w="100%">
+    <div className="settings-provider-layout">
       {(!useSingleColumnLayout || routerState.location.pathname === '/settings/provider') && (
         <ProviderList providers={providers} onAddProvider={handleOpenSpotlight} />
       )}
       {!(useSingleColumnLayout && routerState.location.pathname === '/settings/provider') && (
-        <Box flex="1 1 75%" p="md" className="overflow-auto">
+        <div className="settings-provider-content">
           <Outlet />
-        </Box>
+        </div>
       )}
 
       <AddProviderModal opened={newProviderModalOpened} onClose={() => setNewProviderModalOpened(false)} />
@@ -186,6 +185,6 @@ export function RouteComponent() {
         onImportProvider={handleClipboardImport}
         isImporting={isImporting}
       />
-    </Flex>
+    </div>
   )
 }

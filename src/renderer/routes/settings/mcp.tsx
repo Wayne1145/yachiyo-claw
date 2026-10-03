@@ -1,4 +1,4 @@
-import { Box, Title } from '@mantine/core'
+import { SettingsPage, SettingsSection } from '@/components/settings/SettingsPage'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { zodValidator } from '@tanstack/zod-adapter'
 import { useEffect, useState } from 'react'
@@ -46,16 +46,15 @@ export function RouteComponent() {
   }, [searchParams.install, navigate])
 
   return (
-    <Box p="md">
-      <Title order={5}>{t('MCP Settings')}</Title>
+    <SettingsPage title={t('MCP Settings')} description={t('连接 HTTP 与 SSE 服务')}>
       {!inAndroidAppShell && (
-        <Box className="mt-8">
+        <SettingsSection>
           <BuiltinServersSection />
-        </Box>
+        </SettingsSection>
       )}
-      <Box className="mt-8">
+      <SettingsSection>
         <CustomServersSection installConfig={installConfig} />
-      </Box>
-    </Box>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

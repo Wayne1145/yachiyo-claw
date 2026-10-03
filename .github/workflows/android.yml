@@ -114,7 +114,8 @@ jobs:
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: temurin
-          java-version: ${{ env.JDK_VERSION }}
+          # Temurin exposes the pinned +10 build as +10.0.LTS in its API.
+          java-version: '${{ env.JDK_VERSION }}.0.LTS'
 
       # setup-gradle caches dependency data and wrappers, not ~/.android or signing material.
       - name: Set up Gradle
