@@ -365,19 +365,22 @@ describe('ResultPersister', () => {
 
       await persister.flushNow()
 
-      expect(mockGetTaskSession).toHaveBeenCalledWith('session-1')
-      expect(mockUpdateTaskSession).toHaveBeenCalledWith(
-        'session-1',
-        expect.objectContaining({
-          messages: expect.arrayContaining([
-            expect.objectContaining({ tokenCountMap: expect.objectContaining({ default: 100 }) }),
-          ]),
-        })
-      )
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        ['task-session', 'session-1'],
-        expect.objectContaining({ id: 'session-1' })
-      )
+      expect(mockUpdateTaskSession).toHaveBeenCalledWith('session-1', expect.any(Function))
+      const patch = mockUpdateTaskSession.mock.calls[0][1]
+      if (typeof patch !== 'function') throw new Error('Expected an atomic patch')
+      const latest = {
+        id: 'session-1', name: 'Task Session', workingDirectory: '.', createdAt: 1,
+        messages: [
+          { id: 'msg-1', role: 'user' as const, contentParts: [{ type: 'text' as const, text: 'hello' }] },
+          { id: 'new-reply', role: 'assistant' as const, generating: true, contentParts: [{ type: 'text' as const, text: 'new stream' }] },
+        ],
+      }
+      const updated = patch(latest)
+      expect(updated.messages).toHaveLength(2)
+      expect(updated.messages?.[0].tokenCountMap).toMatchObject({ default: 100 })
+      expect(updated.messages?.[1]).toEqual(latest.messages[1])
+      expect(mockGetTaskSession).not.toHaveBeenCalled()
+      expect(mockSetQueryData).not.toHaveBeenCalled()
     })
   })
 

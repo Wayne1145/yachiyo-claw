@@ -1,8 +1,7 @@
 import type { Message, MessageFile, MessageLink, TokenCacheKey, TokenCountMap } from '@shared/types'
 import { getLogger } from '@/lib/utils'
 import * as chatStore from '@/stores/chatStore'
-import queryClient from '@/stores/queryClient'
-import { getTaskSession, TASK_SESSION_QUERY_KEY, updateTaskSession } from '@/stores/taskSessionStore'
+import { updateTaskSession } from '@/stores/taskSessionStore'
 import type { AttachmentType, ContentMode, TaskResult, TokenizerType } from './types'
 
 const log = getLogger('token-estimation:persister')
@@ -249,20 +248,12 @@ class ResultPersister {
   }
 
   private async flushTaskSessionUpdates(sessionId: string, sessionUpdates: PendingUpdate[]): Promise<boolean> {
-    const taskSession = await getTaskSession(sessionId)
-    if (!taskSession) {
-      return false
-    }
-
-    const messages = applyUpdatesToMessages(taskSession.messages, sessionUpdates)
-    const updated = await updateTaskSession(sessionId, { messages })
-    if (updated) {
-      queryClient.setQueryData([TASK_SESSION_QUERY_KEY, sessionId], updated)
-    } else {
-      queryClient.setQueryData([TASK_SESSION_QUERY_KEY, sessionId], { ...taskSession, messages })
-    }
-
-    return true
+    // Patch token fields on the latest messages, not a snapshot read before an
+    // assistant placeholder or streamed tool result was appended.
+    const updated = await updateTaskSession(sessionId, (current) => ({
+      messages: applyUpdatesToMessages(current.messages, sessionUpdates),
+    }))
+    return updated !== null
   }
 }
 

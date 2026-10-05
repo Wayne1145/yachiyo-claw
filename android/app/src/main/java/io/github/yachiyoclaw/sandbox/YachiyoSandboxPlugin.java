@@ -717,13 +717,17 @@ public final class YachiyoSandboxPlugin extends Plugin {
     }
 
     private void killProcessTree(Process process) {
-        process.destroy();
         // Kill only this process's own tree. A global /proc scan previously
         // matched every PRoot on the device, so cancelling one Alpine exec
         // also killed unrelated Ubuntu builds and concurrent sandbox jobs.
         Integer pid = processIdOf(process);
-        if (pid != null) killProcessTree(pid, new HashSet<>());
-        process.destroyForcibly();
+        try {
+            // Read the descendants before destroying the parent; otherwise the
+            // kernel reparents them and the task's children can no longer be found.
+            if (pid != null && process.isAlive()) killProcessTree(pid, new HashSet<>());
+        } finally {
+            process.destroyForcibly();
+        }
     }
 
     private static Integer processIdOf(Process process) {

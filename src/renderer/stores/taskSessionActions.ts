@@ -34,11 +34,13 @@ import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from
 import { getAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
 import { nextAgentStreamPart } from '@/mobile/agent-stream-watchdog'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
+import { getModelDisplayName } from '@/packages/model-setting-utils'
 import platform from '@/platform'
 import { yachiyoDeviceAccessNative } from '@/platform/native/yachiyo_device_access'
 import { lastUsedModelStore } from './lastUsedModelStore'
 import { queryClient } from './queryClient'
 import { createInitialState, processStreamChunk } from './session/stream-chunk-processor'
+import { handleGenerationError } from './session/utils'
 import { buildToolsForSession } from './session/tools-builder'
 import { settingsStore } from './settingsStore'
 import { getTaskSession, TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
@@ -302,6 +304,11 @@ async function generateTaskResponse(
       modelId,
     }
     const dependencies = await createModelDependencies()
+    targetMsg = {
+      ...targetMsg,
+      aiProvider: provider,
+      model: await getModelDisplayName(sessionSettings, settingsStore.getState().getSettings(), 'chat'),
+    }
     const model = await createModel(sessionSettings, dependencies)
     const knownPrice = resolveDefaultAgentPrice(provider, modelId)
     // Usage powers diagnostics and context UI. Repetition is stopped by AgentLoopGuard,
@@ -433,7 +440,7 @@ async function generateTaskResponse(
 
     const coreMessages = await convertToModelMessages(injectedMessages, {
       modelSupportVision: model.isSupportVision(),
-      preserveReasoning: provider === ModelProviderEnum.DeepSeek,
+      preserveReasoning: model.shouldPreserveReasoning?.() ?? provider === ModelProviderEnum.DeepSeek,
     })
     const firstStepTools = selectAndroidActiveTools(0, coreMessages, activeTools ?? Object.keys(tools))
     log.info('Agent first-step tools', JSON.stringify(firstStepTools))
@@ -637,10 +644,16 @@ async function generateTaskResponse(
           : err instanceof Error
             ? err.message
             : describeAgentStreamError(err)
+    if (!retryTransientStream && !abortController.signal.aborted && !loopError) {
+      // Preserve provider status/detail just like ordinary chat, instead of
+      // reducing a useful validation error to an unexplained "Status Code 400".
+      targetMsg = handleGenerationError(err, targetMsg, { provider: targetMsg.aiProvider })
+    }
     targetMsg = {
       ...targetMsg,
       generating: retryTransientStream,
       cancel: undefined,
+      status: [],
       ...(retryTransientStream && !retryFromPartial ? { contentParts: [], status: [] } : {}),
       error,
     }

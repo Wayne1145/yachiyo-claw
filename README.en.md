@@ -33,6 +33,8 @@ This repository is maintained with assistance from Codex and written with assist
 
 ## Features
 
+[v0.0.23](docs/releases/v0.0.23.md) fixes lost Agent replies during background token updates, DeepSeek tool-request HTTP 400 errors, and false sandbox exit failures. See the [validation record](docs/releases/v0.0.23-validation.md) for tested paths and remaining limits.
+
 ### Chat and models
 
 - Ready-to-use Yachiyo API setup with the fixed API host `https://api.yachiyo8000.cn/v1` and server-provided model lists.

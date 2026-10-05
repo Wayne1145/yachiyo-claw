@@ -1,6 +1,6 @@
 import { Alert, Button, Loader, Stack, Text, Title } from '@mantine/core'
 import { IconPuzzle } from '@tabler/icons-react'
-import { Component, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { Component, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Translation, useTranslation } from 'react-i18next'
 import { parsePluginView, type PluginView, type ViewAction } from '@shared/plugins/view-schema'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -118,6 +118,8 @@ export function PluginPageHost({
   activity?: AndroidTabPageActivity
 }) {
   const { t } = useTranslation()
+  const translationRef = useRef(t)
+  translationRef.current = t
   const inAndroidAppShell = useInAndroidAppShell()
   const pluginsEnabled = useSettingsStore((settings) => settings.featureOverrides?.plugins !== false)
   const [state, setState] = useState<PluginPageState>(() => {
@@ -132,7 +134,7 @@ export function PluginPageHost({
 
   activityRef.current = activity
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     stateRef.current = state
   }, [state])
 
@@ -198,7 +200,7 @@ export function PluginPageHost({
         }
       } catch (error) {
         if (!controller.signal.aborted && generation.current === currentGeneration) {
-          setState({ phase: 'error', message: error instanceof Error ? error.message : String(t('插件加载失败')) })
+          setState({ phase: 'error', message: error instanceof Error ? error.message : String(translationRef.current('插件加载失败')) })
         }
       }
     })()
@@ -207,7 +209,8 @@ export function PluginPageHost({
       if (lifecycleControllerRef.current === controller) lifecycleControllerRef.current = undefined
       if (generation.current === currentGeneration) generation.current += 1
     }
-  }, [activity, pluginId, pluginsEnabled, t])
+    // Translation initialization/language changes must not abort live plugin actions.
+  }, [activity, pluginId, pluginsEnabled])
 
   const onAction = useCallback(
     (action: ViewAction, extra?: Record<string, unknown>) => {
@@ -268,12 +271,12 @@ export function PluginPageHost({
               !controller.signal.aborted &&
               generation.current === actionGeneration
             ) {
-              setState({ phase: 'error', message: error instanceof Error ? error.message : String(t('插件执行失败')) })
+              setState({ phase: 'error', message: error instanceof Error ? error.message : String(translationRef.current('插件执行失败')) })
             }
           }
         })
     },
-    [pluginId, t],
+    [pluginId],
   )
 
   return (

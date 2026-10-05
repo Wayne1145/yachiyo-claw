@@ -9,6 +9,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.StandardCopyOption;
@@ -114,25 +116,34 @@ final class AlpineSandboxInstaller {
 
     void prepareRuntimeFiles() throws Exception {
         synchronized (AlpineSandboxInstaller.class) {
-            if (!runtimeDirectory.exists() && !runtimeDirectory.mkdirs()) throw new IOException("sandbox_runtime_unavailable");
-            File talloc = new File(runtimeDirectory, "libtalloc.so.2");
-            if (!talloc.isFile()) {
-                Os.chmod(runtimeDirectory.getAbsolutePath(), 0700);
-                try (InputStream input = context.getAssets().open("sandbox/" + distribution.androidAbi() + "/libtalloc.so.2")) {
-                    File temporary = new File(runtimeDirectory, "libtalloc.so.2.partial");
-                    try (FileOutputStream output = new FileOutputStream(temporary)) {
-                        byte[] buffer = new byte[16 * 1024];
-                        int read;
-                        while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
-                        output.getFD().sync();
-                    }
-                    Files.move(temporary.toPath(), talloc.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                } finally {
-                    Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
-                }
+            // The Activity and :sandbox service have separate Java monitors.
+            // Keep the lock outside code_cache so restoring/chmod of the runtime
+            // cannot replace the inode used to coordinate those processes.
+            if (!sandboxDirectory.isDirectory() && !sandboxDirectory.mkdirs() && !sandboxDirectory.isDirectory()) {
+                throw new IOException("sandbox_storage_unavailable");
             }
-            Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
-            Os.chmod(talloc.getAbsolutePath(), 0400);
+            try (RandomAccessFile lockFile = new RandomAccessFile(new File(sandboxDirectory, "runtime.lock"), "rw");
+                 FileLock runtimeLock = lockFile.getChannel().lock()) {
+                if (!runtimeDirectory.isDirectory() && !runtimeDirectory.mkdirs()) throw new IOException("sandbox_runtime_unavailable");
+                File talloc = new File(runtimeDirectory, "libtalloc.so.2");
+                if (!talloc.isFile()) {
+                    Os.chmod(runtimeDirectory.getAbsolutePath(), 0700);
+                    try (InputStream input = context.getAssets().open("sandbox/" + distribution.androidAbi() + "/libtalloc.so.2")) {
+                        File temporary = new File(runtimeDirectory, "libtalloc.so.2.partial");
+                        try (FileOutputStream output = new FileOutputStream(temporary)) {
+                            byte[] buffer = new byte[16 * 1024];
+                            int read;
+                            while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
+                            output.getFD().sync();
+                        }
+                        Files.move(temporary.toPath(), talloc.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    } finally {
+                        Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
+                    }
+                }
+                Os.chmod(runtimeDirectory.getAbsolutePath(), 0500);
+                Os.chmod(talloc.getAbsolutePath(), 0400);
+            }
         }
     }
 

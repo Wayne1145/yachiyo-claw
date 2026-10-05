@@ -98,17 +98,15 @@ public final class YachiyoSandboxService extends Service {
             store.update(id, SandboxJobStore.STATE_RUNNING, pid, null, System.currentTimeMillis());
             boolean completed = false;
             boolean outputLimitExceeded = false;
-            boolean processDisappeared = false;
             long deadline = System.currentTimeMillis() + job.timeoutMs;
             while (System.currentTimeMillis() < deadline) {
                 if (process.waitFor(Math.min(500L, Math.max(1L, deadline - System.currentTimeMillis())), TimeUnit.MILLISECONDS)) {
                     completed = true;
                     break;
                 }
-                if (!process.isAlive() || (pid > 0L && !isPidAlive(pid))) {
-                    processDisappeared = true;
-                    break;
-                }
+                // The child can exit just after a timed wait returns false.
+                // Let the next wait collect its real status; a vanished /proc
+                // entry is normal termination, not evidence of a crash.
                 if (store.outputBytes(id) > SandboxJobStore.MAX_OUTPUT_BYTES_PER_STREAM * 2L) {
                     outputLimitExceeded = true;
                     break;
@@ -119,9 +117,8 @@ public final class YachiyoSandboxService extends Service {
                 process.destroy();
                 process.destroyForcibly();
             }
-            int exitCode = completed ? process.exitValue() : outputLimitExceeded ? 125 : processDisappeared ? 126 : 124;
+            int exitCode = completed ? process.exitValue() : outputLimitExceeded ? 125 : 124;
             if (outputLimitExceeded) appendError(id, "sandbox_output_limit_exceeded");
-            if (processDisappeared) appendError(id, "sandbox_process_disappeared");
             SandboxJobStore.Job latest = store.get(id);
             if (latest != null && SandboxJobStore.STATE_CANCELLED.equals(latest.state)) return;
             store.update(id, exitCode == 0 ? SandboxJobStore.STATE_SUCCEEDED : SandboxJobStore.STATE_FAILED, pid, exitCode, System.currentTimeMillis());

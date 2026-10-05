@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { MantineProvider } from '@mantine/core'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { settingsStore } from '@/stores/settingsStore'
+import i18n from '@/i18n'
 import { PluginPageHost, PluginViewErrorBoundary } from './PluginPageHost'
 
 const mocks = vi.hoisted(() => ({
@@ -116,6 +117,29 @@ describe('PluginPageHost actions', () => {
     expect(mocks.load).toHaveBeenCalledWith('preview-plugin', { startRuntime: false })
     fireEvent.click(button)
     expect(mocks.invoke).not.toHaveBeenCalled()
+  })
+
+  it('does not abort an in-flight action when translations change', async () => {
+    let signal: AbortSignal | undefined
+    let finish: (() => void) | undefined
+    mocks.invoke.mockImplementation(async (...args: unknown[]) => {
+      signal = (args[5] as { abortSignal: AbortSignal }).abortSignal
+      await new Promise<void>((resolve) => { finish = resolve })
+      return { ok: true }
+    })
+    const previousLanguage = i18n.language
+    const host = render(<MantineProvider><PluginPageHost pluginId="language-plugin" /></MantineProvider>)
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: '运行' }))
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce())
+      await act(async () => { await i18n.changeLanguage(previousLanguage === 'en' ? 'zh-Hans' : 'en') })
+      expect(signal?.aborted).toBe(false)
+      expect(mocks.load).toHaveBeenCalledOnce()
+    } finally {
+      await act(async () => { finish?.(); await Promise.resolve() })
+      host.unmount()
+      await i18n.changeLanguage(previousLanguage || 'en')
+    }
   })
 
   it('serializes runtime renders when two active Android hosts overlap during navigation', async () => {

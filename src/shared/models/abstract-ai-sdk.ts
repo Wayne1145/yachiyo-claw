@@ -43,6 +43,7 @@ import type {
   ModelStreamPart,
 } from './types'
 import { resolveAgentActiveTools } from '../agent/android-tool-stages'
+import { isDeepSeekChatModel } from './utils/deepseek-compat'
 
 const RETRY_CONFIG = {
   MAX_ATTEMPTS: 5,
@@ -274,7 +275,7 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
   }
 
   public constructor(
-    public options: { model: ProviderModelInfo; stream?: boolean },
+    public options: { model: ProviderModelInfo; stream?: boolean; apiHost?: string },
     protected dependencies: ModelDependencies,
   ) {
     this.modelId = options.model.modelId
@@ -300,6 +301,10 @@ export default abstract class AbstractAISDKModel implements ModelInterface {
 
   public isSupportSystemMessage() {
     return true
+  }
+
+  public shouldPreserveReasoning() {
+    return this.name === 'DeepSeek' || isDeepSeekChatModel(this.options.model.modelId, this.options.apiHost)
   }
 
   protected getCallSettings(_options: CallChatCompletionOptions): CallSettings {

@@ -31,6 +31,8 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 
 ## 已实现功能
 
+最新修复版 [v0.0.23](docs/releases/v0.0.23.md) 修复了长对话回复被后台 token 统计覆盖、DeepSeek Agent 请求 400 和沙箱正常退出误报失败；[验收记录](docs/releases/v0.0.23-validation.md) 列出实际测试范围与限制。
+
 ### 对话与模型
 
 - Yachiyo API 开箱配置，API 主机固定为 `https://api.yachiyo8000.cn/v1`，支持服务端模型列表。

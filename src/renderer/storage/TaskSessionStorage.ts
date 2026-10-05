@@ -4,10 +4,12 @@ const PAGE_SIZE = 20
 const DB_NAME = 'chatbox-task-session'
 const STORE_NAME = 'records'
 
+export type TaskSessionUpdate = Partial<TaskSession> | ((current: TaskSession) => Partial<TaskSession>)
+
 export interface TaskSessionStorage {
   initialize(): Promise<void>
   create(record: TaskSession): Promise<void>
-  update(id: string, updates: Partial<TaskSession>): Promise<TaskSession | null>
+  update(id: string, updates: TaskSessionUpdate): Promise<TaskSession | null>
   getById(id: string): Promise<TaskSession | null>
   delete(id: string): Promise<void>
   getPage(cursor: number, limit?: number): Promise<TaskSessionPage>
@@ -63,17 +65,30 @@ export class IndexedDBTaskSessionStorage implements TaskSessionStorage {
     })
   }
 
-  async update(id: string, updates: Partial<TaskSession>): Promise<TaskSession | null> {
+  async update(id: string, updates: TaskSessionUpdate): Promise<TaskSession | null> {
     await this.initialize()
-    const existing = await this.getById(id)
-    if (!existing) return null
-
-    const updated = { ...existing, ...updates }
     return new Promise((resolve, reject) => {
       const store = this.getStore('readwrite')
-      const request = store.put(updated)
-      request.onsuccess = () => resolve(updated)
-      request.onerror = () => reject(request.error)
+      const transaction = store.transaction
+      let updated: TaskSession | null = null
+      const request = store.get(id)
+      request.onsuccess = () => {
+        const existing = request.result as TaskSession | undefined
+        if (!existing) return
+        try {
+          // Read and patch under one write transaction. Token estimation and
+          // streamed replies must never overwrite each other's message lists.
+          const patch = typeof updates === 'function' ? updates(existing) : updates
+          updated = { ...existing, ...patch }
+          store.put(updated)
+        } catch (error) {
+          transaction.abort()
+          reject(error)
+        }
+      }
+      transaction.oncomplete = () => resolve(updated)
+      transaction.onabort = () => reject(transaction.error || new Error('Task session update aborted'))
+      transaction.onerror = () => reject(transaction.error)
     })
   }
 

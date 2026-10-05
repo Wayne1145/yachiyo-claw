@@ -229,7 +229,7 @@ export async function orchestrateGeneration(
 
     const coreMessages = await convertToModelMessages(injectedMessages, {
       modelSupportVision: model.isSupportVision(),
-      preserveReasoning: settings.provider === ModelProviderEnum.DeepSeek,
+      preserveReasoning: model.shouldPreserveReasoning?.() ?? settings.provider === ModelProviderEnum.DeepSeek,
     })
 
     targetMsg = {

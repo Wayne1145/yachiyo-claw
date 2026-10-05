@@ -15,6 +15,8 @@ export interface ModelInterface {
   isSupportVision(): boolean
   isSupportToolUse(scope?: ToolUseScope): boolean
   isSupportSystemMessage(): boolean
+  /** Whether this provider needs saved reasoning when replaying assistant/tool turns. */
+  shouldPreserveReasoning?(): boolean
   chat: (messages: ModelMessage[], options: CallChatCompletionOptions) => Promise<StreamTextResult>
   chatStream: (messages: ModelMessage[], options: ChatStreamOptions) => AsyncGenerator<ModelStreamPart>
   paint: (

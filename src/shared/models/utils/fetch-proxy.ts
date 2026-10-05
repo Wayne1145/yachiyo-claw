@@ -1,4 +1,5 @@
 import type { ModelDependencies } from '../../types/adapters'
+import { normalizeDeepSeekChatBody } from './deepseek-compat'
 
 /**
  * Creates a fetch function that uses proxy when enabled,
@@ -16,7 +17,7 @@ export function createFetchWithProxy(useProxy: boolean | undefined, dependencies
         url: url.toString(),
         method: 'POST',
         headers,
-        body: init?.body,
+        body: normalizeDeepSeekChatBody(url.toString(), init?.body),
         signal: init?.signal || undefined,
         useProxy,
         retry: 0,

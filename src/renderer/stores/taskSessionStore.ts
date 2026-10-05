@@ -5,7 +5,7 @@ import { createStore, useStore } from 'zustand'
 import { combine, persist } from 'zustand/middleware'
 import { getLogger } from '@/lib/utils'
 import platform from '@/platform'
-import type { TaskSessionStorage } from '@/storage/TaskSessionStorage'
+import type { TaskSessionStorage, TaskSessionUpdate } from '@/storage/TaskSessionStorage'
 import { queryClient } from '@/stores/queryClient'
 import { safeStorage } from '@/stores/safeStorage'
 
@@ -146,13 +146,17 @@ export async function listAllTaskSessions(): Promise<TaskSession[]> {
   }
 }
 
-export async function updateTaskSession(id: string, updates: Partial<TaskSession>): Promise<TaskSession | null> {
+export async function updateTaskSession(id: string, updates: TaskSessionUpdate): Promise<TaskSession | null> {
   const store = taskSessionStore.getState()
   if (!store.initialized) {
     await initializeStore()
   }
 
-  const updated = await getStorage().update(id, { ...updates, updatedAt: Date.now() })
+  const updated = await getStorage().update(id, (persisted) => {
+    const cached = queryClient.getQueryData<TaskSession>([TASK_SESSION_QUERY_KEY, id])
+    const current = cached && (cached.updatedAt ?? 0) >= (persisted.updatedAt ?? 0) ? cached : persisted
+    return { ...(typeof updates === 'function' ? updates(current) : updates), updatedAt: Date.now() }
+  })
   if (!updated) {
     log.info('Task session not found for update:', id)
   } else {
