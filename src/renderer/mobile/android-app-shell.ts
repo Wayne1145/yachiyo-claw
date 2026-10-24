@@ -24,6 +24,8 @@ const CORE_ANDROID_SETTINGS_ROUTES = [
   '/settings/provider',
   '/settings/default-models',
   '/settings/downloads',
+  '/settings/usage',
+  '/settings/realtime',
   '/settings/themes',
   '/settings/features',
   '/settings/chat',

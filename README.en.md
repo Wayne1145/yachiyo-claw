@@ -33,7 +33,7 @@ This repository is maintained with assistance from Codex and written with assist
 
 ## Features
 
-[v0.0.23](docs/releases/v0.0.23.md) fixes lost Agent replies during background token updates, DeepSeek tool-request HTTP 400 errors, and false sandbox exit failures. See the [validation record](docs/releases/v0.0.23-validation.md) for tested paths and remaining limits.
+[v0.0.25](docs/releases/v0.0.25.md) adds native Realtime audio calls, realtime internal tools, usage statistics and offscreen browsing, fixes Qwen defaults, and improves Live2D rendering quality. See the [validation record](docs/releases/v0.0.25-validation.md) for tested paths and remaining limits.
 
 ### Chat and models
 
@@ -91,11 +91,14 @@ This repository is maintained with assistance from Codex and written with assist
 
 ### Live2D real-time interaction
 
-- A standalone Interactive page can inherit any chat context and switch between chat and Agent modes.
+- A standalone Interactive page inherits chat context and switches between chat, Agent and Realtime. Realtime uses a dedicated model configuration, without ordinary chat-model or reasoning selectors.
+- Native WebSocket audio supports OpenAI Realtime GA and DashScope, with separate input/output mute, optional camera frames and a VAD threshold with a live level overlay. The Qwen template defaults to the live-tested `qwen3.8-omni-flash-realtime` / `Tina`; upstream account access is still required.
+- Realtime internal tools use the same Tool Broker, parameter approval and audit path; phone control is not enabled automatically. Leaving the page or backgrounding ends the call; background microphone recording is not supported.
 - Includes a Yachiyo Live2D model and supports importing ZIP model packages that contain `.model3.json`.
 - Expression and motion names are read automatically; the model can trigger them from `[action]` markers as speech progresses.
 - Supports streaming responses, segmented TTS, voice input, muting, lip sync, and auto-dismissed translucent dialogue bubbles.
 - Supports front and rear camera previews, a draggable picture-in-picture window, and a model-invoked camera tool.
+- Live2D offers native-pixel and supersampling quality settings with actual framebuffer dimensions; it cannot invent detail absent from source textures.
 - ASR and TTS providers are configurable. The default bundled Sherpa-ONNX model provides bilingual Chinese/English streaming speech recognition without Google speech services or extra downloads, and an Edge TTS template is included.
 
 ### Android application experience
@@ -103,12 +106,14 @@ This repository is maintained with assistance from Codex and written with assist
 - Light pink-and-white styling, an optional ChatGPT-style Liquid Glass theme, capsule controls, page-transition motion, and portrait/landscape layouts.
 - Layouts are tuned for common full-screen ratios and high-resolution devices close to 9:21. Agent and download queues have been checked for input, scrolling, and bottom-navigation boundaries at `1200x2608` and `1440x3200` portrait viewports.
 - Create one-time, daily, or weekly Agent tasks manually; due tasks run when the app is active or becomes active again.
-- Scheduled tasks persist and wake reliably through Room, WorkManager, and boot/app-upgrade recovery receivers; the foreground app still continues the actual model and tool execution.
+- Room, WorkManager and boot/app-upgrade receivers persist and wake tasks. Supported OpenAI-compatible jobs can execute headlessly; interactive or unsupported capabilities require foreground takeover.
 - API keys, login tokens, and sensitive settings use Android Keystore-backed encrypted storage.
 - The app can check this project's GitHub Releases at launch. The Android updater downloads an APK into app-private storage, validates HTTPS origin, SHA-256, package name, signing chain, and an increasing `versionCode`, then passes it to the system installer and automatically removes stale installation packages after an upgrade.
 - Models, updates, Linux environments, plugin/Skill packages, remote themes, and app assets share the Download Manager in Settings, with 1-64 segments, resume support, proxy support, Wi-Fi-only mode, independent notifications, and recovery after process recreation.
 - Download settings independently enable `hf-mirror.com` and `ghfast.top`. They are enabled by default when a mainland China network egress is successfully detected on first launch, and saved user choices are not overwritten. Mirrors proxy allowlisted resources only; model digests and APK digest/signature verification remain unchanged.
 - Android CI includes TypeScript checks, foundation tests, native-log privacy checks, Gradle unit tests, and Debug APK builds.
+- Usage settings group reported tokens, cache usage and requests by period/category. Optional sub2api multiplier/balance queries show unknown when the upstream does not support or return the data.
+- Agent DOM browsing uses an offscreen WebView; a visible page opens only for explicit preview. This is not full desktop Chromium/Playwright.
 - Yachiyo Claw's chat, Interactive, Agent, permissions, local models, downloads, themes, plugins, and workspace pages can be switched fully to English. User-defined names and third-party content retain their original language.
 
 ## Known limitations
@@ -117,7 +122,7 @@ This repository is maintained with assistance from Codex and written with assist
 - GGUF supports CPU inference and Vulkan layer offload but still returns text after generation finishes. Local Agent tool calls depend on models reliably following a constrained structured protocol; no native token-by-token streaming tool events are available. Local embeddings are limited to MediaPipe Text Embedder-compatible `.tflite` models.
 - Weights, tokenizers, configurations, and derived content in model repositories remain subject to their own licenses, access restrictions, and terms. Users confirm applicable licenses before downloading or running them; Yachiyo Claw's GPLv3 does not cover third-party model weights.
 - The PRoot sandbox does not provide kernel-level isolation. Skill scripts are consistently routed into it, but complex Python or Node dependencies must still be installed and managed by each Skill or project.
-- WorkManager provides persistent wakeups and recovery, but fully headless Agent inference and tool execution while the application process does not exist is not implemented.
+- Headless Agent execution supports only the native runner's implemented provider protocols and tools. Approval, interactive permissions and foreground-only capabilities still require takeover; system force-stop and vendor background restrictions cannot be bypassed reliably.
 - In-app updates have passed production-signature continuity, increasing-version, and Android 12 overwrite-install verification. Android 11/13/15-16 device-matrix coverage remains pending.
 - Unsigned sideloaded plugins are explicitly marked as having unverified origins and still require users to grant each capability individually. Signed marketplaces, plugin API compatibility, and broader Android System WebView testing need a larger device matrix.
 - Skill updates currently only check and report a remote revision; they do not silently replace installed content. More complete device tools, long-term-memory retrieval, and MCP mobile-management experiences are still being refined.

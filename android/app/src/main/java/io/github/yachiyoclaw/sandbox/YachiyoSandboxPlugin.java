@@ -100,7 +100,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
         result.put("platform", "android-proot-alpine");
         result.put("distribution", SandboxDistribution.VERSION);
         result.put("freeBytes", new StatFs(getContext().getFilesDir().getAbsolutePath()).getAvailableBytes());
-        result.put("abi", android.os.Build.SUPPORTED_ABIS.length == 0 ? "unknown" : android.os.Build.SUPPORTED_ABIS[0]);
+        result.put("abi", runtimeAbi());
         if (lastError != null) result.put("error", lastError);
         call.resolve(result);
     }
@@ -963,7 +963,13 @@ public final class YachiyoSandboxPlugin extends Plugin {
             .put("platform", "android-proot-alpine")
             .put("distribution", SandboxDistribution.VERSION)
             .put("freeBytes", new StatFs(getContext().getFilesDir().getAbsolutePath()).getAvailableBytes())
-            .put("abi", android.os.Build.SUPPORTED_ABIS.length == 0 ? "unknown" : android.os.Build.SUPPORTED_ABIS[0]);
+            .put("abi", runtimeAbi());
+    }
+
+    private String runtimeAbi() {
+        // Emulator ARM translation may differ from the device's preferred ABI. Report what this process actually uses.
+        SandboxDistribution.Spec spec = SandboxDistribution.current(getContext().getApplicationInfo().nativeLibraryDir);
+        return spec == null ? "unknown" : spec.androidAbi();
     }
 
     private static JSObject commandResult(CommandResult result) {

@@ -1,5 +1,14 @@
 /* Settings share the app's materials and circular R corners. Blur stays on chrome,
    never on every field or list row, to keep long settings pages inexpensive. */
+.settings-billing-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 20px;
+  background: var(--settings-field, rgba(118, 135, 155, 0.075));
+  overflow-wrap: anywhere;
+}
 .settings-surface {
   --settings-text: var(--chatbox-tint-primary, #17202c);
   --settings-muted: var(--chatbox-tint-secondary, #606c7a);

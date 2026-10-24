@@ -10,7 +10,9 @@ describe('Live2D render quality', () => {
   })
 
   it('keeps Android and oversized drawing buffers within safe limits', () => {
-    expect(getLive2DResolution('high', 3, { isAndroid: true })).toBe(1.5)
+    expect(getLive2DResolution('high', 3, { isAndroid: true })).toBe(2.5)
+    expect(getLive2DResolution('native', 3.5, { isAndroid: true })).toBe(3.5)
+    expect(getLive2DResolution('supersample', 2, { isAndroid: true })).toBe(4)
     expect(
       getLive2DResolution('high', 3, {
         width: 1080,

@@ -4,6 +4,12 @@ package io.github.yachiyoclaw.workspace;
 final class ControlledBrowserScripts {
     private ControlledBrowserScripts() {}
 
+    static boolean isReadyResult(String value) {
+        // evaluateJavascript returns an object as plain JSON, not an escaped JSON string.
+        try { return value != null && new org.json.JSONObject(value).optBoolean("ready", false); }
+        catch (org.json.JSONException ignored) { return false; }
+    }
+
     static String target(String ref, String selector) {
         if (ref != null && !ref.isBlank()) {
             return "document.querySelector('[data-yachiyo-agent-ref=\"'+CSS.escape(" + quote(ref) + ")+'\"]')";

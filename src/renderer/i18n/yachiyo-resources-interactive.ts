@@ -1,4 +1,7 @@
+import { yachiyoRealtimeEnglish } from './yachiyo-resources-realtime'
+
 export const yachiyoInteractiveEnglish: Record<string, string> = {
+  ...yachiyoRealtimeEnglish,
   关闭交互设置: 'Close interaction settings',
   关闭形象设置: 'Close appearance settings',
   停止生成: 'Stop generating',

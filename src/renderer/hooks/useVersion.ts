@@ -27,9 +27,12 @@ export function isFirstDay(): boolean {
 export async function loadVersionStatus(
   checkRemoteUpdates: boolean,
   getVersion: () => Promise<string>,
-  checkNeedUpdate: (version: string) => Promise<boolean>
+  checkNeedUpdate: (version: string) => Promise<boolean>,
+  onLocalVersion?: (version: string) => void
 ): Promise<{ needCheckUpdate: boolean; version: string }> {
   const version = await getVersion()
+  // Local app identity must not depend on a slow or unavailable release server.
+  onLocalVersion?.(version)
   if (!checkRemoteUpdates) {
     return { needCheckUpdate: false, version }
   }
@@ -46,7 +49,8 @@ export default function useVersion({ checkRemoteUpdates = true }: { checkRemoteU
         const status = await loadVersionStatus(
           checkRemoteUpdates,
           () => platform.getVersion(),
-          (version) => checkYachiyoGitHubUpdate(version)
+          (version) => checkYachiyoGitHubUpdate(version),
+          _setVersion
         )
         _setVersion(status.version)
         setNeedCheckUpdate(status.needCheckUpdate)

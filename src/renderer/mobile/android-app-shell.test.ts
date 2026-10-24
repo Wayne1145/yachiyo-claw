@@ -33,6 +33,8 @@ describe('Android app shell state', () => {
   })
 
   it('maps settings and Android agent task routes', () => {
+    expect(isAllowedAndroidShellPath('/settings/usage')).toBe(true)
+    expect(isAllowedAndroidShellPath('/settings/realtime')).toBe(true)
     expect(resolveAndroidShellTab('/')).toBe('chat')
     expect(resolveAndroidShellTab('/session/123')).toBe('chat')
     expect(resolveAndroidShellTab('/settings/provider')).toBe('settings')

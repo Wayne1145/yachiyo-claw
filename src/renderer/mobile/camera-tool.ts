@@ -47,7 +47,10 @@ export function createCameraCaptureTool(sessionId: string) {
         risk: 'dangerous',
       })
       if (!approved) throw new Error('user_denied_camera_capture')
-      return provider()
+      // Revocation or switching cameras while approval is open must take effect immediately.
+      const currentProvider = getCameraCaptureProvider(sessionId)
+      if (!currentProvider) throw new Error('camera_disabled: 请先在交互式页面开启摄像头，再请求查看画面。')
+      return currentProvider()
     },
     toModelOutput: ({ output }) => ({
       type: 'content',

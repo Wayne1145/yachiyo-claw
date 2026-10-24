@@ -7,6 +7,8 @@ import io.github.yachiyoclaw.agent.YachiyoAgentPlugin;
 import io.github.yachiyoclaw.agent.YachiyoDeviceAccessPlugin;
 import io.github.yachiyoclaw.security.YachiyoSecureStoragePlugin;
 import io.github.yachiyoclaw.media.YachiyoVoicePlugin;
+import io.github.yachiyoclaw.media.YachiyoRealtimePlugin;
+import io.github.yachiyoclaw.media.YachiyoUsagePlugin;
 import io.github.yachiyoclaw.scheduler.YachiyoSchedulerPlugin;
 import io.github.yachiyoclaw.memory.YachiyoMemoryPlugin;
 import io.github.yachiyoclaw.update.YachiyoUpdatePlugin;
@@ -26,6 +28,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(YachiyoAgentPlugin.class);
         registerPlugin(YachiyoDeviceAccessPlugin.class);
         registerPlugin(YachiyoVoicePlugin.class);
+        registerPlugin(YachiyoRealtimePlugin.class);
+        registerPlugin(YachiyoUsagePlugin.class);
         registerPlugin(YachiyoSchedulerPlugin.class);
         registerPlugin(YachiyoMemoryPlugin.class);
         registerPlugin(YachiyoUpdatePlugin.class);
