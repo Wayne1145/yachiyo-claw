@@ -33,7 +33,7 @@ This repository is maintained with assistance from Codex and written with assist
 
 ## Features
 
-[v0.0.25](docs/releases/v0.0.25.md) adds native Realtime audio calls, realtime internal tools, usage statistics and offscreen browsing, fixes Qwen defaults, and improves Live2D rendering quality. See the [validation record](docs/releases/v0.0.25-validation.md) for tested paths and remaining limits.
+[v0.0.26](docs/releases/v0.0.26.md) fixes first-run Yachiyo API Key setup: save credentials directly, discover models in the background, and stop requiring the retired `gpt-5.6` preset. See the [validation record](docs/releases/v0.0.26-validation.md) for tested paths and limits. Realtime calls, internal tools, usage statistics and offscreen browsing from v0.0.25 remain included.
 
 ### Chat and models
 

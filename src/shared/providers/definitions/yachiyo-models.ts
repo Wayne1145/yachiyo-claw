@@ -40,3 +40,9 @@ export function normalizeYachiyoModel(model: ProviderModelInfo): ProviderModelIn
 export function normalizeYachiyoModels(models: ProviderModelInfo[]): ProviderModelInfo[] {
   return models.map(normalizeYachiyoModel)
 }
+
+/** Keep a still-advertised selection; never pick an embedding/image model for chat. */
+export function selectYachiyoChatModelId(models: ProviderModelInfo[], preferredId = ''): string {
+  const chatModels = models.filter((model) => model.modelId.trim() && isChatModel(model))
+  return chatModels.find((model) => model.modelId === preferredId)?.modelId || chatModels[0]?.modelId || ''
+}

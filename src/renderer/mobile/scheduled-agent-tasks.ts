@@ -211,7 +211,7 @@ export function buildHeadlessRuntimeSnapshot(taskId: string): HeadlessRuntimeSna
   if (providerType !== ModelProviderType.OpenAI) return undefined
   const provider = settings.providers?.[selected.provider]
   const apiKey = (provider?.apiKey || provider?.oauth?.accessToken || '').trim()
-  if (!apiKey) return undefined
+  if (!apiKey || !selected.model) return undefined
   const apiHost = (
     selected.provider === ModelProviderEnum.Yachiyo
       ? YACHIYO_API_HOST

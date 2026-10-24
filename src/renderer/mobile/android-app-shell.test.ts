@@ -4,7 +4,6 @@ import { settingsStore } from '@/stores/settingsStore'
 import {
   createYachiyoApiSettingsPatch,
   hasConfiguredModelProvider,
-  hasYachiyoDefaultModel,
   isAllowedAndroidShellPath,
   resolveAndroidShellBackAction,
   resolveAndroidShellParentPath,
@@ -13,7 +12,6 @@ import {
   shouldUseAndroidAppShell,
   YACHIYO_API_BASE_URL,
   YACHIYO_API_PROVIDER_ID,
-  YACHIYO_DEFAULT_MODEL_ID,
 } from './android-app-shell'
 
 const emptySettings = (): Pick<Settings, 'customProviders' | 'defaultChatModel' | 'licenseKey' | 'providers'> => ({
@@ -118,21 +116,21 @@ describe('Android app shell state', () => {
         customProviders: [],
         licenseKey: '',
         providers: { openai: { apiKey: 'sk-test' } },
-      }),
+      })
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
         customProviders: [],
         licenseKey: '',
         providers: { ollama: { models: [{ modelId: 'local-model' }] } },
-      }),
+      })
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
         customProviders: [],
         licenseKey: '',
         providers: { [ModelProviderEnum.Local]: { models: [{ modelId: 'offline-model' }] } },
-      }),
+      })
     ).toBe(true)
     expect(
       hasConfiguredModelProvider({
@@ -141,13 +139,8 @@ describe('Android app shell state', () => {
         ],
         licenseKey: '',
         providers: { 'custom-provider-empty': { apiKey: 'sk-test' } },
-      }),
+      })
     ).toBe(false)
-  })
-
-  it('requires the configured service to expose the product default model', () => {
-    expect(hasYachiyoDefaultModel([{ modelId: 'gpt-5.6' }])).toBe(true)
-    expect(hasYachiyoDefaultModel([{ modelId: 'gpt-5.6-mini' }])).toBe(false)
   })
 })
 
@@ -156,7 +149,7 @@ describe('Yachiyo API onboarding configuration', () => {
     const settings = emptySettings()
     settings.providers = { openai: { apiKey: 'existing-key' } }
 
-    const models = [{ modelId: YACHIYO_DEFAULT_MODEL_ID, type: 'chat' as const }]
+    const models = [{ modelId: 'gpt-upstream-current', type: 'chat' as const }]
     const patch = createYachiyoApiSettingsPatch(settings, '  sk-yachiyo-test  ', models)
     const yachiyo = patch.providers?.[YACHIYO_API_PROVIDER_ID]
 
@@ -171,7 +164,7 @@ describe('Yachiyo API onboarding configuration', () => {
     expect(yachiyo?.models?.[0]?.capabilities).toEqual(['vision', 'tool_use', 'reasoning'])
     expect(patch.defaultChatModel).toEqual({
       provider: ModelProviderEnum.Yachiyo,
-      model: YACHIYO_DEFAULT_MODEL_ID,
+      model: 'gpt-upstream-current',
     })
   })
 
@@ -190,7 +183,7 @@ describe('Yachiyo API onboarding configuration', () => {
           },
         },
       },
-      'second-key',
+      'second-key'
     )
 
     expect(second.providers?.[YACHIYO_API_PROVIDER_ID]?.apiKey).toBe('second-key')
@@ -212,5 +205,35 @@ describe('Yachiyo API onboarding configuration', () => {
 
   it('rejects an empty key without mutating settings', () => {
     expect(() => createYachiyoApiSettingsPatch(emptySettings(), '   ')).toThrow('api_key_required')
+  })
+
+  it('saves a key without requiring any model or network validation', () => {
+    const patch = createYachiyoApiSettingsPatch(emptySettings(), 'new-key')
+    expect(patch.providers?.yachiyo?.apiKey).toBe('new-key')
+    expect(patch.providers?.yachiyo?.models).toBeUndefined()
+    expect(patch.defaultChatModel?.model).toBe('')
+  })
+
+  it('replaces retired selections with a current chat model, not an embedding model', () => {
+    const settings = { ...emptySettings(), defaultChatModel: { provider: ModelProviderEnum.Yachiyo, model: 'gpt-5.6' } }
+    const patch = createYachiyoApiSettingsPatch(settings, 'new-key', [
+      { modelId: 'text-embedding-current', type: 'chat' },
+      { modelId: 'available-chat', type: 'chat' },
+    ])
+    expect(patch.defaultChatModel?.model).toBe('available-chat')
+  })
+
+  it('preserves an available selection and transport while replacing the remote list', () => {
+    const settings = {
+      ...emptySettings(),
+      defaultChatModel: { provider: ModelProviderEnum.Yachiyo, model: 'chosen' },
+      providers: {
+        yachiyo: { models: [{ modelId: 'chosen', apiStyle: 'openai-responses' as const }, { modelId: 'retired' }] },
+      },
+    }
+    const patch = createYachiyoApiSettingsPatch(settings, 'new-key', [{ modelId: 'another' }, { modelId: 'chosen' }])
+    expect(patch.defaultChatModel?.model).toBe('chosen')
+    expect(patch.providers?.yachiyo?.models?.map((model) => model.modelId)).toEqual(['another', 'chosen'])
+    expect(patch.providers?.yachiyo?.models?.[1].apiStyle).toBe('openai-responses')
   })
 })

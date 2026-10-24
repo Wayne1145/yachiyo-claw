@@ -2,7 +2,6 @@
  * @vitest-environment jsdom
  */
 import { MantineProvider } from '@mantine/core'
-import { ApiError, NetworkError } from '@shared/models/errors'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
@@ -47,7 +46,8 @@ describe('YachiyoApiOnboarding', () => {
 
     expect(screen.getByRole('heading', { name: '连接 Yachiyo API' })).toBeTruthy()
     expect(screen.getByText('api.yachiyo8000.cn/v1')).toBeTruthy()
-    expect(screen.getByText('gpt-5.6')).toBeTruthy()
+    expect(screen.getByText('保存后自动获取模型列表')).toBeTruthy()
+    expect(screen.queryByText('gpt-5.6')).toBeNull()
     expect(screen.queryByText(/Chatbox/i)).toBeNull()
     expect(screen.getByLabelText('API Key').getAttribute('type')).toBe('password')
   })
@@ -68,22 +68,20 @@ describe('YachiyoApiOnboarding', () => {
     expect((input as HTMLInputElement).value).toBe('')
   })
 
-  it.each([
-    [new ApiError('Unauthorized', undefined, 401), 'API Key 无效或无权访问，请检查后重试'],
-    [new NetworkError('offline', 'https://api.yachiyo8000.cn'), '无法连接 Yachiyo API，请检查网络后重试'],
-    [new Error('settings_persist_failed'), '密钥验证成功，但安全保存失败，请重试'],
-    [new Error('yachiyo_default_model_unavailable'), '服务可达，但默认模型 gpt-5.6 当前不可用'],
-  ])('keeps the key editable after a recoverable validation failure', async (failure, message) => {
-    const onSubmit = vi.fn().mockRejectedValue(failure)
-    renderOnboarding(onSubmit)
-    const input = screen.getByLabelText('API Key')
+  it.each([[new Error('settings_persist_failed'), 'API Key 安全保存失败，请重试']])(
+    'keeps the key editable after a recoverable validation failure',
+    async (failure, message) => {
+      const onSubmit = vi.fn().mockRejectedValue(failure)
+      renderOnboarding(onSubmit)
+      const input = screen.getByLabelText('API Key')
 
-    fireEvent.change(input, { target: { value: 'sk-retry-me' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存并开始' }))
+      fireEvent.change(input, { target: { value: 'sk-retry-me' } })
+      fireEvent.click(screen.getByRole('button', { name: '保存并开始' }))
 
-    expect(await screen.findByText(message)).toBeTruthy()
-    expect((input as HTMLInputElement).value).toBe('sk-retry-me')
-  })
+      expect(await screen.findByText(message)).toBeTruthy()
+      expect((input as HTMLInputElement).value).toBe('sk-retry-me')
+    }
+  )
 
   it('opens the existing provider settings for other APIs', () => {
     const onOpenProviders = vi.fn()

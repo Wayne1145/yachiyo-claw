@@ -173,7 +173,7 @@ export function getDefaultPrompt() {
 export function chatSessionSettings(): SessionSettings {
   return {
     provider: ModelProviderEnum.Yachiyo,
-    modelId: 'gpt-5.6',
+    modelId: '',
     maxContextMessageCount: Number.MAX_SAFE_INTEGER,
     reasoningStrength: 'medium',
   }

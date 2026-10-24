@@ -133,6 +133,10 @@ export const yachiyoInteractiveEnglish: Record<string, string> = {
     'The service is reachable, but the default gpt-5.6 model is currently unavailable.',
   '无法连接 Yachiyo API，请检查网络后重试': 'Could not connect to the Yachiyo API. Check your network and try again.',
   保存并开始: 'Save and continue',
+  保存后自动获取模型列表: 'Models are discovered after saving',
+  'API Key 安全保存失败，请重试': 'Could not securely save the API Key. Try again.',
+  '模型列表暂未获取，可在 Yachiyo API 设置中刷新；API Key 已保存。':
+    'Models could not be fetched. Refresh them in Yachiyo API settings; your API Key has been saved.',
   '密钥由 Android Keystore 加密，仅保存在此设备。':
     'Your key is encrypted with Android Keystore and stored only on this device.',
   '使用其他 API 服务': 'Use another API service',

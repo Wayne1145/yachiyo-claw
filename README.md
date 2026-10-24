@@ -31,7 +31,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 
 ## 已实现功能
 
-最新版本 [v0.0.25](docs/releases/v0.0.25.md) 增加原生 Realtime 音频通话、实时内部工具、用量统计和离屏浏览器，修复千问默认模型/音色配置，并提升 Live2D 渲染清晰度；[验收记录](docs/releases/v0.0.25-validation.md) 列出实际测试范围与限制。
+最新版本 [v0.0.26](docs/releases/v0.0.26.md) 修复首次填写 Yachiyo API Key 被停用模型阻塞的问题：直接保存 Key，后台获取实时模型列表，不再固定 `gpt-5.6`；[验收记录](docs/releases/v0.0.26-validation.md) 列出测试范围与限制。此前 v0.0.25 的 Realtime 通话、内部工具、用量统计和离屏浏览器等功能继续保留。
 
 ### 对话与模型
 
