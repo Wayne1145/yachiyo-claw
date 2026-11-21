@@ -6,7 +6,7 @@
   "description": "为 Yachiyo Claw Agent 提供完整 Ubuntu 24.04、Python、Node.js、Git 与原生构建工具。",
   "author": { "name": "NewDreamStudio", "url": "https://github.com/Wayne1145/yachiyo-claw" },
   "license": "GPL-3.0-only",
-  "minAppVersion": "0.0.19",
+  "minAppVersion": "0.0.27",
   "mode": "script-enabled",
   "entry": "main.js",
   "capabilities": [

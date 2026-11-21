@@ -27,11 +27,16 @@ describe('bundled official plugin marketplace', () => {
     expect(bytes.byteLength).toBe(entry.packageSize)
     expect(await sha256Hex(bytes)).toBe(entry.sha256)
     await expect(verifyPackageSignature(bytes, entry.signature)).resolves.toBe(true)
+    const files = await unpackPluginArchive(bytes)
+    await expect(verifyPluginPackage({ packageBytes: bytes, files, source: 'marketplace',
+      expectedSha256: entry.sha256, signature: entry.signature, appVersion: '0.0.26',
+    })).rejects.toThrow(/requires app version 0\.0\.27/)
     await expect(
       verifyPluginPackage({
         packageBytes: bytes,
-        files: await unpackPluginArchive(bytes),
+        files,
         source: 'marketplace',
+        appVersion: '0.0.27',
         expectedSha256: entry.sha256,
         signature: entry.signature,
       })
@@ -41,6 +46,7 @@ describe('bundled official plugin marketplace', () => {
       manifest: {
         id: 'ubuntu-runtime',
         version: entry.version,
+        minAppVersion: '0.0.27',
         capabilities: expect.arrayContaining([expect.objectContaining({ name: 'linux-runtime' })]),
       },
     })
