@@ -1,5 +1,6 @@
 import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
 import { createFeatureGatedPlugin } from './feature-gated-plugin'
+import type { NativeDownloadTask } from './yachiyo_downloads'
 
 export type SandboxInstallStage =
   | 'copying_bundled_rootfs'
@@ -43,20 +44,27 @@ export interface NativeUbuntuStatus {
   version?: string
   installed?: boolean
   ready?: boolean
-  state: 'unsupported' | 'not_downloaded' | 'queued' | 'downloading' | 'paused' | 'completed' | 'configuring' | 'ready' | 'failed'
+  state:
+    | NativeDownloadTask['status']
+    | 'unsupported'
+    | 'not_downloaded'
+    | 'extracting'
+    | 'configuration_required'
+    | 'configuring'
+    | 'ready'
   freeBytes?: number
   requiredFreeBytes?: number
   architecture?: 'arm64' | 'amd64'
-  download?: NativeDownloadTaskSnapshot
+  download?: NativeDownloadTask
+  jobId?: string
+  error?: string
 }
 
-interface NativeDownloadTaskSnapshot {
-  id: string
-  status: string
-  bytesDownloaded: number
-  bytesTotal: number
-  bytesPerSecond: number
-  error?: string
+export interface NativeUbuntuInstallReceipt {
+  accepted: true
+  state: 'downloading' | 'installing' | 'configuring' | 'ready'
+  downloadId: string
+  jobId?: string
 }
 
 export interface NativeSandboxProgress {
@@ -82,7 +90,7 @@ interface NativeSandboxPlugin {
     timeout?: number
   }): Promise<{ accepted: boolean; jobId: string }>
   ubuntuStatus(): Promise<NativeUbuntuStatus>
-  installUbuntu(): Promise<{ accepted: boolean; state: string; downloadId?: string; jobId?: string }>
+  installUbuntu(): Promise<NativeUbuntuInstallReceipt>
   startUbuntuPluginJob(options: {
     pluginId: 'ubuntu-runtime'
     command: string

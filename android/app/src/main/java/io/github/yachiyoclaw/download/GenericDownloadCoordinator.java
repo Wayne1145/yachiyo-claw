@@ -1,6 +1,7 @@
 package io.github.yachiyoclaw.download;
 
 import android.content.Context;
+import androidx.work.ExistingWorkPolicy;
 import androidx.work.WorkManager;
 import java.io.File;
 import org.json.JSONObject;
@@ -32,14 +33,36 @@ public final class GenericDownloadCoordinator {
             .put("expectedSize", expectedSize).put("expectedSha256", digest);
         if (fallbackUrl != null && !fallbackUrl.isBlank() && !fallbackUrl.equals(url)) request.put("fallbackUrl", fallbackUrl);
         JSONObject existing = GenericDownloadStore.get(context, id);
-        if (existing != null && !GenericDownloadStore.sameRequest(existing, request)) {
+        // Native requests are digest-pinned and carry their official origin across mirror preference changes.
+        if (existing != null && (!id.equals(existing.optString("id")) || !kind.equals(existing.optString("kind"))
+                || !sameArtifact(origin(existing), origin(request), existing.optLong("expectedSize"), expectedSize,
+                    existing.optString("expectedSha256"), digest))) {
             throw new IllegalArgumentException("download_task_id_conflict");
         }
         GenericDownloadStore.save(context, request);
         File artifact = GenericDownloadWorker.artifact(context, id);
+        String status = DownloadTaskStore.status(context, id);
+        if (existing != null && "completed".equals(status) && artifact.isFile() && artifact.length() == expectedSize) return;
+        if (existing != null && ("downloading".equals(status) || "queued".equals(status))) {
+            GenericDownloadWorker.enqueue(context, id, ExistingWorkPolicy.KEEP);
+            return;
+        }
         long resumable = DownloadTransfer.resumableBytes(artifact, expectedSize);
         DownloadTaskStore.updateGeneric(context, id, kind, title, "queued", resumable, expectedSize, 0, null);
         GenericDownloadWorker.enqueue(context, id);
+    }
+
+    private static String origin(JSONObject request) {
+        return request.optString("fallbackUrl", request.optString("url"));
+    }
+
+    static boolean sameArtifact(String oldOrigin, String newOrigin, long oldSize, long newSize, String oldHash, String newHash) {
+        return oldOrigin.equals(newOrigin) && oldSize == newSize && oldHash.equals(newHash);
+    }
+
+    public static boolean hasCompletedArtifact(Context context, String id, long size) {
+        File file = GenericDownloadWorker.artifact(context, id);
+        return file.isFile() && file.length() == size;
     }
 
     public static JSONObject task(Context context, String id) {

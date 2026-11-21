@@ -250,6 +250,7 @@ async function loadBoundary(record: InstalledPluginRecord): Promise<{
       toolCallId: `call-${record.manifest.id}`,
       hostCallId: 'h0',
       signal: new AbortController().signal,
+      waitForApproval: (request) => request(),
     },
   }
 }
@@ -297,6 +298,20 @@ describe('plugin manager security integration', () => {
       setItem: (key: string, value: string) => values.set(key, value),
       removeItem: (key: string) => values.delete(key),
     })
+  })
+
+  it('reports an ungranted official runtime before the page executes and excludes unsigned copies', async () => {
+    const record = makeRecord('ubuntu-runtime', { trusted: true, capabilities: ['ui', 'linux-runtime'] })
+    mocks.currentRecord = record
+    grant(record, 'ui')
+    await expect(loadPluginForPage(record.manifest.id)).resolves.toMatchObject({ missingUiCapability: 'linux-runtime', runtime: null })
+    expect(mocks.runtimeCreate).not.toHaveBeenCalled()
+    await setPluginGrant(record, 'linux-runtime', true)
+    await expect(loadPluginForPage(record.manifest.id)).resolves.toMatchObject({ uiGranted: true, runtime: expect.anything() })
+    const unsigned = makeRecord('ubuntu-runtime', { trusted: false, capabilities: ['ui', 'linux-runtime'] })
+    mocks.grants.clear()
+    await setPluginGrant(unsigned, 'linux-runtime', true)
+    expect(mocks.grants.has('ubuntu-runtime:linux-runtime')).toBe(false)
   })
 
   it('always records device as denied during installation, even for a signed package', async () => {
@@ -426,16 +441,16 @@ describe('plugin manager security integration', () => {
     expect(mocks.runtimeCreate).not.toHaveBeenCalled()
   })
 
-  it('records lifecycle cancellation without counting it as a plugin failure', async () => {
+  it.each(['cancelled', 'ubuntu_user_denied', 'plugin_approval_expired'])('does not count %s as a plugin failure', async (reason) => {
     const runtime = {
       invokeTool: vi.fn(async () => {
-        throw new Error('cancelled')
+        throw new Error(reason)
       }),
       isDisposed: () => true,
     }
 
     await expect(invokeLoadedPluginTool('cancelled-page', runtime as never, 'render', {})).rejects.toThrow(
-      'cancelled'
+      reason
     )
 
     expect(mocks.health.has('cancelled-page')).toBe(false)

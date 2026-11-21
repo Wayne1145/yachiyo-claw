@@ -71,8 +71,14 @@ public final class YachiyoSandboxService extends Service {
     }
 
     private void runJob(String id) {
+        SandboxJobStore.JobLease lease = null;
+        Process process = null;
         try {
             SandboxJobStore.Job job = store.get(id);
+            if (job == null || !SandboxJobStore.STATE_QUEUED.equals(job.state)) return;
+            lease = store.tryOwn(id);
+            if (lease == null) return;
+            job = store.get(id);
             if (job == null || !SandboxJobStore.STATE_QUEUED.equals(job.state)) return;
             File workspace = validateWorkspace(job.workspace);
             RuntimeFiles runtime = resolveRuntime(job.runtimeId);
@@ -86,16 +92,14 @@ public final class YachiyoSandboxService extends Service {
             );
             builder.redirectOutput(ProcessBuilder.Redirect.appendTo(store.stdout(id)));
             builder.redirectError(ProcessBuilder.Redirect.appendTo(store.stderr(id)));
-            Process process = builder.start();
+            // Persist the owner before starting the guest, so recovery cannot replay a started command.
+            SandboxJobStore.Job claim = store.update(id, SandboxJobStore.STATE_RUNNING, 0L, null, System.currentTimeMillis());
+            if (claim == null || !SandboxJobStore.STATE_RUNNING.equals(claim.state)) return;
+            process = builder.start();
             active.put(id, process);
             long pid = processId(process);
-            SandboxJobStore.Job latestBeforeRun = store.get(id);
-            if (latestBeforeRun == null || !SandboxJobStore.STATE_QUEUED.equals(latestBeforeRun.state)) {
-                killTree(pid, ConcurrentHashMap.newKeySet());
-                process.destroyForcibly();
-                return;
-            }
-            store.update(id, SandboxJobStore.STATE_RUNNING, pid, null, System.currentTimeMillis());
+            SandboxJobStore.Job started = store.update(id, SandboxJobStore.STATE_RUNNING, pid, null, System.currentTimeMillis());
+            if (started == null || !SandboxJobStore.STATE_RUNNING.equals(started.state)) return;
             boolean completed = false;
             boolean outputLimitExceeded = false;
             long deadline = System.currentTimeMillis() + job.timeoutMs;
@@ -119,13 +123,17 @@ public final class YachiyoSandboxService extends Service {
             }
             int exitCode = completed ? process.exitValue() : outputLimitExceeded ? 125 : 124;
             if (outputLimitExceeded) appendError(id, "sandbox_output_limit_exceeded");
-            SandboxJobStore.Job latest = store.get(id);
-            if (latest != null && SandboxJobStore.STATE_CANCELLED.equals(latest.state)) return;
             store.update(id, exitCode == 0 ? SandboxJobStore.STATE_SUCCEEDED : SandboxJobStore.STATE_FAILED, pid, exitCode, System.currentTimeMillis());
         } catch (Exception error) {
             appendError(id, safeError(error));
             try { store.update(id, SandboxJobStore.STATE_FAILED, 0L, 1, System.currentTimeMillis()); } catch (Exception ignored) {}
         } finally {
+            if (process != null && process.isAlive()) {
+                killTree(processId(process), ConcurrentHashMap.newKeySet());
+                process.destroyForcibly();
+            }
+            // Release only after the terminal registry write. A poll between child exit and that write sees a live owner.
+            if (lease != null) try { lease.close(); } catch (java.io.IOException ignored) {}
             active.remove(id);
             launching.remove(id);
             stopIfIdle();
@@ -163,6 +171,7 @@ public final class YachiyoSandboxService extends Service {
             // Android may purge code_cache at any time; restore the PRoot runtime
             // libraries before launching or a recovered job dies with a link error.
             installer.prepareRuntimeFiles();
+            installer.prepareToolchainConfiguration();
             syncGuestDnsQuietly(installer.rootfsDirectory());
             return new RuntimeFiles(installer.rootfsDirectory(), installer.runtimeDirectory(), SandboxProcessFactory.RuntimeConfig.ubuntu());
         }
@@ -191,12 +200,12 @@ public final class YachiyoSandboxService extends Service {
     private void stopJob(String id) {
         Process process = active.remove(id);
         long pid = process == null ? 0L : processId(process);
-        if (process != null) {
+        try { store.update(id, SandboxJobStore.STATE_CANCELLED, pid, 130, System.currentTimeMillis()); } catch (Exception ignored) {}
+        if (process != null && process.isAlive()) {
             killTree(pid, ConcurrentHashMap.newKeySet());
             process.destroy();
             process.destroyForcibly();
         }
-        try { store.update(id, SandboxJobStore.STATE_CANCELLED, pid, 130, System.currentTimeMillis()); } catch (Exception ignored) {}
         stopIfIdle();
     }
 
@@ -240,10 +249,6 @@ public final class YachiyoSandboxService extends Service {
         } catch (Exception ignored) {
             return 0L;
         }
-    }
-
-    private static boolean isPidAlive(long pid) {
-        return pid > 0L && new File("/proc/" + pid).isDirectory();
     }
 
     private void createChannel() {

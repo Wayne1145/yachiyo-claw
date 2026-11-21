@@ -7,6 +7,14 @@ export function canGrantPluginDeviceCapability(signatureVerified: boolean): bool
   return PLUGIN_DEVICE_CAPABILITY_AVAILABLE && signatureVerified
 }
 
+export function isTrustedUbuntuPlugin(record: {
+  manifest: { id: string }
+  signatureVerified: boolean
+  deviceGrantAllowed: boolean
+}): boolean {
+  return record.manifest.id === 'ubuntu-runtime' && record.signatureVerified && record.deviceGrantAllowed
+}
+
 export function isPluginCapabilityImplemented(capability: string): boolean {
   if (capability === 'device') return PLUGIN_DEVICE_CAPABILITY_AVAILABLE
   if (capability === 'sandbox') return PLUGIN_SANDBOX_CAPABILITY_AVAILABLE

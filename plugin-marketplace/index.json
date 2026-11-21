@@ -5,13 +5,13 @@
       "id": "ubuntu-runtime",
       "name": "Ubuntu 24.04 开发环境",
       "description": "为 Yachiyo Claw Agent 提供完整 Ubuntu 24.04、Python、Node.js、Git 与原生构建工具。",
-      "version": "1.0.0",
-      "packageUrl": "https://raw.githubusercontent.com/Wayne1145/yachiyo-claw/main/plugin-marketplace/packages/ubuntu-runtime-1.0.0.zip",
-      "packageSize": 3182,
-      "sha256": "477521f8e35d5e0d0f49659622bf6f941642dbce3e7d87cbe21c2e2aff106efb",
+      "version": "1.0.1",
+      "packageUrl": "https://raw.githubusercontent.com/Wayne1145/yachiyo-claw/main/plugin-marketplace/packages/ubuntu-runtime-1.0.1.zip",
+      "packageSize": 4636,
+      "sha256": "c478559c3d21a25e723dca3e985ae2b76057d8fbcb3bc6de18a54c21de4feef8",
       "signature": {
         "algorithm": "ecdsa-p256",
-        "value": "rM03SB3BUs6BxRWasF72LeEpvz66vJx_EaDsXs4Szj2FepETUK7LDRbf9v7vPvtrLfOg__6jdLYVzUWOPjV2GQ",
+        "value": "d_j8j8UyGSWh-yvXXroBe0XXzWBY7COBwtLzvMEL9VLelFqu6z_-dgkH-q57K9UGJmA9FEGhFBmrps9X7CV09Q",
         "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEV5XqN8JcJwAaCeyY3NffLpe3vKzED5j9CfxioGJSBgDNKulKF_z4SxL_z3aZWA7CEMu-F-6Q4SA63UCY9hk8cA",
         "keyId": "newdreamstudio-official-v1"
       },

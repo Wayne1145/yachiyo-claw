@@ -61,6 +61,19 @@ public class DownloadTransferTest {
 
     @After public void tearDown() { if (server != null) server.stop(); }
 
+    @Test public void retriesConnectionFailureDuringInitialRangeProbe() throws Exception {
+        AtomicInteger probes = new AtomicInteger();
+        DownloadTransfer.ConnectionFactory delegate = factory();
+        DownloadTransfer.ConnectionFactory flaky = (start, end) -> {
+            if (start == 0 && end == 0 && probes.getAndIncrement() == 0) throw new IOException("connection reset");
+            return delegate.open(start, end);
+        };
+        File target = new File(folder.getRoot(), "recovered-probe.bin");
+        DownloadTransfer.download(target, payload.length, sha, 4, 1, 100_000L, flaky, noProgress, noStop);
+        assertEquals(2, probes.get());
+        assertArrayEquals(payload, Files.readAllBytes(target.toPath()));
+    }
+
     private DownloadTransfer.ConnectionFactory factory() {
         return (start, end) -> {
             HttpURLConnection c = (HttpURLConnection) new URL(server.url).openConnection();

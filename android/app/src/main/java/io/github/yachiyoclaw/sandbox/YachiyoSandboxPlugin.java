@@ -47,6 +47,8 @@ public final class YachiyoSandboxPlugin extends Plugin {
         "bash git python3 py3-pip nodejs npm openssh-client curl ca-certificates build-base";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    // Alpine commands may run for minutes. Ubuntu lifecycle requests must still answer plugin page polling.
+    private final ExecutorService ubuntuExecutor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean installRunning = new AtomicBoolean(false);
     private final AtomicReference<Process> activeProcess = new AtomicReference<>();
     private final AtomicReference<String> activeJobId = new AtomicReference<>();
@@ -68,8 +70,21 @@ public final class YachiyoSandboxPlugin extends Plugin {
         UbuntuDistribution.Spec ubuntu = UbuntuDistribution.current(getContext().getApplicationInfo().nativeLibraryDir);
         if (ubuntu != null) ubuntuInstaller = new UbuntuDistributionInstaller(getContext(), ubuntu);
         jobStore = new SandboxJobStore(getContext());
+        resumeUbuntuInstallation();
         workspace = new File(getContext().getFilesDir(), "linux-sandbox/workspaces/default");
         state = installer.isInstalled() ? (toolchainMarker().isFile() ? "ready" : "rootfs_ready") : "not_installed";
+    }
+
+    @Override protected void handleOnResume() {
+        super.handleOnResume();
+        resumeUbuntuInstallation();
+    }
+
+    private void resumeUbuntuInstallation() {
+        if (ubuntuInstaller != null) ubuntuExecutor.execute(() -> {
+            try { UbuntuInstallWorker.recover(getContext(), ubuntuInstaller, jobStore); }
+            catch (Exception error) { UbuntuDistributionInstaller.recordInstallError(getContext(), error); }
+        });
     }
 
     @PluginMethod
@@ -112,65 +127,41 @@ public final class YachiyoSandboxPlugin extends Plugin {
             call.resolve(new JSObject().put("available", false).put("state", "unsupported"));
             return;
         }
-        JSObject result = new JSObject()
-            .put("available", true)
-            .put("runtimeId", UbuntuDistribution.RUNTIME_ID)
-            .put("version", UbuntuDistribution.VERSION)
-            .put("installed", ubuntuInstaller.isInstalled())
-            .put("ready", ubuntuInstaller.isReady())
-            .put("state", ubuntuInstaller.isReady() ? "ready" : ubuntuInstaller.isInstalled() ? "configuring" : ubuntuInstaller.downloadState())
-            .put("freeBytes", new StatFs(getContext().getFilesDir().getAbsolutePath()).getAvailableBytes())
-            .put("requiredFreeBytes", UbuntuDistributionInstaller.REQUIRED_FREE_BYTES)
-            .put("architecture", ubuntuInstaller.spec().dpkgArch());
-        org.json.JSONObject task = ubuntuInstaller.downloadTask();
-        if (task != null) result.put("download", task);
-        String installError = UbuntuDistributionInstaller.lastInstallError(getContext());
-        if (installError != null) result.put("error", installError);
-        call.resolve(result);
+        ubuntuExecutor.execute(() -> {
+            try {
+                UbuntuInstallWorker.Status status = UbuntuInstallWorker.status(getContext(), ubuntuInstaller, jobStore);
+                JSObject result = new JSObject()
+                    .put("available", true)
+                    .put("runtimeId", UbuntuDistribution.RUNTIME_ID)
+                    .put("version", UbuntuDistribution.VERSION)
+                    .put("installed", ubuntuInstaller.isInstalled())
+                    .put("ready", "ready".equals(status.state()))
+                    .put("state", status.state())
+                    .put("freeBytes", new StatFs(getContext().getFilesDir().getAbsolutePath()).getAvailableBytes())
+                    .put("requiredFreeBytes", UbuntuDistributionInstaller.REQUIRED_FREE_BYTES)
+                    .put("architecture", ubuntuInstaller.spec().dpkgArch());
+                org.json.JSONObject task = ubuntuInstaller.downloadTask();
+                if (task != null && !ubuntuInstaller.isInstalled() && !"not_downloaded".equals(status.state())) result.put("download", task);
+                if (status.error() != null) result.put("error", status.error());
+                if (status.jobId() != null) result.put("jobId", status.jobId());
+                call.resolve(result);
+            } catch (Exception error) { call.reject(safeError(error, "ubuntu_status_failed"), error); }
+        });
     }
 
     /** Downloads, verifies, atomically extracts, then configures the full Ubuntu developer toolchain. */
     @PluginMethod
     public void installUbuntu(PluginCall call) {
         if (ubuntuInstaller == null) { call.reject("ubuntu_abi_unsupported"); return; }
-        if (!installRunning.compareAndSet(false, true)) { call.reject("sandbox_install_in_progress"); return; }
-        executor.execute(() -> {
+        ubuntuExecutor.execute(() -> {
             try {
-                if (!ubuntuInstaller.isInstalled()) {
-                    String downloadState = ubuntuInstaller.downloadState();
-                    if (!"completed".equals(downloadState)) {
-                        ubuntuInstaller.enqueueDownload();
-                        UbuntuInstallWorker.enqueue(getContext());
-                        call.resolve(new JSObject().put("accepted", true).put("state", "downloading")
-                            .put("downloadId", ubuntuInstaller.spec().downloadId()));
-                        return;
-                    }
-                    UbuntuInstallWorker.enqueue(getContext());
-                    call.resolve(new JSObject().put("accepted", true).put("state", "installing")
-                        .put("downloadId", ubuntuInstaller.spec().downloadId()));
-                    return;
-                }
-                if (ubuntuInstaller.isReady()) {
-                    call.resolve(new JSObject().put("accepted", true).put("state", "ready"));
-                    return;
-                }
-                File pluginWorkspace = pluginWorkspace("ubuntu-runtime");
-                if (!pluginWorkspace.isDirectory() && !pluginWorkspace.mkdirs()) throw new IOException("plugin_workspace_unavailable");
-                String jobId = createJobId();
-                jobStore.create(
-                    jobId,
-                    UbuntuInstallWorker.toolchainInstallCommand(),
-                    pluginWorkspace.getCanonicalPath(),
-                    3_600_000,
-                    System.currentTimeMillis(),
-                    UbuntuDistribution.RUNTIME_ID
-                );
-                YachiyoSandboxService.start(getContext(), jobId);
-                call.resolve(new JSObject().put("accepted", true).put("state", "configuring").put("jobId", jobId));
+                UbuntuInstallWorker.Status status = UbuntuInstallWorker.request(getContext(), ubuntuInstaller, jobStore);
+                JSObject result = new JSObject().put("accepted", true).put("state", status.state())
+                    .put("downloadId", ubuntuInstaller.spec().downloadId());
+                if (status.jobId() != null) result.put("jobId", status.jobId());
+                call.resolve(result);
             } catch (Exception error) {
                 call.reject(safeError(error, "ubuntu_install_failed"), error);
-            } finally {
-                installRunning.set(false);
             }
         });
     }
@@ -199,16 +190,9 @@ public final class YachiyoSandboxPlugin extends Plugin {
     @PluginMethod
     public void removeUbuntu(PluginCall call) {
         if (ubuntuInstaller == null) { call.reject("ubuntu_abi_unsupported"); return; }
-        executor.execute(() -> {
+        ubuntuExecutor.execute(() -> {
             try {
-                UbuntuInstallWorker.cancel(getContext());
-                for (SandboxJobStore.Job job : jobStore.list()) {
-                    if (UbuntuDistribution.RUNTIME_ID.equals(job.runtimeId)
-                        && (SandboxJobStore.STATE_RUNNING.equals(job.state) || SandboxJobStore.STATE_QUEUED.equals(job.state))) {
-                        YachiyoSandboxService.stop(getContext(), job.id);
-                    }
-                }
-                ubuntuInstaller.remove();
+                UbuntuInstallWorker.remove(getContext(), ubuntuInstaller, jobStore);
                 call.resolve(new JSObject().put("success", true));
             } catch (Exception error) {
                 call.reject(safeError(error, "ubuntu_remove_failed"), error);
@@ -997,6 +981,7 @@ public final class YachiyoSandboxPlugin extends Plugin {
     protected void handleOnDestroy() {
         // Persistent jobs belong to YachiyoSandboxService, not the transient WebView plugin.
         executor.shutdownNow();
+        ubuntuExecutor.shutdown();
         super.handleOnDestroy();
     }
 
