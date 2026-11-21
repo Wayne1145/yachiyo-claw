@@ -60,6 +60,66 @@ const demoPlugin: PluginEntryEvaluator = (_entry, api) => {
 }
 
 describe('plugin runtime end-to-end (isolate protocol)', () => {
+  it('waits beyond the script timeout for install approval and dispatches exactly once', async () => {
+    vi.useFakeTimers()
+    let allow!: () => void
+    const install = vi.fn(() => ({ accepted: true }))
+    const runtime = setup((_entry, api) => api.registerTool('install', () => api.host.call('linux.install', {})), {
+      authorize: () => ({ allowed: true }),
+      hostApi: {
+        'linux.install': async (_args, context) => {
+          await context.waitForApproval(() => new Promise<void>((resolve) => { allow = resolve }))
+          return install()
+        },
+      },
+    })
+    try {
+      await runtime.load('ubuntu-runtime', '')
+      const pending = runtime.invokeTool('install', {})
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(install).not.toHaveBeenCalled()
+      expect(runtime.isDisposed()).toBe(false)
+      allow()
+      await expect(pending).resolves.toEqual({ accepted: true })
+      expect(install).toHaveBeenCalledOnce()
+    } finally {
+      runtime.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it('restores the script timeout after approval and bounds an unanswered approval', async () => {
+    vi.useFakeTimers()
+    let allow!: () => void
+    const runtimeFor = () => setup((_entry, api) => api.registerTool('hang', () => api.host.call('linux.install', {})), {
+      authorize: () => ({ allowed: true }),
+      hostApi: {
+        'linux.install': async (_args, context) => {
+          await context.waitForApproval(() => new Promise<void>((resolve) => { allow = resolve }))
+          return new Promise<JsonValue>(() => {})
+        },
+      },
+    })
+    const resumed = runtimeFor()
+    const unanswered = runtimeFor()
+    try {
+      await resumed.load('ubuntu-runtime', '')
+      const stalled = expect(resumed.invokeTool('hang', {})).rejects.toThrow('timeout')
+      await vi.advanceTimersByTimeAsync(15_000)
+      allow()
+      await vi.advanceTimersByTimeAsync(10_001)
+      await stalled
+      await unanswered.load('ubuntu-runtime', '')
+      const expired = expect(unanswered.invokeTool('hang', {})).rejects.toThrow('plugin_approval_expired')
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1)
+      await expired
+    } finally {
+      resumed.dispose()
+      unanswered.dispose()
+      vi.useRealTimers()
+    }
+  })
+
   it('forwards bounded plugin logs to the host observer', async () => {
     const logs: Array<{ level: string; message: string }> = []
     const { host, worker } = linkedTransports()

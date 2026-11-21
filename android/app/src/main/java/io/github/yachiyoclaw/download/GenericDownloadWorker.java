@@ -35,12 +35,16 @@ public final class GenericDownloadWorker extends Worker {
     }
 
     static void enqueue(Context context, String id) {
+        enqueue(context, id, ExistingWorkPolicy.REPLACE);
+    }
+
+    static void enqueue(Context context, String id, ExistingWorkPolicy policy) {
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(GenericDownloadWorker.class)
             .setInputData(new Data.Builder().putString(KEY_ID, id).build())
             .setConstraints(YachiyoDownloadSettingsPlugin.constraints(context))
             .addTag("yachiyo-generic-download")
             .build();
-        WorkManager.getInstance(context).enqueueUniqueWork(workName(id), ExistingWorkPolicy.REPLACE, request);
+        WorkManager.getInstance(context).enqueueUniqueWork(workName(id), policy, request);
     }
 
     /** Replaces active workers so newly saved WorkManager network constraints take effect now. */
@@ -89,18 +93,18 @@ public final class GenericDownloadWorker extends Worker {
             long existing = DownloadTransfer.resumableBytes(target, total);
             DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", existing, total, 0, null);
             setForegroundAsync(DownloadNotifications.foreground(getApplicationContext(), id, title, existing, total));
-            URL initial = requirePublicHttps(request.getString("url"));
             try {
-                transfer(id, kind, title, target, total, digest, initial);
+                transfer(id, kind, title, target, total, digest, requirePublicHttps(request.getString("url")));
             } catch (Exception primaryError) {
                 String fallback = request.optString("fallbackUrl", "");
                 if (fallback.isBlank() || isStopped() || DownloadTaskStore.shouldStop(getApplicationContext(), id)) throw primaryError;
-                DownloadTransfer.discard(target);
-                DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "downloading", 0, total, 0, null);
+                // The digest binds the mirrors to identical bytes. Keep verified-layout segments across network failures.
+                if (digest.isBlank()) DownloadTransfer.discard(target);
                 transfer(id, kind, title, target, total, digest, requirePublicHttps(fallback));
             }
             DownloadTaskStore.updateGeneric(getApplicationContext(), id, kind, title, "completed", total, total, 0, null);
             DownloadNotifications.complete(getApplicationContext(), id, title);
+            io.github.yachiyoclaw.sandbox.UbuntuInstallWorker.onDownloadCompleted(getApplicationContext(), id);
             return Result.success();
         } catch (Exception error) {
             String stored = DownloadTaskStore.status(getApplicationContext(), id);

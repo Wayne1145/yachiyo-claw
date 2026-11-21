@@ -2,6 +2,7 @@ import { createHash, createPrivateKey, createPublicKey, sign } from 'node:crypto
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import JSZip from 'jszip'
+import { bundleUbuntuPlugin } from './bundle-ubuntu-plugin.mjs'
 
 const definitions = [
   {
@@ -30,7 +31,9 @@ const plugins = []
 for (const definition of definitions) {
   const root = resolve('examples/plugins', definition.directory)
   const entries = await Promise.all(definition.files.map(async (path) => {
-    const bytes = await readFile(resolve(root, path))
+    const bytes = definition.directory === 'ubuntu-runtime' && path === 'main.js'
+      ? Buffer.from(await bundleUbuntuPlugin(), 'utf8')
+      : await readFile(resolve(root, path))
     return { path, bytes, size: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') }
   }))
   const manifest = JSON.parse(await readFile(resolve(root, 'manifest.template.json'), 'utf8'))

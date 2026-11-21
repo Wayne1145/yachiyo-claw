@@ -307,8 +307,9 @@ public final class DownloadTransfer {
         int attempt = 0;
         while (true) {
             if (stop.stopped()) throw new InterruptedException("download_paused");
-            HttpURLConnection probe = connections.open(0, 0);
+            HttpURLConnection probe = null;
             try {
+                probe = connections.open(0, 0);
                 int status = probe.getResponseCode();
                 if (status == HttpURLConnection.HTTP_PARTIAL) {
                     validatePartialResponse(probe, 0, 0, expectedSize);
@@ -321,7 +322,7 @@ public final class DownloadTransfer {
                 attempt++;
                 Thread.sleep(Math.min(4_000L, 250L << Math.min(attempt - 1, 4)));
             } finally {
-                probe.disconnect();
+                if (probe != null) probe.disconnect();
             }
         }
     }

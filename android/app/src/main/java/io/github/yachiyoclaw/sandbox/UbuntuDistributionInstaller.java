@@ -53,7 +53,12 @@ final class UbuntuDistributionInstaller {
 
     String downloadState() {
         JSONObject task = GenericDownloadCoordinator.task(context, distribution.downloadId());
-        return task == null ? "not_downloaded" : task.optString("status", "not_downloaded");
+        String state = task == null ? "not_downloaded" : task.optString("status", "not_downloaded");
+        // Completed history can outlive its archive after consumption, removal or cleanup.
+        if ("completed".equals(state) && !GenericDownloadCoordinator.hasCompletedArtifact(context, distribution.downloadId(), distribution.size())) {
+            return "not_downloaded";
+        }
+        return state;
     }
 
     JSONObject downloadTask() { return GenericDownloadCoordinator.task(context, distribution.downloadId()); }
@@ -95,7 +100,15 @@ final class UbuntuDistributionInstaller {
         }
         alpineRuntime.prepareRuntimeFiles();
         File archive = GenericDownloadCoordinator.requireCompletedArtifact(context, distribution.downloadId(), distribution.size());
-        verifyArchive(archive);
+        try {
+            verifyArchive(archive);
+        } catch (IOException error) {
+            if ("ubuntu_archive_size_mismatch".equals(error.getMessage()) || "ubuntu_archive_digest_mismatch".equals(error.getMessage())) {
+                // An explicit retry must download fresh bytes after a corrupted cache file.
+                GenericDownloadCoordinator.discard(context, distribution.downloadId());
+            }
+            throw error;
+        }
         if (!distributionDirectory.isDirectory() && !distributionDirectory.mkdirs()) {
             throw new IOException("ubuntu_storage_unavailable");
         }
@@ -135,13 +148,15 @@ final class UbuntuDistributionInstaller {
 
     private void configureRootfs(File rootfs) throws Exception {
         GuestDns.sync(context, rootfs);
-        boolean mirror = YachiyoDownloadSettingsPlugin.linuxMirror(context);
-        String origin = distribution.dpkgArch().equals("arm64")
-            ? (mirror ? "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports" : "http://ports.ubuntu.com/ubuntu-ports")
-            : (mirror ? "https://mirrors.tuna.tsinghua.edu.cn/ubuntu" : "http://archive.ubuntu.com/ubuntu");
-        String sources = "Types: deb\nURIs: " + origin + "\nSuites: noble noble-updates noble-security\n" +
-            "Components: main universe multiverse restricted\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
-        write(rootfs, "etc/apt/sources.list.d/ubuntu.sources", sources);
+        write(rootfs, "etc/apt/sources.list.d/ubuntu.sources",
+            UbuntuAptBootstrap.sources(distribution.dpkgArch(), YachiyoDownloadSettingsPlugin.linuxMirror(context)));
+        write(rootfs, "etc/apt/yachiyo-bootstrap-ca.pem", UbuntuAptBootstrap.androidSystemRoots());
+        write(rootfs, "etc/apt/yachiyo-bootstrap.conf", UbuntuAptBootstrap.aptConfig(YachiyoDownloadSettingsPlugin.proxy(context)));
+    }
+
+    void prepareToolchainConfiguration() throws Exception {
+        // Older APKs and interrupted installs may already have a verified base but lack bootstrap trust/proxy settings.
+        if (!isReady()) configureRootfs(rootfsDirectory);
     }
 
     private static void write(File rootfs, String path, String content) throws Exception {

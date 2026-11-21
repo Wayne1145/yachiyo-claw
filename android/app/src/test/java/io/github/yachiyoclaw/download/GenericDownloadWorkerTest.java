@@ -2,10 +2,20 @@ package io.github.yachiyoclaw.download;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 public final class GenericDownloadWorkerTest {
+    @Test public void nativeRetryIsTiedToCanonicalOriginAndPinnedPayload() {
+        String canonical = "https://cdimage.ubuntu.com/test.tgz";
+        assertTrue(GenericDownloadCoordinator.sameArtifact(canonical, canonical, 1000, 1000, "abc", "abc"));
+        assertFalse(GenericDownloadCoordinator.sameArtifact(canonical, "https://different.example/test.tgz", 1000, 1000, "abc", "abc"));
+        assertFalse(GenericDownloadCoordinator.sameArtifact(canonical, canonical, 1000, 2000, "abc", "abc"));
+        assertFalse(GenericDownloadCoordinator.sameArtifact(canonical, canonical, 1000, 1000, "abc", "def"));
+    }
+
     @Test public void rejectsCleartextAndPrivateDestinations() {
         assertThrows(IllegalArgumentException.class, () -> GenericDownloadWorker.requirePublicHttps("http://example.com/file"));
         assertThrows(IllegalArgumentException.class, () -> GenericDownloadWorker.requirePublicHttps("https://127.0.0.1/file"));

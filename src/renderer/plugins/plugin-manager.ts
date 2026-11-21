@@ -12,7 +12,7 @@ import {
   reenablePlugin,
 } from '@shared/plugins/lifecycle'
 import type { PluginManifest } from '@shared/plugins/manifest'
-import { isPluginCapabilityImplemented } from '@shared/plugins/device-policy'
+import { isPluginCapabilityImplemented, isTrustedUbuntuPlugin } from '@shared/plugins/device-policy'
 import { parsePluginView, type PluginView } from '@shared/plugins/view-schema'
 import { checkWriteWithinQuota, isValidStorageKey, pluginStorageKey, utf8ByteLength } from '@shared/plugins/storage'
 import type { PluginSource, VerifiedPluginPackage } from '@shared/plugins/verify'
@@ -42,6 +42,7 @@ import {
 } from './installer'
 import { PluginNetworkQuota, pluginFetch } from './network-proxy'
 import type { PluginHostCallContext, PluginInvocationContext, PluginRuntime } from './plugin-runtime'
+import { isPluginUserDenial } from './plugin-consent-errors'
 import { PLUGIN_RPC_PROTOCOL_VERSION } from './rpc-protocol'
 import { initPluginToolset } from './plugin-toolset'
 import { settingsStore } from '@/stores/settingsStore'
@@ -344,6 +345,7 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
         // Device control always requires a second explicit action after installation.
         const canGrant =
           capability.name !== 'device' &&
+          (capability.name !== 'linux-runtime' || isTrustedUbuntuPlugin(record)) &&
           isPluginCapabilityImplemented(capability.name) &&
           grantedCapabilities.includes(capability.name)
         const grant: PluginGrant = {
@@ -420,6 +422,7 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
     const record = await localforagePluginRegistry.get(pluginId)
     if (!record) return
     await localforagePluginRegistry.put({ ...record, enabled })
+    if (enabled) await reenableDisabledPlugin(pluginId)
     disposePluginRuntime(pluginId)
     appendPluginAudit({
       at: Date.now(),
@@ -503,7 +506,7 @@ async function evaluateHostCallAuthorization(
     }
   }
   if (capability === 'linux-runtime') {
-    if (record.manifest.id !== 'ubuntu-runtime' || !record.deviceGrantAllowed) {
+    if (!isTrustedUbuntuPlugin(record)) {
       return { allowed: false, reason: 'linux_runtime_requires_official_signature' }
     }
   }
@@ -603,6 +606,10 @@ function boundedHostText(value: string, maxBytes = 256 * 1024): string {
   return `${new TextDecoder().decode(bytes.slice(0, maxBytes))}\n[output truncated]`
 }
 
+function requestPluginAuthorization(context: PluginHostCallContext, input: Parameters<typeof requestAgentAuthorization>[0]) {
+  return context.waitForApproval(() => requestAgentAuthorization(input))
+}
+
 async function executePluginSandboxHostCall(
   record: InstalledPluginRecord,
   method: string,
@@ -636,7 +643,7 @@ async function executePluginSandboxHostCall(
   const approvalTitle = `插件 ${record.manifest.displayName} 请求使用 Linux 开发环境`
   if (method === 'sandbox.writeFile') {
     const args = sandboxWriteSchema.parse(rawArgs)
-    const authorization = await requestAgentAuthorization({
+    const authorization = await requestPluginAuthorization(context, {
       principal,
       sessionId: context.sessionId,
       runId: context.runId,
@@ -676,7 +683,7 @@ async function executePluginSandboxHostCall(
   if (method !== 'sandbox.exec') throw new Error('method_not_found')
   const args = sandboxExecSchema.parse(rawArgs)
   consumeSandboxQuota(record.manifest.id)
-  const authorization = await requestAgentAuthorization({
+  const authorization = await requestPluginAuthorization(context, {
     principal,
     sessionId: context.sessionId,
     runId: context.runId,
@@ -733,7 +740,7 @@ async function executePluginLinuxHostCall(
   context: PluginHostCallContext,
 ): Promise<JsonValue> {
   const principal = requirePluginPrincipal(record, context)
-  if (record.manifest.id !== 'ubuntu-runtime' || !record.deviceGrantAllowed) {
+  if (!isTrustedUbuntuPlugin(record)) {
     throw new Error('linux_runtime_requires_official_signature')
   }
   const sessionId = context.sessionId || `plugin-ui:${record.manifest.id}`
@@ -751,7 +758,7 @@ async function executePluginLinuxHostCall(
   }
   if (method === 'linux.stopJob') {
     const args = linuxJobSchema.parse(rawArgs)
-    const authorization = await requestAgentAuthorization({
+    const authorization = await requestPluginAuthorization(context, {
       principal,
       sessionId,
       runId: context.runId,
@@ -784,7 +791,7 @@ async function executePluginLinuxHostCall(
 
   const approvalTitle = `Ubuntu 24.04 · ${record.manifest.displayName}`
   if (method === 'linux.install' || method === 'linux.remove') {
-    const authorization = await requestAgentAuthorization({
+    const authorization = await requestPluginAuthorization(context, {
       principal,
       sessionId,
       runId: context.runId,
@@ -827,7 +834,7 @@ async function executePluginLinuxHostCall(
 
   if (method === 'linux.writeFile') {
     const args = sandboxWriteSchema.parse(rawArgs)
-    const authorization = await requestAgentAuthorization({
+    const authorization = await requestPluginAuthorization(context, {
       principal,
       sessionId,
       runId: context.runId,
@@ -856,7 +863,7 @@ async function executePluginLinuxHostCall(
   if (method === 'linux.exec' || method === 'linux.startJob') {
     const args = sandboxExecSchema.parse(rawArgs)
     consumeSandboxQuota(record.manifest.id)
-    const authorization = await requestAgentAuthorization({
+    const authorization = await requestPluginAuthorization(context, {
       principal,
       sessionId,
       runId: context.runId,
@@ -947,7 +954,7 @@ async function executePluginDeviceHostCall(
   let approvalDigest = ''
   if (!readOnly) {
     approvalDigest = await digestAgentJson({ principal, method, arguments: parsed } as JsonValue)
-    const authorization = await requestAgentAuthorization({
+    const authorization = await requestPluginAuthorization(context, {
       principal,
       sessionId: context.sessionId,
       runId: context.runId,
@@ -1090,7 +1097,7 @@ function buildHostApi(record: InstalledPluginRecord) {
       let approvalDecision: 'once' | 'conversation' | 'not-required' = 'not-required'
       if (mutating) {
         const bindingDigest = await digestAgentJson(parameters)
-        const authorization = await requestAgentAuthorization({
+        const authorization = await requestPluginAuthorization(context, {
           principal,
           sessionId: context.sessionId,
           runId: context.runId,
@@ -1212,6 +1219,7 @@ export interface LoadedPlugin {
   runtime: PluginRuntime | null
   tools: { name: string }[]
   uiGranted: boolean
+  missingUiCapability?: 'linux-runtime'
   view: PluginView | null
 }
 
@@ -1252,6 +1260,12 @@ export async function loadPluginForPage(
     now: Date.now(),
   }).allowed
 
+  if (uiGranted && isTrustedUbuntuPlugin(record)) {
+    const linuxGrant = await pluginGrantStore.get(pluginId, 'linux-runtime')
+    if (!evaluatePluginGrant(linuxGrant, { pluginId, capability: 'linux-runtime', currentEntrySha256: boundSha, now: Date.now() }).allowed) {
+      return { record, runtime: null, tools: [], uiGranted, missingUiCapability: 'linux-runtime', view: null }
+    }
+  }
   const view = uiGranted ? await loadBundledPluginView(record) : null
   if (!record.manifest.entry || options.startRuntime === false) {
     return { record, runtime: null, tools: [], uiGranted, view }
@@ -1459,12 +1473,13 @@ export async function invokeLoadedPluginTool(
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : 'plugin_invocation_failed'
-    if (message === 'cancelled' || message === 'disposed') {
+    if (message === 'cancelled' || message === 'disposed' || message === 'plugin_approval_expired' || isPluginUserDenial(message)) {
       appendPluginAudit({
         at: Date.now(),
         principal: { kind: 'plugin', pluginId },
         event: 'invocation_cancelled',
         status: 'cancelled',
+        reason: message,
         toolName: name.slice(0, 160),
       })
       if (runtime.isDisposed() && runtimes.get(pluginId) === runtime) runtimes.delete(pluginId)
@@ -1535,6 +1550,7 @@ export async function setPluginGrant(
   if (granted && !isPluginCapabilityImplemented(capability)) return
   // Device is additionally signature-gated when the principal/Broker bridge becomes available.
   if (capability === 'device' && granted && !record.deviceGrantAllowed) return
+  if (capability === 'linux-runtime' && granted && !isTrustedUbuntuPlugin(record)) return
   const grant: PluginGrant = {
     schemaVersion: 1,
     pluginId: record.manifest.id,

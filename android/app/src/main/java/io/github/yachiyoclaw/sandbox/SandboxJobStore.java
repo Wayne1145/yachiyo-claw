@@ -3,10 +3,15 @@ package io.github.yachiyoclaw.sandbox;
 import android.content.Context;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -25,6 +30,8 @@ final class SandboxJobStore {
     static final String STATE_CANCELLED = "cancelled";
     static final String STATE_INTERRUPTED = "interrupted";
 
+    // A JVM cannot take overlapping FileLocks, including from different store instances.
+    private static final Object PROCESS_LOCK = new Object();
     private final File directory;
     private final File registry;
     private final File lockFile;
@@ -83,6 +90,7 @@ final class SandboxJobStore {
             for (String id : selected) {
                 Files.deleteIfExists(stdout(id).toPath());
                 Files.deleteIfExists(stderr(id).toPath());
+                Files.deleteIfExists(ownerFile(id).toPath());
             }
             return null;
         });
@@ -95,6 +103,7 @@ final class SandboxJobStore {
             for (int index = 0; index < jobs.size(); index++) {
                 Job current = jobs.get(index);
                 if (!current.id.equals(id)) continue;
+                if (!canUpdate(current.state)) return current;
                 updated = new Job(current.id, current.commandCiphertext, current.workspace, current.timeoutMs, state, current.createdAt, now, pid, exitCode, current.runtimeId);
                 jobs.set(index, updated);
                 break;
@@ -112,8 +121,9 @@ final class SandboxJobStore {
             for (int index = 0; index < jobs.size(); index++) {
                 Job job = jobs.get(index);
                 if (!STATE_RUNNING.equals(job.state)) continue;
-                boolean alive = job.pid > 0 && new File("/proc/" + job.pid).isDirectory();
-                if (!shouldInterrupt(job, now, alive)) continue;
+                Owner owner = JobLease.owner(ownerFile(job.id));
+                boolean legacyChildAlive = owner == Owner.LEGACY && job.pid > 0 && new File("/proc/" + job.pid).isDirectory();
+                if (!shouldInterrupt(job, now, owner, legacyChildAlive)) continue;
                 jobs.set(index, new Job(job.id, job.commandCiphertext, job.workspace, job.timeoutMs, STATE_INTERRUPTED, job.createdAt, now, job.pid, null, job.runtimeId));
                 changed = true;
             }
@@ -122,11 +132,73 @@ final class SandboxJobStore {
         });
     }
 
-    static boolean shouldInterrupt(Job job, long now, boolean processAlive) {
+    static boolean canUpdate(String currentState) {
+        return STATE_QUEUED.equals(currentState) || STATE_RUNNING.equals(currentState);
+    }
+
+    static boolean shouldInterrupt(Job job, long now, Owner owner, boolean legacyChildAlive) {
         if (!STATE_RUNNING.equals(job.state)) return false;
+        if (owner == Owner.ACTIVE) return false;
+        if (owner == Owner.ABANDONED) return true;
+        // Older APKs did not leave an owner lease. Keep their existing crash recovery policy.
         long startedAt = Math.max(job.createdAt, job.updatedAt);
         long elapsed = Math.max(0L, now - startedAt);
-        return !processAlive || elapsed >= job.timeoutMs;
+        return !legacyChildAlive || elapsed >= job.timeoutMs;
+    }
+
+    enum Owner { LEGACY, ACTIVE, ABANDONED }
+
+    private File ownerFile(String id) { return new File(directory, id + ".owner"); }
+    JobLease tryOwn(String id) throws IOException { return JobLease.acquire(ownerFile(id)); }
+
+    /** The OS releases the job's exclusive lock if its monitoring service process dies. */
+    static final class JobLease implements AutoCloseable {
+        private static final Set<File> LOCAL_OWNERS = new HashSet<>();
+        private final File file;
+        private final FileChannel channel;
+        private final FileLock lock;
+
+        private JobLease(File file, FileChannel channel, FileLock lock) {
+            this.file = file;
+            this.channel = channel;
+            this.lock = lock;
+        }
+
+        static synchronized JobLease acquire(File file) throws IOException {
+            if (LOCAL_OWNERS.contains(file)) return null;
+            FileChannel channel = FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            boolean claimed = false;
+            try {
+                FileLock lock = channel.tryLock();
+                if (lock == null) return null;
+                LOCAL_OWNERS.add(file);
+                claimed = true;
+                return new JobLease(file, channel, lock);
+            } finally {
+                if (!claimed) channel.close();
+            }
+        }
+
+        static synchronized Owner owner(File file) throws IOException {
+            // Closing another descriptor for this inode can release POSIX locks held by this JVM.
+            if (LOCAL_OWNERS.contains(file)) return Owner.ACTIVE;
+            try (FileChannel channel = FileChannel.open(file.toPath(), StandardOpenOption.WRITE);
+                 FileLock probe = channel.tryLock()) {
+                return probe == null ? Owner.ACTIVE : Owner.ABANDONED;
+            } catch (NoSuchFileException missing) {
+                return Owner.LEGACY;
+            }
+        }
+
+        @Override public void close() throws IOException {
+            synchronized (JobLease.class) {
+                try { lock.release(); }
+                finally {
+                    try { channel.close(); }
+                    finally { LOCAL_OWNERS.remove(file); }
+                }
+            }
+        }
     }
 
     File stdout(String id) { return new File(directory, id + ".stdout"); }
@@ -135,9 +207,11 @@ final class SandboxJobStore {
     String decryptCommand(Job job) throws Exception { return cipher.decrypt(job.commandCiphertext); }
 
     private <T> T locked(JobStoreAction<T> action) throws Exception {
-        if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("sandbox_job_store_unavailable");
-        try (RandomAccessFile file = new RandomAccessFile(lockFile, "rw"); java.nio.channels.FileLock ignored = file.getChannel().lock()) {
-            return action.run();
+        synchronized (PROCESS_LOCK) {
+            if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("sandbox_job_store_unavailable");
+            try (RandomAccessFile file = new RandomAccessFile(lockFile, "rw"); java.nio.channels.FileLock ignored = file.getChannel().lock()) {
+                return action.run();
+            }
         }
     }
 

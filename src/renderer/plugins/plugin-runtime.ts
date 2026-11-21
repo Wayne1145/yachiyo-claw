@@ -30,6 +30,8 @@ export interface PluginHostCallContext extends Omit<PluginInvocationContext, 'ab
   /** 在单次插件调用内稳定，并参与 Broker 检查点派生。 */
   hostCallId: string
   signal: AbortSignal
+  /** Only the trusted host can pause the execution clock while asking the user. */
+  waitForApproval<T>(request: () => Promise<T>): Promise<T>
 }
 
 /** Explicit, named host method whitelist. Values receive/return pure data only. */
@@ -61,6 +63,37 @@ export interface PluginRuntimeOptions {
   onLog?: (entry: { level: 'log' | 'warn' | 'error'; message: string }) => void
 }
 
+function invocationClock(executionMs: number, expire: (reason: string) => void) {
+  let scriptRemaining = executionMs
+  let approvalRemaining = 5 * 60_000
+  let started = performance.now()
+  let stopped = false
+  let timer = setTimeout(() => expire('timeout'), scriptRemaining)
+  return {
+    stop() {
+      stopped = true
+      clearTimeout(timer)
+    },
+    async waitForApproval<T>(request: () => Promise<T>): Promise<T> {
+      if (stopped) throw new Error('cancelled')
+      clearTimeout(timer)
+      scriptRemaining = Math.max(0, scriptRemaining - (performance.now() - started))
+      const approvalStarted = performance.now()
+      timer = setTimeout(() => expire('plugin_approval_expired'), approvalRemaining)
+      try {
+        return await request()
+      } finally {
+        clearTimeout(timer)
+        if (!stopped) {
+          started = performance.now()
+          approvalRemaining = Math.max(0, approvalRemaining - (started - approvalStarted))
+          timer = setTimeout(() => expire('timeout'), scriptRemaining)
+        }
+      }
+    },
+  }
+}
+
 export class PluginRuntime {
   private unsubscribe: () => void = () => {}
   private readonly invocations = new Map<
@@ -68,7 +101,7 @@ export class PluginRuntime {
     {
       resolve: (value: JsonValue) => void
       reject: (error: Error) => void
-      timer: ReturnType<typeof setTimeout>
+      clock: ReturnType<typeof invocationClock>
       controller: AbortController
       context: PluginInvocationContext
       detachAbort: () => void
@@ -156,7 +189,7 @@ export class PluginRuntime {
       const abort = () => {
         const pending = this.invocations.get(callId)
         if (!pending) return
-        clearTimeout(pending.timer)
+        pending.clock.stop()
         pending.detachAbort()
         pending.controller.abort()
         this.invocations.delete(callId)
@@ -165,22 +198,23 @@ export class PluginRuntime {
       }
       context.abortSignal?.addEventListener('abort', abort, { once: true })
       const detachAbort = () => context.abortSignal?.removeEventListener('abort', abort)
-      const timer = setTimeout(() => {
+      const clock = invocationClock(timeoutMs, (reason) => {
         const pending = this.invocations.get(callId)
         if (!pending) return
         this.invocations.delete(callId)
+        pending.clock.stop()
         pending.detachAbort()
         pending.controller.abort()
-        reject(new Error('timeout'))
+        reject(new Error(reason))
         // Do not let a timed-out handler keep consuming CPU or issuing host calls.
         // 不允许超时处理器继续占用 CPU 或发起宿主调用。
         this.dispose()
-      }, timeoutMs)
-      this.invocations.set(callId, { resolve, reject, timer, controller, context, detachAbort })
+      })
+      this.invocations.set(callId, { resolve, reject, clock, controller, context, detachAbort })
       try {
         this.transport.post({ type: 'invoke', callId, name, args })
       } catch (error) {
-        clearTimeout(timer)
+        clock.stop()
         detachAbort()
         this.invocations.delete(callId)
         reject(error instanceof Error ? error : new Error('invoke_transport_failed'))
@@ -208,7 +242,7 @@ export class PluginRuntime {
       this.loadWaiter = null
     }
     for (const pending of this.invocations.values()) {
-      clearTimeout(pending.timer)
+      pending.clock.stop()
       pending.detachAbort()
       pending.controller.abort()
       pending.reject(new Error('disposed'))
@@ -251,7 +285,7 @@ export class PluginRuntime {
       case 'result': {
         const pending = this.invocations.get(message.callId)
         if (!pending) break
-        clearTimeout(pending.timer)
+        pending.clock.stop()
         pending.detachAbort()
         this.invocations.delete(message.callId)
         try {
@@ -265,7 +299,7 @@ export class PluginRuntime {
       case 'error': {
         const pending = this.invocations.get(message.callId)
         if (!pending) break
-        clearTimeout(pending.timer)
+        pending.clock.stop()
         pending.detachAbort()
         this.invocations.delete(message.callId)
         pending.reject(new Error(message.error))
@@ -315,6 +349,7 @@ export class PluginRuntime {
       toolCallId: invocation.context.toolCallId,
       hostCallId: callId,
       signal: invocation.controller.signal,
+      waitForApproval: invocation.clock.waitForApproval,
     }
     let validatedArgs: JsonValue
     try {

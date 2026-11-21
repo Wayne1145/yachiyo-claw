@@ -9,6 +9,7 @@ import {
   type NativeDownloadTask,
 } from '@/platform/native/yachiyo_downloads'
 import { markPendingPluginInstallEnqueued } from './pending-install'
+import { isNewerPluginVersion } from './plugin-updates'
 import bundledOfficialMarketplace from '../../../plugin-marketplace/index.json'
 
 export const DEFAULT_PLUGIN_MARKETPLACE_URL =
@@ -17,11 +18,19 @@ const MAX_PACKAGE_BYTES = PLUGIN_PACKAGE_LIMITS.maxArchiveBytes
 const MAX_CATALOG_BYTES = 512 * 1024
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 const MAX_REDIRECTS = 5
+const bundledOfficialEntries = parsePluginMarketplaceCatalog(bundledOfficialMarketplace).plugins
+const bundledUbuntuAssets = import.meta.glob<string>('../../../plugin-marketplace/packages/ubuntu-runtime-*.zip', {
+  eager: true,
+  query: '?url&no-inline',
+  import: 'default',
+})
 
 export interface ResolvedPluginPackage {
   url: string
   size: number
   sha256?: string
+  /** Asset embedded in this build and selected using its pinned official catalog entry. */
+  bundledAssetUrl?: string
 }
 
 export interface PluginPackageDownloadRequest {
@@ -124,7 +133,6 @@ export async function resolvePluginPackageSource(
 
 async function readResponseBounded(response: Response): Promise<Uint8Array> {
   if (!response.ok) throw new Error(`plugin_download_http_${response.status}`)
-  if (response.url) requirePublicHttps(response.url)
   const declared = response.headers.get('content-length')
   if (declared) boundedSize(declared)
   const reader = response.body?.getReader()
@@ -177,6 +185,12 @@ export async function downloadPluginPackage(
 ): Promise<{ bytes: Uint8Array; downloadId?: string; cleanup: () => Promise<void> }> {
   requirePublicHttps(source.url)
   const size = boundedSize(source.size)
+  if (source.bundledAssetUrl) {
+    const bytes = await readResponseBounded(await fetchImpl(source.bundledAssetUrl, { mode: 'same-origin', redirect: 'error' }))
+    if (bytes.byteLength !== size) throw new Error('plugin_package_size_mismatch')
+    if (!source.sha256 || (await sha256Hex(bytes)) !== source.sha256.toLowerCase()) throw new Error('plugin_package_digest_mismatch')
+    return { bytes, cleanup: async () => {} }
+  }
   if (Capacitor.isNativePlatform()) {
     const request = await pluginPackageDownloadRequest(source, title)
     await yachiyoDownloadsNative.enqueue(request)
@@ -226,19 +240,35 @@ export async function loadPluginMarketplace(
       if (contentLength > MAX_CATALOG_BYTES) throw new Error('plugin_marketplace_too_large')
       const text = await response.text()
       if (new TextEncoder().encode(text).byteLength > MAX_CATALOG_BYTES) throw new Error('plugin_marketplace_too_large')
-      return parsePluginMarketplaceCatalog(JSON.parse(text)).plugins
+      const remote = parsePluginMarketplaceCatalog(JSON.parse(text)).plugins
+      if (target !== DEFAULT_PLUGIN_MARKETPLACE_URL) return remote
+      const entries = new Map(remote.map((entry) => [entry.id, entry]))
+      // GitHub and regional mirrors may still serve an index older than this installed APK.
+      for (const pinned of bundledOfficialEntries) {
+        const candidate = entries.get(pinned.id)
+        if (!candidate || !isNewerPluginVersion(pinned.version, candidate.version)) entries.set(pinned.id, pinned)
+      }
+      return [...entries.values()]
     } catch (error) {
       lastError = error
     }
   }
   if (target === DEFAULT_PLUGIN_MARKETPLACE_URL) {
-    return parsePluginMarketplaceCatalog(bundledOfficialMarketplace).plugins
+    return [...bundledOfficialEntries]
   }
   throw lastError instanceof Error ? lastError : new Error('plugin_marketplace_unavailable')
 }
 
-export function marketplacePackage(entry: PluginMarketplaceEntry): ResolvedPluginPackage {
-  return { url: entry.packageUrl, size: entry.packageSize, sha256: entry.sha256 }
+export function marketplacePackage(entry: PluginMarketplaceEntry, catalogUrl: string): ResolvedPluginPackage {
+  const source = { url: entry.packageUrl, size: entry.packageSize, sha256: entry.sha256 }
+  if (catalogUrl.trim() !== DEFAULT_PLUGIN_MARKETPLACE_URL) return source
+  const pinned = bundledOfficialEntries.find((item) => item.id === entry.id && item.version === entry.version &&
+    item.sha256 === entry.sha256 && item.packageSize === entry.packageSize && item.packageUrl === entry.packageUrl &&
+    item.signature.keyId === entry.signature.keyId && item.signature.publicKey === entry.signature.publicKey &&
+    item.signature.algorithm === entry.signature.algorithm && item.signature.value === entry.signature.value)
+  if (!pinned) return source
+  const bundledAssetUrl = bundledUbuntuAssets[`../../../plugin-marketplace/packages/${pinned.id}-${pinned.version}.zip`]
+  return bundledAssetUrl ? { ...source, bundledAssetUrl } : source
 }
 
 /** Stable request identity lets a killed WebView re-enqueue the same native transfer safely. */

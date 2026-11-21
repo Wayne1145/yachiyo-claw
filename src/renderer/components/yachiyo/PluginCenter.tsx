@@ -32,7 +32,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isPluginCompatible, type PluginHealth } from '@shared/plugins/lifecycle'
 import type { PluginMarketplaceEntry } from '@shared/plugins/marketplace'
-import { isPluginCapabilityImplemented } from '@shared/plugins/device-policy'
+import { isPluginCapabilityImplemented, isTrustedUbuntuPlugin } from '@shared/plugins/device-policy'
 import { PLUGIN_PACKAGE_LIMITS } from '@shared/plugins/package'
 import { readAgentAudit } from '@/mobile/agent-broker'
 import platform from '@/platform'
@@ -250,7 +250,7 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
               {health.disabledReason}
               {health.lastError ? t(' · 最近错误: {{error}}', { error: health.lastError }) : ''}
             </Text>
-            <Button size="compact-sm" onClick={() => void reenableDisabledPlugin(record.manifest.id).then(reload)}>
+            <Button size="compact-sm" onClick={() => void reenableDisabledPlugin(record.manifest.id).then(onChanged).then(reload)}>
               {t('重新启用')}
             </Button>
           </Group>
@@ -266,7 +266,8 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
         const declared = record.manifest.capabilities.find((c) => c.name === grant.capability)
         const isDevice = grant.capability === 'device'
         const unavailable = !isPluginCapabilityImplemented(grant.capability)
-        const requiresTrustedSignature = isDevice && !record.deviceGrantAllowed
+        const requiresTrustedSignature = (isDevice && !record.deviceGrantAllowed) ||
+          (grant.capability === 'linux-runtime' && !isTrustedUbuntuPlugin(record))
         return (
           <div
             key={grant.capability}
@@ -295,7 +296,9 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
                 {(unavailable || requiresTrustedSignature) && (
                   <Text size="xs" c="red">
                     {requiresTrustedSignature
-                      ? t('设备控制只对市场验签通过的插件开放；本地侧载和未签名插件不能获得此能力。')
+                      ? grant.capability === 'linux-runtime'
+                        ? t('请从官方插件市场安装 Ubuntu 运行环境后再授权。')
+                        : t('设备控制只对市场验签通过的插件开放；本地侧载和未签名插件不能获得此能力。')
                       : t('当前版本尚未开放此能力。')}
                   </Text>
                 )}
@@ -310,7 +313,7 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
                     setDeviceWarningOpen(true)
                     return
                   }
-                  void setPluginGrant(record, grant.capability, checked).then(reload)
+                  void setPluginGrant(record, grant.capability, checked).then(onChanged).then(reload)
                 }}
               />
             </Group>
@@ -426,7 +429,7 @@ function PluginDetail({ record, onChanged }: { record: InstalledPluginRecord; on
   )
 }
 
-export function PluginCenter() {
+export function PluginCenter({ focusPluginId }: { focusPluginId?: string } = {}) {
   const { t: i18nT } = useTranslation()
   const t = i18nT as Translate
   const inAndroidAppShell = useInAndroidAppShell()
@@ -442,7 +445,13 @@ export function PluginCenter() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [granted, setGranted] = useState<string[]>([])
-  const [detailId, setDetailId] = useState<string | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(focusPluginId ?? null)
+  const focusInstalled = !!focusPluginId && installed.some((record) => record.manifest.id === focusPluginId)
+  useEffect(() => {
+    if (!focusPluginId || !focusInstalled) return
+    setDetailId(focusPluginId)
+    document.getElementById(`plugin-permissions-${focusPluginId}`)?.scrollIntoView?.({ block: 'start' })
+  }, [focusPluginId, focusInstalled])
   const [sourceUrl, setSourceUrl] = useState('')
   const [marketplaceUrl, setMarketplaceUrl] = useState(readPluginMarketplaceUrl)
   const [marketplace, setMarketplace] = useState<PluginMarketplaceEntry[] | null>(null)
@@ -572,19 +581,21 @@ export function PluginCenter() {
     setNotice(null)
     setBusy(true)
     try {
-      const source = marketplacePackage(entry)
-      const request = await pluginPackageDownloadRequest(source, entry.name)
-      savePendingPluginInstall({
-        schemaVersion: 1,
-        state: 'prepared',
-        request,
-        source: 'marketplace',
-        expectedSha256: entry.sha256,
-        signature: entry.signature,
-        updateSource: { kind: 'marketplace', url: marketplaceUrl },
-        expectedPlugin: { id: entry.id, version: entry.version },
-        createdAt: Date.now(),
-      })
+      const source = marketplacePackage(entry, marketplaceUrl)
+      if (!source.bundledAssetUrl) {
+        const request = await pluginPackageDownloadRequest(source, entry.name)
+        savePendingPluginInstall({
+          schemaVersion: 1,
+          state: 'prepared',
+          request,
+          source: 'marketplace',
+          expectedSha256: entry.sha256,
+          signature: entry.signature,
+          updateSource: { kind: 'marketplace', url: marketplaceUrl },
+          expectedPlugin: { id: entry.id, version: entry.version },
+          createdAt: Date.now(),
+        })
+      }
       const downloaded = await downloadPluginPackage(source, entry.name)
       try {
         await requestInstall(downloaded.bytes, 'marketplace', {
@@ -915,6 +926,7 @@ export function PluginCenter() {
       {installed.map((record) => {
         const stats = pluginStats[record.manifest.id]
         const compatible = appVersion ? isPluginCompatible(record.manifest, appVersion) : true
+        const enabled = record.enabled !== false && !stats?.health?.disabledReason
         const status = !compatible
           ? { label: t('不兼容'), color: 'red' }
           : stats?.health?.disabledReason
@@ -928,14 +940,14 @@ export function PluginCenter() {
         const pluginActions: AdaptiveActionDescriptor[] = [
           {
             id: 'enabled',
-            label: String(record.enabled === false ? t('启用插件') : t('停用插件')),
+            label: String(enabled ? t('停用插件') : t('启用插件')),
             priority: 95,
             collapseStrategy: 'keep',
             renderControl: () => (
               <Switch
                 size="sm"
-                label={record.enabled === false ? t('已停用') : t('已启用')}
-                checked={record.enabled !== false}
+                label={enabled ? t('已启用') : t('已停用')}
+                checked={enabled}
                 onChange={(event) => void setEnabled(record.manifest.id, event.currentTarget.checked)}
               />
             ),
@@ -1041,10 +1053,10 @@ export function PluginCenter() {
             icon: IconExternalLink,
             priority: 100,
             collapseStrategy: 'keep',
-            disabled: record.enabled === false || !compatible,
+            disabled: !enabled || !compatible,
             renderControl: () => (
               <Button
-                disabled={record.enabled === false || !compatible}
+                disabled={!enabled || !compatible}
                 leftSection={<IconExternalLink size={16} />}
                 onClick={() =>
                   void router.navigate({ to: '/plugin/$pluginId', params: { pluginId: record.manifest.id } })
@@ -1077,7 +1089,7 @@ export function PluginCenter() {
           },
         ]
         return (
-          <section key={record.manifest.id} className="local-model-queue-row">
+          <section id={`plugin-permissions-${record.manifest.id}`} key={record.manifest.id} className="local-model-queue-row">
             <Stack gap="sm">
               <Group justify="space-between" align="flex-start" wrap="wrap">
                 <div style={{ flex: '1 1 190px', minWidth: 0 }}>
@@ -1124,8 +1136,8 @@ export function PluginCenter() {
                 <Group gap="xs" justify="flex-end" wrap="wrap">
                   <Switch
                     size="sm"
-                    label={record.enabled === false ? t('已停用') : t('已启用')}
-                    checked={record.enabled !== false}
+                    label={enabled ? t('已启用') : t('已停用')}
+                    checked={enabled}
                     onChange={(event) => void setEnabled(record.manifest.id, event.currentTarget.checked)}
                   />
                   {(record.updateSource || record.source === 'marketplace') && (
@@ -1160,7 +1172,7 @@ export function PluginCenter() {
                     {detailLabel}
                   </Button>
                   <Button
-                    disabled={record.enabled === false || !compatible}
+                    disabled={!enabled || !compatible}
                     size="compact-sm"
                     variant="default"
                     onClick={() =>
@@ -1296,7 +1308,8 @@ export function PluginCenter() {
                 </Text>
                 {manifest.capabilities.map((capability) => {
                   const capabilityBlocked =
-                    !isPluginCapabilityImplemented(capability.name) || capability.name === 'device'
+                    !isPluginCapabilityImplemented(capability.name) || capability.name === 'device' ||
+                    (capability.name === 'linux-runtime' && (!pendingConsent || !isTrustedUbuntuPlugin(pendingConsent.verified)))
                   return (
                     <div key={capability.name}>
                       <Checkbox

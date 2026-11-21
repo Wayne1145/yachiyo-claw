@@ -61,6 +61,58 @@ describe('PluginPageHost actions', () => {
     mocks.recordUiFailure.mockReset()
   })
 
+  it('shows a direct permission entry when Ubuntu was installed without its runtime grant', async () => {
+    mocks.load.mockResolvedValue({ uiGranted: true, missingUiCapability: 'linux-runtime', runtime: null })
+    const { unmount } = render(<MantineProvider><PluginPageHost pluginId="missing-ubuntu-grant" /></MantineProvider>)
+    expect(await screen.findByText(String(i18n.t('Ubuntu 运行环境未授权')))).toBeTruthy()
+    expect(screen.getByRole('button', { name: String(i18n.t('权限与活动')) })).toBeTruthy()
+    expect(mocks.invoke).not.toHaveBeenCalled()
+    unmount()
+  })
+
+  it('keeps the installation page available after denial and coalesces install taps during approval', async () => {
+    mocks.load.mockResolvedValue({
+      uiGranted: true, runtime: {}, tools: [], record: { manifest: { id: 'ubuntu-runtime' }, packageSha256: 'a'.repeat(64) },
+      view: { schemaVersion: 1, children: [{ type: 'button', key: 'install', label: '安装 Ubuntu', action: { type: 'invoke', handler: 'install' } }] },
+    })
+    let decline!: (error: Error) => void
+    mocks.invoke.mockImplementationOnce(() => new Promise((_resolve, reject) => { decline = reject }))
+      .mockResolvedValueOnce({ schemaVersion: 1, children: [{ type: 'text', key: 'ok', content: 'queued' }] })
+    const { unmount } = render(<MantineProvider><PluginPageHost pluginId="ubuntu-runtime" /></MantineProvider>)
+    const install = await screen.findByRole('button', { name: '安装 Ubuntu' })
+    fireEvent.click(install)
+    fireEvent.click(install)
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1))
+    await act(async () => { decline(new Error('ubuntu_user_denied')) })
+    expect(await screen.findByText(String(i18n.t('已取消本次操作。')))).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '安装 Ubuntu' }))
+    expect(await screen.findByText('queued')).toBeTruthy()
+    expect(mocks.invoke).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
+  it('updates an installed 1.0.0 page automatically through stale download history and install completion', async () => {
+    mocks.load.mockResolvedValue({
+      uiGranted: true, runtime: {}, tools: [{ name: 'render' }], view: null,
+      record: { manifest: { id: 'ubuntu-runtime', version: '1.0.0' }, signatureVerified: true, deviceGrantAllowed: true, packageSha256: 'a'.repeat(64) },
+    })
+    const idle = { state: 'not_downloaded', installed: false, download: { bytesTotal: 100, bytesDownloaded: 100, retainedPayload: false } }
+    let status = idle as Record<string, unknown>
+    mocks.invoke.mockImplementation(async (_id, _runtime, name) => name === 'ubuntu-runtime_status' ? status : null)
+    const { unmount } = render(<MantineProvider><PluginPageHost pluginId="ubuntu-runtime" /></MantineProvider>)
+    const install = await screen.findByRole('button', { name: '下载并安装' })
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    fireEvent.click(install)
+    await screen.findByText('等待下载')
+    status = { state: 'configuring', installed: true, ready: false }
+    await screen.findByText('正在配置开发工具', undefined, { timeout: 4500 })
+    status = { state: 'ready', installed: true, ready: true }
+    await screen.findByText('安装成功 · 环境可用', undefined, { timeout: 4500 })
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    expect(mocks.invoke.mock.calls.filter((call) => call[2] === 'install')).toHaveLength(1)
+    unmount()
+  }, 12_000)
+
   it('serializes rapid actions without dropping or replaying them from a state updater', async () => {
     let active = 0
     let maxActive = 0

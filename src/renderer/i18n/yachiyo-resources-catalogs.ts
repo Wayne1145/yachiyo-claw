@@ -211,9 +211,14 @@ export const yachiyoCatalogEnglish: Record<string, string> = {
   '请先在“设置 → 功能模块”中启用第三方插件，再打开此页面。':
     'Enable third-party plugins in Settings → Feature modules before opening this page.',
   未授权界面能力: 'UI capability not granted',
+  'Ubuntu 运行环境未授权': 'Ubuntu runtime permission required',
+  '审批已过期，可以重新发起操作。': 'The approval expired. You can retry this action.',
   '此插件的 UI 能力未授权。请在 设置 → 插件 中重新授权后再打开。':
     'This plugin has not been granted UI access. Grant it again in Settings → Plugins before reopening the page.',
   插件出错: 'Plugin error',
+  '请从官方插件市场安装 Ubuntu 运行环境后再授权。': 'Install the Ubuntu runtime from the official plugin marketplace to grant this permission.',
+  '请在“设置 → 插件 → 权限与活动”中授予 Ubuntu 发行版运行环境权限。': 'Grant Ubuntu distribution runtime access in Settings → Plugins → Permissions and activity.',
+  '已取消本次操作。': 'This operation was cancelled.',
   '此插件没有提供页面内容。': 'This plugin does not provide page content.',
   插件活动: 'Plugin activity',
   已记录: 'Recorded',
