@@ -207,8 +207,11 @@ jobs:
           ndk_revision="$(node -p "require('./toolchain.lock.json').android.ndk")"
           cmake_revision="$(node -p "require('./toolchain.lock.json').android.cmake")"
 
+          # setup-android v3 and v4 install the locked package under different directory names.
+          # Verify the sdkmanager actually used for installation, including its exact package revision.
+          sdkmanager_executable="$(realpath -- "$(command -v sdkmanager)")"
           assert_revision \
-            "${ANDROID_SDK_ROOT}/cmdline-tools/${ANDROID_COMMAND_LINE_TOOLS_BUILD}/source.properties" \
+            "$(dirname -- "$(dirname -- "${sdkmanager_executable}")")/source.properties" \
             "${command_line_tools_revision}" \
             "Android command-line tools"
           # sdkmanager cannot install a versioned platform-tools package and always resolves
@@ -341,6 +344,8 @@ jobs:
             "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
             "android.permission.INTERNET"
             "android.permission.MANAGE_EXTERNAL_STORAGE"
+            # YachiyoRealtimePlugin selects and restores the voice-call audio route.
+            "android.permission.MODIFY_AUDIO_SETTINGS"
             "android.permission.POST_NOTIFICATIONS"
             "android.permission.READ_EXTERNAL_STORAGE"
             "android.permission.RECEIVE_BOOT_COMPLETED"
