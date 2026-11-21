@@ -21,14 +21,21 @@ onlyBuiltDependencies:
 overrides:
   "@tanstack/router-generator": 1.120.15
   "@tanstack/router-plugin": 1.120.15
+  "@modelcontextprotocol/sdk>@hono/node-server": "^2.1.6"
+  # These callers use glob/globSync. Upgrade their walker with its matcher; swapping
+  # minimatch alone breaks older walkers that expect RegExp entries in the compiled pattern.
+  "@sentry/bundler-plugin-core@4.8.0>glob": 14.0.6
+  "rimraf@4.4.1>glob": 14.0.6
+  "rimraf@5.0.10>glob": 14.0.6
   "brace-expansion@<1.1.18": 1.1.18
   "brace-expansion@>=2.0.0 <2.1.4": 2.1.4
   "brace-expansion@>=5.0.0 <5.0.8": 5.0.9
   convict: ">=6.2.5"
   dompurify: "^3.4.9"
   fast-uri: ">=3.1.5"
-  fast-xml-parser: ">=5.5.7"
+  fast-xml-parser: "^5.12.1"
   handlebars: ">=4.7.9"
+  hono: "^4.13.16"
   protobufjs: "^7.5.5"
   shell-quote: "^1.10.0"
 
