@@ -255,7 +255,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@pixi/unsafe-eval": "6.5.10",
     "framer-motion": "12.42.2",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "ofetch": "^1.0.1",
     "pdfjs-dist": "5.4.624",
     "uuid": "^9.0.0"
