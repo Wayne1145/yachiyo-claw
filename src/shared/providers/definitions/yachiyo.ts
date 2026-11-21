@@ -3,10 +3,11 @@ import { defineProvider } from '../registry'
 import Claude from './models/claude'
 import OpenAI from './models/openai'
 import OpenAIResponses from './models/openai-responses'
-import { normalizeYachiyoModel, YACHIYO_GPT_CHAT_CAPABILITIES } from './yachiyo-models'
+import { normalizeYachiyoModel } from './yachiyo-models'
 
 export const YACHIYO_API_HOST = 'https://api.yachiyo8000.cn/v1'
-export const YACHIYO_DEFAULT_MODEL = 'gpt-5.6'
+// Model availability belongs to /models, not a release-time preset. Empty means not discovered yet.
+export const YACHIYO_DEFAULT_MODEL = ''
 
 export const yachiyoProvider = defineProvider({
   id: ModelProviderEnum.Yachiyo,
@@ -20,13 +21,7 @@ export const yachiyoProvider = defineProvider({
   defaultSettings: {
     apiHost: YACHIYO_API_HOST,
     apiPath: '/chat/completions',
-    models: [
-      {
-        modelId: YACHIYO_DEFAULT_MODEL,
-        apiStyle: 'openai',
-        capabilities: YACHIYO_GPT_CHAT_CAPABILITIES,
-      },
-    ],
+    models: [],
   },
   createModel: (config) => {
     // Dynamic /models entries and older persisted settings may not contain

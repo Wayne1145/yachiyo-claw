@@ -10,6 +10,13 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Base64;
 import android.view.ViewGroup;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Button;
+import android.widget.ProgressBar;
+import android.webkit.WebChromeClient;
 import android.webkit.SafeBrowsingResponse;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -25,6 +32,8 @@ public final class ControlledWebViewActivity extends Activity {
 
     private WebView webView;
     private boolean previewOnly;
+    private TextView address;
+    private ProgressBar progress;
 
     interface ResultCallback { void complete(String value, String error); }
 
@@ -44,6 +53,7 @@ public final class ControlledWebViewActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
         webView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView view, String url) { if (address != null) address.setText(url); }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String next = request.getUrl().toString();
                 return !BrowserNavigationPolicy.isAllowed(next, previewOnly);
@@ -53,10 +63,67 @@ public final class ControlledWebViewActivity extends Activity {
                 response.backToSafety(true);
             }
         });
-        setContentView(webView, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.WHITE);
+        root.setFitsSystemWindows(true);
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        toolbar.setBackgroundColor(Color.rgb(255, 247, 250));
+        addToolbarButton(toolbar, "‹", "Back", () -> { if (webView.canGoBack()) webView.goBack(); });
+        addToolbarButton(toolbar, "›", "Forward", () -> { if (webView.canGoForward()) webView.goForward(); });
+        address = new TextView(this);
+        address.setTextSize(12);
+        address.setTextColor(Color.rgb(72, 56, 65));
+        address.setSingleLine(true);
+        address.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        address.setPadding(dp(12), dp(10), dp(12), dp(10));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(Color.WHITE);
+        pill.setCornerRadius(dp(22));
+        address.setBackground(pill);
+        toolbar.addView(address, new LinearLayout.LayoutParams(0, dp(40), 1));
+        addToolbarButton(toolbar, "↻", "Reload", () -> webView.reload());
+        addToolbarButton(toolbar, "×", getString(android.R.string.cancel), this::finish);
+        root.addView(toolbar, new LinearLayout.LayoutParams(-1, dp(56)));
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.rgb(224, 136, 166)));
+        root.addView(progress, new LinearLayout.LayoutParams(-1, dp(2)));
+        root.addView(webView, new LinearLayout.LayoutParams(-1, 0, 1));
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override public void onProgressChanged(WebView view, int value) {
+                progress.setProgress(value);
+                progress.setVisibility(value == 100 ? android.view.View.INVISIBLE : android.view.View.VISIBLE);
+            }
+        });
+        getWindow().setStatusBarColor(Color.rgb(255, 247, 250));
+        getWindow().setNavigationBarColor(Color.WHITE);
+        getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        setContentView(root);
         current = new WeakReference<>(this);
         String initialUrl = getIntent().getStringExtra(EXTRA_URL);
         if (BrowserNavigationPolicy.isAllowed(initialUrl, previewOnly)) webView.loadUrl(initialUrl);
+    }
+
+    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private void addToolbarButton(LinearLayout toolbar, String label, String description, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(23);
+        button.setTextColor(Color.rgb(100, 66, 83));
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setPadding(0, 0, 0, 0);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setContentDescription(description);
+        button.setOnClickListener(view -> action.run());
+        toolbar.addView(button, new LinearLayout.LayoutParams(dp(40), dp(44)));
+    }
+
+    @Override public void onBackPressed() {
+        if (webView != null && webView.canGoBack()) webView.goBack(); else super.onBackPressed();
     }
 
     @Override protected void onDestroy() {
@@ -137,7 +204,7 @@ public final class ControlledWebViewActivity extends Activity {
             ControlledWebViewActivity live = current.get();
             if (live != activity || live.webView == null) { callback.complete(null, "browser_unavailable"); return; }
             live.webView.evaluateJavascript(script, value -> {
-                if (value != null && value.contains("\\\"ready\\\":true")) callback.complete(value, null);
+                if (ControlledBrowserScripts.isReadyResult(value)) callback.complete(value, null);
                 else if (SystemClock.uptimeMillis() >= deadline) callback.complete(value, "browser_wait_timeout");
                 else handler.postDelayed(poll[0], 200);
             });

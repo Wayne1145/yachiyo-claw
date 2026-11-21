@@ -5,6 +5,8 @@ import { type ButtonHTMLAttributes, forwardRef, type ReactNode, type TextareaHTM
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AndroidInteractive } from './AndroidInteractive'
 
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+
 const mocks = vi.hoisted(() => ({
   getUserMedia: vi.fn(),
   recognizeAndroidSpeech: vi.fn(),
@@ -40,7 +42,21 @@ vi.mock('@mantine/core', () => ({
   ),
   FileButton: ({ children }: { children: (props: object) => ReactNode }) => children({}),
   Loader: () => <span>loading</span>,
-  SegmentedControl: () => <div />,
+  SegmentedControl: ({
+    data,
+    onChange,
+  }: {
+    data: { label: string; value: string }[]
+    onChange(value: string): void
+  }) => (
+    <div role="group" aria-label="对话模式">
+      {data.map((item) => (
+        <button type="button" key={item.value} onClick={() => onChange(item.value)}>
+          {item.label}
+        </button>
+      ))}
+    </div>
+  ),
   Select: () => <select />,
   Text: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   Textarea: (props: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />,
@@ -143,6 +159,26 @@ function dispatchPointerEvent(
 }
 
 describe('AndroidInteractive transient resources', () => {
+  it('retains the mode switch in realtime, hides typing, and offers configuration without trapping the user', async () => {
+    render(<AndroidInteractive sessionId="realtime-ui" onSessionChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: '实时' }))
+    await screen.findByText('请先配置 Realtime API 地址、模型和密钥，才能开始实时通话。')
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.getByRole('button', { name: '开始通话' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: '对话模式' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '稍后设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '交互设置' }))
+    expect(screen.queryByText('AI 模型')).toBeNull()
+    expect(screen.queryByText('推理强度')).toBeNull()
+    expect(screen.getByText('配置实时通话 API')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '关闭交互设置' }))
+    fireEvent.click(screen.getByRole('button', { name: '聊天' }))
+    await waitFor(() => expect(screen.getByRole('textbox')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: '开始通话' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '交互设置' }))
+    expect(screen.getByText('AI 模型')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '关闭交互设置' }))
+  })
   it('keeps secondary controls in settings and the conversation mode beside the composer', async () => {
     const { container } = render(<AndroidInteractive sessionId="session-1" onSessionChange={vi.fn()} />)
     expect(screen.queryByRole('button', { name: '摄像头' })).toBeNull()

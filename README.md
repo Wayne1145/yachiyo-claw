@@ -31,7 +31,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 
 ## 已实现功能
 
-最新修复版 [v0.0.23](docs/releases/v0.0.23.md) 修复了长对话回复被后台 token 统计覆盖、DeepSeek Agent 请求 400 和沙箱正常退出误报失败；[验收记录](docs/releases/v0.0.23-validation.md) 列出实际测试范围与限制。
+最新版本 [v0.0.26](docs/releases/v0.0.26.md) 修复首次填写 Yachiyo API Key 被停用模型阻塞的问题：直接保存 Key，后台获取实时模型列表，不再固定 `gpt-5.6`；[验收记录](docs/releases/v0.0.26-validation.md) 列出测试范围与限制。此前 v0.0.25 的 Realtime 通话、内部工具、用量统计和离屏浏览器等功能继续保留。
 
 ### 对话与模型
 
@@ -93,11 +93,14 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 
 ### Live2D 实时交互
 
-- 独立“交互式”页面，可继承任意聊天上下文并切换聊天或 Agent 模式。
+- 独立“交互式”页面，可继承任意聊天上下文并切换聊天、Agent 或实时模式。实时模式使用独立的 Realtime 模型配置，不显示普通聊天模型和推理强度。
+- 原生 WebSocket 音频通话支持 OpenAI Realtime GA 与 DashScope 协议，提供关麦、播放静音、摄像头逐帧输入及带实时音量叠加的 VAD 阈值控件。千问模板默认使用已实测的 `qwen3.8-omni-flash-realtime` / `Tina`；模型权限仍取决于上游账户。
+- 实时模型可调用内部工具，并经过相同的 Tool Broker、参数审批与审计；不会自动开启手机控制权限。切页或退到后台会结束通话，不支持后台常开录音。
 - 内置八千代 Live2D 模型，并支持导入包含 `.model3.json` 的 ZIP 模型包。
 - 自动读取模型的表情与动作名称，模型可通过 `[action]` 标记按语音进度触发表情和动作。
 - 支持流式回答、分段 TTS、语音输入、静音、嘴型同步和自动消失的半透明对话气泡。
 - 支持前后摄像头预览、拖动小窗和由模型主动调用的拍照工具。
+- Live2D 支持原生像素和超采样画质档，并显示实际渲染尺寸；高画质不能补充模型原始纹理没有的细节。
 - ASR/TTS Provider 可配置；默认内置 Sherpa-ONNX 中英双语流式识别模型，不依赖设备的 Google 语音服务或额外下载，并提供 Edge TTS 模板。
 
 ### Android 应用体验
@@ -105,13 +108,15 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - 浅色粉白主题、可选 ChatGPT 式液态玻璃主题、胶囊控件、页面过渡动画以及竖屏/横屏布局。
 - 针对常见全面屏比例和接近 9:21 的高分辨率设备进行布局适配；Agent 与下载队列已在 `1200x2608`、`1440x3200` 竖屏视口检查输入区、滚动区和底部导航边界。
 - 手动创建一次、每日或每周 Agent 任务；应用运行或重新激活时执行到期任务。
-- 定时任务通过 Room、WorkManager 和开机/应用升级恢复接收器持久化并可靠唤醒；当前仍由前台应用接续实际模型与工具执行。
+- 定时任务通过 Room、WorkManager 和开机/应用升级恢复接收器持久化并唤醒；受支持的 OpenAI-compatible 任务可无界面执行，需要交互或不受支持的能力会转前台接管。
 - API Key、登录令牌及敏感设置使用 Android Keystore 支持的加密存储。
 - 可在启动时检查本项目的 GitHub Release；Android 更新器将 APK 下载到应用私有目录，验证 HTTPS 来源、SHA-256、包名、签名链和递增的 `versionCode` 后交给系统安装器，并在升级后自动清理陈旧安装包。
 - 模型、更新、Linux 环境、插件/Skills 包体、远程主题和应用资源共用设置中的下载管理，支持 1-64 个分段、断点续传、代理、仅 Wi-Fi、独立通知和进程重建后的调度恢复。
 - 定时 Agent 可在 Activity/WebView 不存在时由 WorkManager 启动原生 OpenAI-compatible 工具循环；加密运行快照、续租 checkpoint、工具审计和结果均持久化，需交互能力会转前台接管。
 - 下载设置可分别启用 `hf-mirror.com` 与 `ghfast.top`；首次成功识别到中国大陆网络出口时默认开启，用户随后保存的选择不会被自动覆盖。镜像只代理白名单资源，模型摘要与 APK 摘要/签名校验保持不变。
 - Android CI 包含 TypeScript 检查、基础测试、原生日志隐私检查、Gradle 单测和 Debug APK 构建。
+- 设置中的用量统计按时间和类别查看已报告的 token、缓存命中与请求情况；提供商支持时可查询 sub2api 倍率/余额。不支持或未返回的数据标记为未知，不视为零。
+- Agent 浏览器的 DOM 操作使用离屏 WebView；只有用户明确预览时打开可见网页。它不是完整桌面 Chromium/Playwright。
 - Yachiyo Claw 自定义的聊天、交互式、Agent、权限、本地模型、下载、主题、插件和工作区页面支持完整英文切换；用户自定义名称和第三方内容保持原文。
 
 ## 尚未完成与已知边界
@@ -120,7 +125,7 @@ Yachiyo Claw 是一个 Android 优先的 AI 客户端。它在 Chatbox 的多模
 - GGUF 已支持 CPU 与 Vulkan 分层卸载，但仍在生成完成后一次性返回文本；本地 Agent 工具调用依赖模型稳定遵循受限结构化协议，尚未提供逐 token 原生流式工具事件。本地 embedding 仍仅面向 MediaPipe Text Embedder 兼容的 `.tflite` 模型。
 - 模型仓库中的权重、Tokenizer、配置和衍生内容继续受各自许可证、访问限制及使用条款约束。下载或运行前由用户确认相关许可证，Yachiyo Claw 的 GPLv3 不会覆盖第三方模型权重。
 - PRoot 沙箱尚未提供内核级隔离；Skill 脚本已统一进入该沙箱，但复杂 Python/Node 依赖仍由具体 Skill 或项目自行安装和管理。
-- WorkManager 已提供持久化唤醒和恢复，但应用进程不存在时的完整无界面 Agent 推理与工具执行尚未实现。
+- 无界面 Agent 目前仅支持原生运行器已有的提供商协议与工具集合；审批、交互式权限和前台专属能力仍需应用接管，不能保证绕过系统强行停止或厂商后台限制。
 - 应用内更新已通过正式签名连续性、版本递增和 Android 12 覆盖安装校验；Android 11/13/15-16 设备矩阵仍需继续补测。
 - 未签名的本地侧载插件会明确标记来源不可验证，并仍需用户逐项授予能力；签名市场、插件 API 兼容性和更多 Android System WebView 版本仍需扩大实机矩阵。
 - Skill 更新目前只检查远端 revision 并提示，不会静默替换安装内容；更完整的设备工具、长期记忆检索和 MCP 移动端管理体验仍在继续完善。

@@ -14,6 +14,14 @@ const SESSION_ID = 'camera-tool-test-session'
 afterEach(() => unregisterCameraCaptureProvider(SESSION_ID))
 
 describe('interactive camera tool', () => {
+  it('does not capture after the user disables the camera while approval is open', async () => {
+    const capture = vi.fn()
+    registerCameraCaptureProvider(SESSION_ID, capture)
+    const cameraTool = createCameraCaptureTool(SESSION_ID)!
+    unregisterCameraCaptureProvider(SESSION_ID)
+    await expect((cameraTool.execute as (input: unknown, options: unknown) => Promise<unknown>)({}, {})).rejects.toThrow('camera_disabled')
+    expect(capture).not.toHaveBeenCalled()
+  })
   it('is unavailable without an active preview provider', () => {
     expect(createCameraCaptureTool(SESSION_ID)).toBeUndefined()
   })

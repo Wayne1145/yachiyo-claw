@@ -5,6 +5,7 @@ import { createMessage, type Message, ModelProviderEnum, type TaskSession } from
 import { getMessageText, sequenceMessages } from '@shared/utils/message'
 import { resolveReasoningProviderOptions } from '@shared/utils/reasoning-strength'
 import type { ToolSet } from 'ai'
+import { v4 as uuidv4 } from 'uuid'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
 import {
@@ -29,6 +30,7 @@ import { createAgentRunId, shouldUseDeviceAgent } from '@/mobile/agent-run-polic
 import { getAgentSessionConfig } from '@/mobile/agent-session-config'
 import { tryRunLocalAndroidRecipe } from '@/mobile/android-task-recipe'
 import { createAgentUsageLedger, resolveDefaultAgentPrice } from '@/mobile/agent-usage-ledger'
+import { createUsageTracker } from '@/mobile/usage-statistics'
 import { buildAgentIdentityPrompt } from '@/mobile/agent-profile'
 import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from '@/mobile/automatic-memory'
 import { getAgentRuntimeSettings } from '@/mobile/agent-runtime-settings'
@@ -540,6 +542,7 @@ async function generateTaskResponse(
       onFileReceived: (_mediaType: string, _base64: string) => Promise.resolve(''),
     }
 
+    const trackUsage = createUsageTracker({ id: `${targetMsg.id}:${uuidv4()}`, provider, model: modelId, mode: 'agent' })
     const iterator = stream[Symbol.asyncIterator]()
     while (true) {
       const next = await nextAgentStreamPart(
@@ -549,6 +552,7 @@ async function generateTaskResponse(
       )
       if (next.done) break
       const chunk = next.value
+      trackUsage(chunk)
       const result = await processStreamChunk(chunk, processorState, streamCallbacks)
       processorState = result.state
 

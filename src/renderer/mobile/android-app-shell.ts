@@ -1,5 +1,5 @@
-import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL, yachiyoProvider } from '@shared/providers/definitions/yachiyo'
-import { normalizeYachiyoModels } from '@shared/providers/definitions/yachiyo-models'
+import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL } from '@shared/providers/definitions/yachiyo'
+import { normalizeYachiyoModels, selectYachiyoChatModelId } from '@shared/providers/definitions/yachiyo-models'
 import { ModelProviderEnum, type ProviderModelInfo, type Settings } from '@shared/types'
 import { registerBuiltinFeatureUi } from '@/features/builtin-feature-ui'
 import { registerBuiltinFeatures } from '@/features/builtin-features'
@@ -24,6 +24,8 @@ const CORE_ANDROID_SETTINGS_ROUTES = [
   '/settings/provider',
   '/settings/default-models',
   '/settings/downloads',
+  '/settings/usage',
+  '/settings/realtime',
   '/settings/themes',
   '/settings/features',
   '/settings/chat',
@@ -100,7 +102,7 @@ export function getAndroidShellTabs(overrides?: Readonly<Record<string, boolean>
 }
 
 export function hasConfiguredModelProvider(
-  settings: Pick<Settings, 'customProviders' | 'licenseKey' | 'providers'>,
+  settings: Pick<Settings, 'customProviders' | 'licenseKey' | 'providers'>
 ): boolean {
   if (settings.licenseKey?.trim()) return true
   const customProviderIds = new Set(settings.customProviders?.map((provider) => provider.id) || [])
@@ -118,14 +120,10 @@ export function hasConfiguredModelProvider(
   })
 }
 
-export function hasYachiyoDefaultModel(models: ProviderModelInfo[]): boolean {
-  return models.some((model) => model.modelId === YACHIYO_DEFAULT_MODEL)
-}
-
 export function createYachiyoApiSettingsPatch(
   settings: AndroidShellSettings,
   apiKey: string,
-  models?: ProviderModelInfo[],
+  models?: ProviderModelInfo[]
 ): Partial<Settings> {
   const normalizedApiKey = apiKey.trim()
   if (!normalizedApiKey) {
@@ -136,10 +134,8 @@ export function createYachiyoApiSettingsPatch(
   const providerModels =
     models &&
     normalizeYachiyoModels(models).map((model) => {
-      const defaultModel = yachiyoProvider.defaultSettings?.models?.find(
-        (candidate) => candidate.modelId === model.modelId,
-      )
-      return defaultModel ? { ...defaultModel, ...model } : model
+      const previousModel = existingSettings?.models?.find((candidate) => candidate.modelId === model.modelId)
+      return previousModel ? { ...previousModel, ...model } : model
     })
 
   return {
@@ -156,7 +152,10 @@ export function createYachiyoApiSettingsPatch(
     },
     defaultChatModel: {
       provider: ModelProviderEnum.Yachiyo,
-      model: YACHIYO_DEFAULT_MODEL,
+      model: selectYachiyoChatModelId(
+        providerModels || existingSettings?.models || [],
+        settings.defaultChatModel?.provider === ModelProviderEnum.Yachiyo ? settings.defaultChatModel.model : ''
+      ),
     },
   }
 }

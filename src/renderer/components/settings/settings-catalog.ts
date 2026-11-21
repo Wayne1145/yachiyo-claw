@@ -11,6 +11,8 @@ import {
   IconRobot,
   IconSparkles,
   IconTestPipe,
+  IconChartBar,
+  IconPhone,
 } from '@tabler/icons-react'
 
 export interface SettingsEntry {
@@ -32,6 +34,8 @@ export const SETTINGS_GROUPS = [
 ] as const
 
 export const CORE_SETTINGS: SettingsEntry[] = [
+  { route: '/settings/realtime', label: '实时语音 / 视频通话', detail: '双向音频与摄像头输入', icon: IconPhone, group: 'personal', order: 80, keywords: 'realtime omni qwen 实时 通话 视频' },
+  { route: '/settings/usage', label: '用量统计', detail: 'Token、缓存命中与上游账单', icon: IconChartBar, group: 'model', order: 400, keywords: 'usage tokens billing balance 用量 倍率 余额' },
   {
     route: '/settings/themes',
     label: '主题外观',

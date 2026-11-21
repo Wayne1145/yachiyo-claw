@@ -81,6 +81,11 @@ import { CharacterSelector } from './CharacterSelector'
 import { Live2DStage, type Live2DStageHandle } from './Live2DStage'
 import { Live2DErrorPanel } from './Live2DErrorPanel'
 import { useAndroidRetainedState } from './android-retained-state'
+import { useInteractiveRealtime } from './useInteractiveRealtime'
+import { waitForCameraFrame } from '@/mobile/camera-frame'
+import { getRealtimeApiKey, getRealtimeSettings, saveRealtimeSettings } from '@/mobile/realtime-settings'
+import { RealtimeVoiceControls, RealtimeVadControl } from './RealtimeVoiceControls'
+import { useNavigate } from '@tanstack/react-router'
 import './interactive-layout.css'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
 
@@ -94,12 +99,17 @@ export function AndroidInteractive({
   activity?: AndroidTabPageActivity
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const retainedSessionKey = sessionId || 'new'
   // The bundled model never depends on IndexedDB or imported ZIPs being readable.
   const [models, setModels] = useState<Live2DModelDescriptor[]>([BUILT_IN_YACHIYO_MODEL])
   const [selectedModelId, setSelectedModelId] = useState(getSelectedLive2DModelId)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [realtimeMode, setRealtimeMode] = useAndroidRetainedState('interactive:realtime-mode', false)
+  const [realtimeConfigurationOpen, setRealtimeConfigurationOpen] = useState(false)
+  const [microphoneMuted, setMicrophoneMuted] = useState(false)
+  const [vadThreshold, setVadThreshold] = useState(() => getRealtimeSettings().vadThreshold)
   const [inputFocused, setInputFocused] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -124,6 +134,7 @@ export function AndroidInteractive({
   const [cameraPosition, setCameraPosition] = useState({ x: 0, y: 0 })
   const [background, setBackground] = useState(() => localStorage.getItem('yachiyo.interactive.background') || '')
   const [renderQuality, setRenderQuality] = useState(getLive2DRenderQuality)
+  const [renderInfo, setRenderInfo] = useState<{ width: number; height: number; scale: number }>()
   const [live2dTransform, setLive2dTransform] = useState<Live2DTransform>(() => loadLive2DTransform(selectedModelId))
   const [live2dMoveMode, setLive2dMoveMode] = useState(false)
   const stageRef = useRef<Live2DStageHandle>(null)
@@ -156,6 +167,19 @@ export function AndroidInteractive({
   const { data: task } = useTaskSessionRecord(taskId || null)
   const { providers } = useProviders()
   const defaultChatModel = useSettingsStore((state) => state.defaultChatModel)
+  const cameraActive = cameraEnabled && activity !== 'inactive'
+  const realtime = useInteractiveRealtime({
+    sessionId,
+    taskId,
+    agentMode,
+    active: activity === 'active' && realtimeMode,
+    cameraActive,
+    muted,
+    microphoneMuted,
+    vadThreshold,
+    onTaskId: setTaskId,
+    onError: setNotice,
+  })
 
   activityRef.current = activity
   sessionIdRef.current = sessionId
@@ -256,12 +280,19 @@ export function AndroidInteractive({
   const messages = agentMode ? task?.messages || [] : session?.messages || []
   const latestAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
   const latestText = latestAssistant ? getMessageText(latestAssistant) : ''
-  const bubbleText = selectedModel ? hideValidLive2DMarkers(latestText, selectedModel.actions).trim() : latestText
+  const visibleText = realtime.state !== 'disconnected' ? realtime.text : latestText
+  const bubbleText = selectedModel ? hideValidLive2DMarkers(visibleText, selectedModel.actions).trim() : visibleText
   const generating = Boolean(latestAssistant?.generating)
-  const cameraActive = cameraEnabled && activity !== 'inactive'
 
   useEffect(() => {
-    if (!latestAssistant || muted || activity !== 'active') return
+    if (
+      !latestAssistant ||
+      latestAssistant.id.startsWith('rt-') ||
+      muted ||
+      activity !== 'active' ||
+      realtime.state !== 'disconnected'
+    )
+      return
     if (spokenRef.current.id !== latestAssistant.id) {
       spokenRef.current = { id: latestAssistant.id, length: 0 }
       speechGenerationRef.current += 1
@@ -300,7 +331,7 @@ export function AndroidInteractive({
       spokenRef.current.length = visible.length
       if (tail) queueSpeech(tail)
     }
-  }, [activity, generating, latestAssistant, latestText, muted, selectedModel])
+  }, [activity, generating, latestAssistant, latestText, muted, selectedModel, realtime.state])
 
   useEffect(() => {
     if (!muted) return
@@ -316,7 +347,9 @@ export function AndroidInteractive({
       return
     }
     setBubbleVisible(true)
-  }, [Boolean(bubbleText), latestAssistant?.id])
+    const timeout = window.setTimeout(() => setBubbleVisible(false), 5000)
+    return () => window.clearTimeout(timeout)
+  }, [bubbleText, latestAssistant?.id])
 
   useEffect(() => {
     if (!voiceTranscript || recording) return
@@ -347,6 +380,7 @@ export function AndroidInteractive({
     if (interactiveRecognitionActiveRef.current) {
       interactiveRecognitionActiveRef.current = false
       setRecording(false)
+      setVoiceTranscript('')
       void stopAndroidSpeechRecognition()
     }
     setCameraEnabled(false)
@@ -408,11 +442,10 @@ export function AndroidInteractive({
     }
   }, [cameraActive, cameraFacing, t])
 
-  const captureCurrentCamera = useCallback(() => {
+  const captureCurrentCamera = useCallback(async () => {
     const video = videoRef.current
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
-      throw new Error('camera_frame_not_ready')
-    }
+    if (!video) throw new Error('camera_disabled')
+    await waitForCameraFrame(video)
     const scale = Math.min(1, 1280 / video.videoWidth)
     const width = Math.max(1, Math.round(video.videoWidth * scale))
     const height = Math.max(1, Math.round(video.videoHeight * scale))
@@ -490,6 +523,59 @@ export function AndroidInteractive({
     }
   }
 
+  const checkRealtimeConfiguration = async () => {
+    try {
+      const settings = getRealtimeSettings()
+      if (settings.endpoint.trim() && settings.model.trim() && (await getRealtimeApiKey())) return true
+    } catch {
+      /* Invalid or unavailable secure credentials require configuration, never a silent fallback. */
+    }
+    setRealtimeConfigurationOpen(true)
+    return false
+  }
+  const changeConversationMode = async (value: string) => {
+    if (value === 'realtime') {
+      setRealtimeMode(true)
+      if (cameraEnabled) saveRealtimeSettings({ ...getRealtimeSettings(), video: true })
+      setInputFocused(false)
+      speechGenerationRef.current += 1
+      setTtsSpeaking(false)
+      void stopSpeaking()
+      voiceRecognitionAttemptRef.current += 1
+      interactiveRecognitionActiveRef.current = false
+      setRecording(false)
+      setVoiceTranscript('')
+      void stopAndroidSpeechRecognition()
+      await checkRealtimeConfiguration()
+    } else {
+      await realtime.stop()
+      setRealtimeMode(false)
+      await toggleAgent(value)
+    }
+  }
+  const toggleRealtimeCall = async () => {
+    if (realtime.state !== 'disconnected') {
+      await realtime.stop()
+      return
+    }
+    if (!sessionId || !(await checkRealtimeConfiguration())) return
+    if (generating) {
+      setNotice(String(t('请先停止当前回复，再开始通话')))
+      return
+    }
+    setNotice(undefined)
+    try {
+      await applyLive2DPromptToSession(sessionId, selectedModel.actions)
+      await realtime.start()
+    } catch {
+      setNotice(String(t('实时通话连接失败')))
+    }
+  }
+  const toggleRealtimeCamera = () => {
+    if (!cameraEnabled) saveRealtimeSettings({ ...getRealtimeSettings(), video: true })
+    setCameraEnabled(!cameraEnabled)
+  }
+
   const selectConversationModel = async (provider: string, modelId: string) => {
     try {
       await updateInteractiveModelSelection({
@@ -527,11 +613,15 @@ export function AndroidInteractive({
     setInput('')
     try {
       await applyLive2DPromptToSession(sessionId, selectedModel.actions)
-      if (agentMode) {
+      if (realtime.state === 'connected') {
+        await realtime.sendText(text)
+      } else if (agentMode) {
         const agentTask = taskId ? task : await ensureAgentTaskForChat(sessionId)
         const targetTaskId = agentTask?.id || taskId
         if (!targetTaskId) throw new Error(String(t('Agent 会话初始化失败')))
         setTaskId(targetTaskId)
+        // The first request can build its tools before React commits the new task id.
+        if (cameraActive) registerCameraCaptureProvider(targetTaskId, captureCurrentCamera)
         await submitTaskMessage(targetTaskId, text)
       } else {
         await submitNewUserMessage(sessionId, {
@@ -628,9 +718,10 @@ export function AndroidInteractive({
         <Live2DStage
           ref={stageRef}
           model={selectedModel}
-          speaking={ttsSpeaking}
+          speaking={realtime.state !== 'disconnected' ? realtime.speaking : ttsSpeaking}
           muted={muted}
           quality={renderQuality}
+          onRenderInfo={setRenderInfo}
           activity={activity === 'active' && (settingsOpen || modelPickerOpen || inputFocused) ? 'preview' : activity}
           transform={live2dTransform}
           editMode={live2dMoveMode}
@@ -754,12 +845,13 @@ export function AndroidInteractive({
             className="yachiyo-interactive-mode-control"
             aria-label={String(t('对话模式'))}
             size="xs"
-            value={agentMode ? 'agent' : 'chat'}
+            value={realtimeMode ? 'realtime' : agentMode ? 'agent' : 'chat'}
             data={[
               { label: t('聊天'), value: 'chat' },
               { label: t('Agent'), value: 'agent' },
+              { label: t('实时'), value: 'realtime' },
             ]}
-            onChange={(value) => void toggleAgent(value)}
+            onChange={(value) => void changeConversationMode(value).catch(() => setNotice(String(t('切换模式失败'))))}
           />
           <button
             type="button"
@@ -767,106 +859,148 @@ export function AndroidInteractive({
             onClick={() => setSettingsOpen(true)}
             aria-label={String(t('切换模型：{{model}}', { model: conversationModelName }))}
           >
-            <span>{conversationModelName}</span>
+            <span>{realtimeMode ? getRealtimeSettings().model : conversationModelName}</span>
             <IconChevronDown size={14} />
           </button>
         </div>
-        <div className="yachiyo-interactive-composer-row">
-          <button
-            type="button"
-            className="yachiyo-interactive-round-button yachiyo-interactive-mic"
-            aria-label={String(t(recording ? '松开发送' : '按住说话'))}
-            data-yachiyo-tab-swipe="block"
-            data-recording={recording ? 'true' : 'false'}
-            onPointerDown={(event) => {
-              if (activityRef.current !== 'active' || interactiveRecognitionActiveRef.current) return
-              event.currentTarget.setPointerCapture(event.pointerId)
-              const attempt = ++voiceRecognitionAttemptRef.current
-              interactiveRecognitionActiveRef.current = true
-              setRecording(true)
-              setVoiceTranscript('')
-              void recognizeAndroidSpeech({
-                onPartial: (text) => {
-                  if (voiceRecognitionAttemptRef.current === attempt) setVoiceTranscript(text)
-                },
-              })
-                .then((text) => {
-                  if (voiceRecognitionAttemptRef.current !== attempt || !text) return
-                  setVoiceTranscript(text)
-                  void submit(text)
-                })
-                .catch((error) => {
-                  if (voiceRecognitionAttemptRef.current !== attempt) return
-                  const message = getSpeechRecognitionErrorMessage(error)
-                  // The speech runtime formats HTTP failures before this UI can translate them.
-                  const httpFailure = message.match(/^语音识别 API 请求失败（HTTP (.+)）。$/)
-                  setNotice(
-                    String(
-                      httpFailure
-                        ? t('语音识别 API 请求失败（HTTP {{status}}）。', { status: httpFailure[1] })
-                        : t(message)
-                    )
-                  )
-                })
-                .finally(() => {
-                  if (voiceRecognitionAttemptRef.current === attempt) {
-                    interactiveRecognitionActiveRef.current = false
-                    setRecording(false)
-                  }
-                })
-            }}
-            onPointerUp={(event) => {
-              setRecording(false)
-              void stopAndroidSpeechRecognition()
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                event.currentTarget.releasePointerCapture(event.pointerId)
-              }
-            }}
-            onPointerCancel={() => {
-              setRecording(false)
-              void stopAndroidSpeechRecognition()
-            }}
-            onContextMenu={(event) => event.preventDefault()}
-          >
-            {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
-          </button>
-          <Textarea
-            className="yachiyo-interactive-keyboard-input"
-            data-yachiyo-tab-swipe="block"
-            value={input}
-            onChange={(event) => setInput(event.currentTarget.value)}
-            onFocus={() => setInputFocused(true)}
-            onBlur={() => setInputFocused(false)}
-            placeholder={String(t('输入消息'))}
-            autosize
-            minRows={1}
-            maxRows={4}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault()
-                void submit()
-              }
-            }}
+        {realtimeMode ? (
+          <RealtimeVoiceControls
+            state={realtime.state}
+            speaking={realtime.speaking}
+            microphoneMuted={microphoneMuted}
+            cameraEnabled={cameraEnabled}
+            muted={muted}
+            level={realtime.inputLevel}
+            onCall={() => void toggleRealtimeCall()}
+            onMicrophone={() => setMicrophoneMuted(!microphoneMuted)}
+            onCamera={toggleRealtimeCamera}
+            onMute={() => setMuted(!muted)}
           />
-          <button
-            type="button"
-            className="yachiyo-interactive-round-button yachiyo-interactive-send"
-            aria-label={String(t(generating ? '停止生成' : '发送消息'))}
-            disabled={!generating && (!input.trim() || submitting)}
+        ) : (
+          <>
+            <div className="yachiyo-interactive-composer-row">
+              <button
+                type="button"
+                className="yachiyo-interactive-round-button yachiyo-interactive-mic"
+                aria-label={String(t(recording ? '松开发送' : '按住说话'))}
+                data-yachiyo-tab-swipe="block"
+                data-recording={recording ? 'true' : 'false'}
+                onPointerDown={(event) => {
+                  if (realtime.state !== 'disconnected') return
+                  if (activityRef.current !== 'active' || interactiveRecognitionActiveRef.current) return
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                  const attempt = ++voiceRecognitionAttemptRef.current
+                  interactiveRecognitionActiveRef.current = true
+                  setRecording(true)
+                  setVoiceTranscript('')
+                  void recognizeAndroidSpeech({
+                    onPartial: (text) => {
+                      if (voiceRecognitionAttemptRef.current === attempt) setVoiceTranscript(text)
+                    },
+                  })
+                    .then((text) => {
+                      if (voiceRecognitionAttemptRef.current !== attempt || !text) return
+                      setVoiceTranscript(text)
+                      void submit(text)
+                    })
+                    .catch((error) => {
+                      if (voiceRecognitionAttemptRef.current !== attempt) return
+                      const message = getSpeechRecognitionErrorMessage(error)
+                      // The speech runtime formats HTTP failures before this UI can translate them.
+                      const httpFailure = message.match(/^语音识别 API 请求失败（HTTP (.+)）。$/)
+                      setNotice(
+                        String(
+                          httpFailure
+                            ? t('语音识别 API 请求失败（HTTP {{status}}）。', { status: httpFailure[1] })
+                            : t(message)
+                        )
+                      )
+                    })
+                    .finally(() => {
+                      if (voiceRecognitionAttemptRef.current === attempt) {
+                        interactiveRecognitionActiveRef.current = false
+                        setRecording(false)
+                      }
+                    })
+                }}
+                onPointerUp={(event) => {
+                  if (realtime.state !== 'disconnected') return
+                  setRecording(false)
+                  void stopAndroidSpeechRecognition()
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    event.currentTarget.releasePointerCapture(event.pointerId)
+                  }
+                }}
+                onPointerCancel={() => {
+                  if (realtime.state !== 'disconnected') return
+                  setRecording(false)
+                  void stopAndroidSpeechRecognition()
+                }}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                {recording ? <IconPlayerStop size={24} /> : <IconMicrophone size={24} />}
+              </button>
+              <Textarea
+                className="yachiyo-interactive-keyboard-input"
+                data-yachiyo-tab-swipe="block"
+                value={input}
+                onChange={(event) => setInput(event.currentTarget.value)}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                placeholder={String(t('输入消息'))}
+                autosize
+                minRows={1}
+                maxRows={4}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    void submit()
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="yachiyo-interactive-round-button yachiyo-interactive-send"
+                aria-label={String(t(generating ? '停止生成' : '发送消息'))}
+                disabled={!generating && (!input.trim() || submitting)}
+                onClick={() => {
+                  if (generating) {
+                    if (agentMode) void cancelTaskGeneration(taskId)
+                    else latestAssistant?.cancel?.()
+                  } else void submit()
+                }}
+              >
+                {generating ? <IconPlayerStop size={20} /> : <IconArrowUp size={24} />}
+              </button>
+            </div>
+            <div className="yachiyo-interactive-composer-hint" role="status">
+              {recording ? t('松开发送') : generating ? t('正在回复…') : t('按住麦克风说话，或输入消息')}
+            </div>
+          </>
+        )}
+      </footer>
+
+      <AdaptiveModal
+        opened={realtimeConfigurationOpen}
+        onClose={() => setRealtimeConfigurationOpen(false)}
+        title={String(t('配置实时通话'))}
+        centered
+      >
+        <Text size="sm">{t('请先配置 Realtime API 地址、模型和密钥，才能开始实时通话。')}</Text>
+        <div className="yachiyo-realtime-config-actions">
+          <Button variant="subtle" onClick={() => setRealtimeConfigurationOpen(false)}>
+            {t('稍后设置')}
+          </Button>
+          <Button
             onClick={() => {
-              if (generating) {
-                if (agentMode) void cancelTaskGeneration(taskId)
-                else latestAssistant?.cancel?.()
-              } else void submit()
+              setRealtimeConfigurationOpen(false)
+              void navigate({ to: '/settings/realtime' })
             }}
           >
-            {generating ? <IconPlayerStop size={20} /> : <IconArrowUp size={24} />}
-          </button>
+            {t('去配置')}
+          </Button>
         </div>
-        <div className="yachiyo-interactive-composer-hint" role="status">
-          {recording ? t('松开发送') : generating ? t('正在回复…') : t('按住麦克风说话，或输入消息')}
-        </div>
-      </footer>
+      </AdaptiveModal>
 
       <AdaptiveModal
         opened={settingsOpen}
@@ -888,53 +1022,80 @@ export function AndroidInteractive({
         centered
       >
         <div className="yachiyo-interactive-settings">
+          <section className="yachiyo-interactive-settings-group" aria-label={String(t('实时通话设置'))}>
+            <h3>{t('实时通话设置')}</h3>
+            <RealtimeVadControl
+              value={vadThreshold}
+              level={realtime.inputLevel}
+              connected={realtime.state !== 'disconnected'}
+              onChange={(value) => {
+                setVadThreshold(value)
+                saveRealtimeSettings({ ...getRealtimeSettings(), vadThreshold: value })
+              }}
+            />
+            <button
+              type="button"
+              className="yachiyo-interactive-setting-row"
+              onClick={() => {
+                setSettingsOpen(false)
+                void navigate({ to: '/settings/realtime' })
+              }}
+            >
+              <span>{t('配置实时通话 API')}</span>
+              <IconChevronDown size={16} />
+            </button>
+          </section>
           <section className="yachiyo-interactive-settings-group" aria-label={String(t('对话设置'))}>
             <h3>{t('对话设置')}</h3>
-            <div className="yachiyo-interactive-setting-row">
-              <span>{t('AI 模型')}</span>{' '}
-              <ModelSelector
-                onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
-                selectedProviderId={conversationModel?.provider}
-                selectedModelId={conversationModel?.modelId}
-                modelFilter={(model, providerId) =>
-                  !agentMode ||
-                  providerId === ModelProviderEnum.Yachiyo ||
-                  providerId === ModelProviderEnum.Local ||
-                  Boolean(model.capabilities?.includes('tool_use'))
-                }
-                position="bottom-end"
-                transitionProps={{ transition: 'fade-down', duration: 180 }}
-              >
-                <UnstyledButton
-                  className="yachiyo-interactive-llm-selector"
-                  aria-label={String(t('切换模型：{{model}}', { model: conversationModelName }))}
-                  title={conversationModelName}
-                >
-                  {conversationModel?.provider === ModelProviderEnum.Local ? (
-                    <IconCpu size={18} aria-hidden="true" />
-                  ) : conversationModel ? (
-                    <ProviderImageIcon size={18} provider={conversationModel.provider} />
-                  ) : (
-                    <IconBrain size={18} aria-hidden="true" />
-                  )}
-                  <span>{conversationModelName}</span>
-                  <IconChevronDown size={14} />
-                </UnstyledButton>
-              </ModelSelector>
-            </div>
-            <div className="yachiyo-interactive-setting-row">
-              <span>{t('推理强度')}</span>
-              <ReasoningStrengthControl
-                settings={agentMode ? task?.settings : session?.settings}
-                onChange={(value) => void updateReasoningStrength(value)}
-                compact
-              />
-            </div>
+            {!realtimeMode && (
+              <>
+                <div className="yachiyo-interactive-setting-row">
+                  <span>{t('AI 模型')}</span>{' '}
+                  <ModelSelector
+                    onSelect={(provider, modelId) => void selectConversationModel(String(provider), modelId)}
+                    selectedProviderId={conversationModel?.provider}
+                    selectedModelId={conversationModel?.modelId}
+                    modelFilter={(model, providerId) =>
+                      !agentMode ||
+                      providerId === ModelProviderEnum.Yachiyo ||
+                      providerId === ModelProviderEnum.Local ||
+                      Boolean(model.capabilities?.includes('tool_use'))
+                    }
+                    position="bottom-end"
+                    transitionProps={{ transition: 'fade-down', duration: 180 }}
+                  >
+                    <UnstyledButton
+                      className="yachiyo-interactive-llm-selector"
+                      aria-label={String(t('切换模型：{{model}}', { model: conversationModelName }))}
+                      title={conversationModelName}
+                    >
+                      {conversationModel?.provider === ModelProviderEnum.Local ? (
+                        <IconCpu size={18} aria-hidden="true" />
+                      ) : conversationModel ? (
+                        <ProviderImageIcon size={18} provider={conversationModel.provider} />
+                      ) : (
+                        <IconBrain size={18} aria-hidden="true" />
+                      )}
+                      <span>{conversationModelName}</span>
+                      <IconChevronDown size={14} />
+                    </UnstyledButton>
+                  </ModelSelector>
+                </div>
+                <div className="yachiyo-interactive-setting-row">
+                  <span>{t('推理强度')}</span>
+                  <ReasoningStrengthControl
+                    settings={agentMode ? task?.settings : session?.settings}
+                    onChange={(value) => void updateReasoningStrength(value)}
+                    compact
+                  />
+                </div>
+              </>
+            )}
             <div className="yachiyo-interactive-setting-row">
               <span>{t('切换人格')}</span>
               <CharacterSelector sessionId={sessionId} />
             </div>
-            {agentMode && <AgentWorkspaceSelector sessionId={taskId || sessionId} />}
+            {(agentMode || realtimeMode) && <AgentWorkspaceSelector sessionId={taskId || sessionId} />}
           </section>
           <section className="yachiyo-interactive-settings-group" aria-label={String(t('声音与画面'))}>
             <h3>{t('声音与画面')}</h3>
@@ -955,7 +1116,8 @@ export function AndroidInteractive({
               aria-label={String(t('摄像头'))}
               aria-pressed={cameraEnabled}
               onClick={() => {
-                setCameraEnabled(!cameraEnabled)
+                if (realtimeMode) toggleRealtimeCamera()
+                else setCameraEnabled(!cameraEnabled)
                 setSettingsOpen(false)
               }}
             >
@@ -1033,6 +1195,8 @@ export function AndroidInteractive({
               { value: 'performance', label: t('省电（1x）') },
               { value: 'balanced', label: t('均衡（最高 1.75x）') },
               { value: 'high', label: t('高清（最高 2.5x）') },
+              { value: 'native', label: t('原生分辨率（跟随屏幕像素）') },
+              { value: 'supersample', label: t('超采样（最高 4x，较高显存）') },
             ]}
             onChange={(value) => {
               if (!value) return
@@ -1041,6 +1205,19 @@ export function AndroidInteractive({
               setLive2DRenderQuality(quality)
             }}
           />
+          <Text size="xs" c="dimmed">
+            {t(
+              '原生模式不再限制安卓清晰度；超采样会增加显存和耗电。最终细节取决于模型原始纹理，硬件不足时自动降低渲染质量。'
+            )}
+          </Text>
+          {renderInfo && (
+            <Text size="xs" c="dimmed">
+              {t('实际渲染：{{width}} × {{height}} · {{scale}}x', {
+                ...renderInfo,
+                scale: renderInfo.scale.toFixed(2),
+              })}
+            </Text>
+          )}
           {models.map((model) => (
             <button
               key={model.id}

@@ -3,9 +3,11 @@ import { yachiyoCodingEnglish } from './yachiyo-resources-coding'
 import { yachiyoInteractiveEnglish } from './yachiyo-resources-interactive'
 import { yachiyoMiscEnglish } from './yachiyo-resources-misc'
 import { yachiyoSettingsEnglish } from './yachiyo-resources-settings'
+import { yachiyoRealtimeEnglish } from './yachiyo-resources-realtime'
 import { yachiyoUtilityEnglish, yachiyoUtilityTraditionalChinese } from './yachiyo-resources-utility'
 
 const english: Record<string, string> = {
+  ...yachiyoRealtimeEnglish,
   ...yachiyoSettingsEnglish,
   主导航: 'Main navigation',
   聊天: 'Chat',

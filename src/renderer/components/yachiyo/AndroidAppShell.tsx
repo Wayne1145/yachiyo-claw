@@ -1,5 +1,6 @@
 import { App } from '@capacitor/app'
 import { ActionIcon, Menu } from '@mantine/core'
+import { ModelProviderEnum } from '@shared/types'
 import {
   IconBolt,
   IconChevronLeft,
@@ -15,69 +16,69 @@ import { useLocation } from '@tanstack/react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { registerBuiltinFeatureOverlays } from '@/features/builtin-overlays'
+import { getEnabledFeatureIds } from '@/features/feature-runtime'
+import { getOverlays } from '@/features/ui-registry'
 import { copyAgentSessionConfig, saveAgentSessionConfig } from '@/mobile/agent-session-config'
 import {
   type AndroidShellTab,
   createYachiyoApiSettingsPatch,
   getAndroidShellTabs,
   hasConfiguredModelProvider,
-  hasYachiyoDefaultModel,
   isAllowedAndroidShellPath,
   resolveAndroidShellBackAction,
   resolveAndroidShellParentPath,
   resolveAndroidShellTab,
   resolveAndroidShellWorkspaceView,
 } from '@/mobile/android-app-shell'
-import { getOverlays } from '@/features/ui-registry'
-import { registerBuiltinFeatureOverlays } from '@/features/builtin-overlays'
-import { getEnabledFeatureIds } from '@/features/feature-runtime'
 import { ensureAgentTaskForChat, ensureChatSessionForTask } from '@/mobile/conversation-bridge'
 import { removeBuiltInDemoSessions } from '@/mobile/demo-session-cleanup'
 import { syncInstalledLocalModelsIntoSettings } from '@/mobile/local-model-provider-sync'
-import { fetchYachiyoModels } from '@/mobile/yachiyo-api'
+import { refreshYachiyoModels } from '@/mobile/yachiyo-model-refresh'
 import platform from '@/platform'
-import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
 import {
   type AndroidInteractionState,
   getAndroidInteractionState,
   onAndroidInteractionStateChanged,
   syncAndroidSystemBars,
 } from '@/platform/native/yachiyo_appearance'
-import { router } from '@/router'
-import { initThemeApplication } from '@/stores/themeStore'
-import { useUIStore } from '@/stores/uiStore'
-import { LIQUID_GLASS_QUALITY_STORAGE_KEY, observeLiquidGlassQuality } from '@/themes/liquid-glass-quality'
-import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
-import { PluginPageHost } from '@/plugins/PluginPageHost'
+import { yachiyoDownloadsNative } from '@/platform/native/yachiyo_downloads'
 import { startPendingPluginInstallRecovery } from '@/plugins/install-recovery'
-import { startPendingThemeImportRecovery } from '@/themes/remote-theme'
+import { PluginPageHost } from '@/plugins/PluginPageHost'
+import { initPluginTools, usePluginStore } from '@/plugins/plugin-manager'
+import { router } from '@/router'
 import { pruneAbandonedEmptySessions, useSession } from '@/stores/chatStore'
 import { createEmpty, switchCurrentSession } from '@/stores/sessionActions'
 import { persistSettingsPatch, useSettingsStore } from '@/stores/settingsStore'
 import { getTaskSession, listAllTaskSessions, taskSessionStore, useTaskSessionRecord } from '@/stores/taskSessionStore'
-import { AgentSessionControls, describeAgentMode } from './AgentSessionControls'
+import { initThemeApplication } from '@/stores/themeStore'
+import { add as addToast } from '@/stores/toastActions'
+import { useUIStore } from '@/stores/uiStore'
+import { LIQUID_GLASS_QUALITY_STORAGE_KEY, observeLiquidGlassQuality } from '@/themes/liquid-glass-quality'
+import { startPendingThemeImportRecovery } from '@/themes/remote-theme'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
+import { AgentSessionControls, describeAgentMode } from './AgentSessionControls'
 import { AndroidAppShellContext } from './AndroidAppShellContext'
 import { AndroidConversationHistory } from './AndroidConversationHistory'
+import { AndroidFlowGlassEnvironment, FlowGlassFilterDefinitions } from './AndroidFlowGlassEnvironment'
 import { AndroidInteractive } from './AndroidInteractive'
 import { AndroidMainTabPager, type AndroidTabTransitionSnapshot } from './AndroidMainTabPager'
 import { AndroidPagerHeaderActions, AndroidPagerHeaderTitle } from './AndroidPagerHeaderTransition'
-import { AndroidRetainedTabSurface } from './android-retained-state'
-import { AndroidPagerGestureLockProvider } from './android-pager-gesture-lock'
-import { AndroidSharedChromeHostProvider, AndroidStandardChromeLayer } from './AndroidSharedChrome'
 import { AndroidSettingsHome } from './AndroidSettingsHome'
 import {
   AndroidSettingsChromeTransition,
   type AndroidSettingsStackHandle,
   AndroidSettingsStackSurface,
 } from './AndroidSettingsStackSurface'
+import { AndroidSharedChromeHostProvider, AndroidStandardChromeLayer } from './AndroidSharedChrome'
 import { AndroidTabPagePreview } from './AndroidTabPagePreview'
 import { AndroidAboutWorkspace, AndroidTasksWorkspace } from './AndroidWorkspaceHome'
+import { AndroidPagerGestureLockProvider } from './android-pager-gesture-lock'
+import { AndroidRetainedTabSurface } from './android-retained-state'
+import type { AndroidTabPageActivity } from './android-tab-page-activity'
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
 import { YachiyoChatLanding } from './YachiyoChatLanding'
 import { YachiyoMark } from './YachiyoMark'
-import { AndroidFlowGlassEnvironment, FlowGlassFilterDefinitions } from './AndroidFlowGlassEnvironment'
-import type { AndroidTabPageActivity } from './android-tab-page-activity'
 import './android-app-shell.css'
 import './flow-glass.css'
 import './local-model-center.css'
@@ -148,6 +149,18 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
     [customProviders, defaultChatModel, licenseKey, providers]
   )
   const hasProvider = useMemo(() => hasConfiguredModelProvider(settings), [settings])
+  const yachiyoApiKey = providers?.[ModelProviderEnum.Yachiyo]?.apiKey?.trim()
+  useEffect(() => {
+    if (!yachiyoApiKey) return
+    let cancelled = false
+    // Discovery is independent of credential persistence and never sends a test chat request.
+    void refreshYachiyoModels(yachiyoApiKey, () => cancelled).catch(() => {
+      if (!cancelled) addToast(t('模型列表暂未获取，可在 Yachiyo API 设置中刷新；API Key 已保存。'))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [yachiyoApiKey, t])
   const enabledFeatureIds = useMemo(() => getEnabledFeatureIds('android', featureOverrides), [featureOverrides])
   const shellTabs = useMemo(() => {
     const core = getAndroidShellTabs(featureOverrides)
@@ -635,13 +648,9 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   }
 
   const handleApiKeySubmit = async (apiKey: string) => {
-    const models = await fetchYachiyoModels(apiKey)
-    if (!hasYachiyoDefaultModel(models)) {
-      throw new Error('yachiyo_default_model_unavailable')
-    }
     try {
       // This resolves only after the Android Keystore-backed storage adapter has committed the settings row.
-      await persistSettingsPatch(createYachiyoApiSettingsPatch(settings, apiKey, models))
+      await persistSettingsPatch(createYachiyoApiSettingsPatch(settings, apiKey))
     } catch {
       throw new Error('settings_persist_failed')
     }

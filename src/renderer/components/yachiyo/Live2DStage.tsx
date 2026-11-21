@@ -46,6 +46,7 @@ export interface Live2DStageProps {
   transform?: Live2DTransform
   editMode?: boolean
   onReady?: () => void
+  onRenderInfo?: (info: { width: number; height: number; scale: number }) => void
 }
 
 let runtimePromise: Promise<Cubism4Module> | undefined
@@ -158,7 +159,9 @@ function isAndroidRuntime(): boolean {
 
 function getQualityCandidates(quality: Live2DRenderQuality): Live2DRenderQuality[] {
   const candidates: Live2DRenderQuality[] =
-    quality === 'high'
+    quality === 'native' || quality === 'supersample'
+      ? [quality, 'high', 'balanced', 'performance']
+      : quality === 'high'
       ? [quality, 'balanced', 'performance']
       : quality === 'balanced'
         ? [quality, 'performance']
@@ -185,6 +188,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
     transform,
     editMode = false,
     onReady,
+    onRenderInfo,
   },
   ref
 ) {
@@ -467,16 +471,14 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
             const nextHeight = Math.max(1, host.clientHeight)
             viewportRef.current = { width: nextWidth, height: nextHeight }
             if (app) {
-              app.renderer.resolution = Math.min(
-                app.renderer.resolution,
-                getLive2DResolution(candidate, window.devicePixelRatio, {
+              app.renderer.resolution = getLive2DResolution(candidate, window.devicePixelRatio, {
                   width: nextWidth,
                   height: nextHeight,
                   maxRenderbufferSize: limits.maxRenderbufferSize,
                   isAndroid: android,
                 })
-              )
               app.renderer.resize(nextWidth, nextHeight)
+              onRenderInfo?.({ width: Math.round(nextWidth * app.renderer.resolution), height: Math.round(nextHeight * app.renderer.resolution), scale: app.renderer.resolution })
             }
             fitModel(loadedInstance, nextWidth, nextHeight, transformRef.current)
           })
@@ -560,7 +562,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(funct
       disposeResources()
       replaceCanvas(host)
     }
-  }, [descriptor.source, onReady, quality, renderEnabled, retryKey, t])
+  }, [descriptor.source, onReady, onRenderInfo, quality, renderEnabled, retryKey, t])
 
   return (
     <div

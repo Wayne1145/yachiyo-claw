@@ -1,12 +1,11 @@
 import { Button, PasswordInput, Stack, Text, Title } from '@mantine/core'
-import { ApiError } from '@shared/models/errors'
 import { IconArrowRight, IconKey, IconLock, IconServer } from '@tabler/icons-react'
 import { type FormEvent, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { YACHIYO_API_BASE_URL, YACHIYO_DEFAULT_MODEL_ID } from '@/mobile/android-app-shell'
+import { YACHIYO_API_BASE_URL } from '@/mobile/android-app-shell'
 import { YachiyoMark } from './YachiyoMark'
 
-type OnboardingError = 'missing-key' | 'unauthorized' | 'persist-failed' | 'model-unavailable' | 'network'
+type OnboardingError = 'missing-key' | 'persist-failed'
 
 export function YachiyoApiOnboarding({
   onSubmit,
@@ -23,15 +22,9 @@ export function YachiyoApiOnboarding({
   const errorMessage =
     error === 'missing-key'
       ? t('请输入 API Key')
-      : error === 'unauthorized'
-        ? t('API Key 无效或无权访问，请检查后重试')
-        : error === 'persist-failed'
-          ? t('密钥验证成功，但安全保存失败，请重试')
-          : error === 'model-unavailable'
-            ? t('服务可达，但默认模型 gpt-5.6 当前不可用')
-            : error === 'network'
-              ? t('无法连接 Yachiyo API，请检查网络后重试')
-              : null
+      : error === 'persist-failed'
+        ? t('API Key 安全保存失败，请重试')
+        : null
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -45,16 +38,8 @@ export function YachiyoApiOnboarding({
     try {
       await onSubmit(apiKey)
       setApiKey('')
-    } catch (submitError) {
-      if (submitError instanceof ApiError && (submitError.statusCode === 401 || submitError.statusCode === 403)) {
-        setError('unauthorized')
-      } else if (submitError instanceof Error && submitError.message === 'settings_persist_failed') {
-        setError('persist-failed')
-      } else if (submitError instanceof Error && submitError.message === 'yachiyo_default_model_unavailable') {
-        setError('model-unavailable')
-      } else {
-        setError('network')
-      }
+    } catch {
+      setError('persist-failed')
     } finally {
       setSubmitting(false)
     }
@@ -83,7 +68,7 @@ export function YachiyoApiOnboarding({
             <div>
               <IconKey size={18} aria-hidden="true" />
               <span>{t('模型')}</span>
-              <strong>{YACHIYO_DEFAULT_MODEL_ID}</strong>
+              <strong>{t('保存后自动获取模型列表')}</strong>
             </div>
           </div>
 

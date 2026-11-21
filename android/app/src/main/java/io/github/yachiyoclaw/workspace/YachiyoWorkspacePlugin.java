@@ -41,6 +41,9 @@ public final class YachiyoWorkspacePlugin extends Plugin {
     private static final long MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
     private static final int BUFFER_SIZE = 64 * 1024;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private BackgroundBrowser backgroundBrowser;
+
+    @Override public void load() { backgroundBrowser = new BackgroundBrowser(getContext()); }
 
     @PluginMethod
     public void pickExternalWorkspace(PluginCall call) {
@@ -181,13 +184,10 @@ public final class YachiyoWorkspacePlugin extends Plugin {
             call.resolve(new JSObject().put("success", false).put("error", "browser_url_not_allowed"));
             return;
         }
-        if (!ControlledWebViewActivity.load(url, (value, error) -> {
+        backgroundBrowser.load(url, (value, error) -> {
             if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
             else call.resolve(new JSObject().put("success", true).put("url", url));
-        })) {
-            launchWebView(url, false);
-            call.resolve(new JSObject().put("success", true).put("url", url));
-        }
+        });
     }
 
     @PluginMethod
@@ -221,12 +221,12 @@ public final class YachiyoWorkspacePlugin extends Plugin {
         } else if ("select".equals(action)) {
             evaluateWithSnapshot(call, ControlledBrowserScripts.select(ref, selector, value));
         } else if ("wait".equals(action)) {
-            if (!ControlledWebViewActivity.waitFor(ControlledBrowserScripts.waitCondition(ref, selector, value), call.getInt("timeoutMs", 8_000), (result, error) -> {
+            if (!backgroundBrowser.waitFor(ControlledBrowserScripts.waitCondition(ref, selector, value), call.getInt("timeoutMs", 8_000), (result, error) -> {
                 if (error != null) call.resolve(new JSObject().put("success", false).put("error", error).put("value", result));
                 else evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
             })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
         } else if ("back".equals(action) || "forward".equals(action) || "reload".equals(action)) {
-            if (!ControlledWebViewActivity.history(action, (result, error) -> {
+            if (!backgroundBrowser.history(action, (result, error) -> {
                 if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
                 else evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
             })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
@@ -234,7 +234,7 @@ public final class YachiyoWorkspacePlugin extends Plugin {
     }
 
     private void evaluateWithSnapshot(PluginCall call, String actionScript) {
-        if (!ControlledWebViewActivity.evaluate(actionScript, (value, error) -> {
+        if (!backgroundBrowser.evaluate(actionScript, (value, error) -> {
             if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
             else evaluate(call, ControlledBrowserScripts.snapshotExpression(), "browser_unavailable");
         })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
@@ -242,14 +242,14 @@ public final class YachiyoWorkspacePlugin extends Plugin {
 
     @PluginMethod
     public void browserScreenshot(PluginCall call) {
-        if (!ControlledWebViewActivity.screenshot((value, error) -> {
+        if (!backgroundBrowser.screenshot((value, error) -> {
             if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
             else call.resolve(new JSObject().put("success", true).put("mimeType", "image/jpeg").put("base64", value));
         })) call.resolve(new JSObject().put("success", false).put("error", "browser_unavailable"));
     }
 
     private void evaluate(PluginCall call, String script, String unavailable) {
-        if (!ControlledWebViewActivity.evaluate(script, (value, error) -> {
+        if (!backgroundBrowser.evaluate(script, (value, error) -> {
             if (error != null) call.resolve(new JSObject().put("success", false).put("error", error));
             else call.resolve(new JSObject().put("success", true).put("value", value));
         })) call.resolve(new JSObject().put("success", false).put("error", unavailable));
@@ -426,6 +426,7 @@ public final class YachiyoWorkspacePlugin extends Plugin {
     }
 
     @Override protected void handleOnDestroy() {
+        if (backgroundBrowser != null) backgroundBrowser.close();
         executor.shutdownNow();
         super.handleOnDestroy();
     }

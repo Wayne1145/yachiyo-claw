@@ -5,12 +5,14 @@ import { type Message, type MessageContentParts, ModelProviderEnum } from '@shar
 import { getMessageText, sequenceMessages } from '@shared/utils/message'
 import { resolveReasoningProviderOptions } from '@shared/utils/reasoning-strength'
 import type { ToolSet } from 'ai'
+import { v4 as uuidv4 } from 'uuid'
 import { t } from 'i18next'
 import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
 import { getDisabledAgentCapabilityPrompt } from '@/mobile/agent-disabled-prompt'
 import { buildRelevantLongTermMemoryPrompt, rememberDurableUserStatements } from '@/mobile/automatic-memory'
 import { buildSharedUserContextPrompt } from '@/mobile/shared-user-context'
+import { createUsageTracker } from '@/mobile/usage-statistics'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { estimateTokensFromMessages } from '@/packages/token'
 import platform from '@/platform'
@@ -260,7 +262,9 @@ export async function orchestrateGeneration(
       },
     }
 
+    const trackUsage = createUsageTracker({ id: `${targetMsg.id}:${uuidv4()}`, provider: String(settings.provider), model: model.modelId, mode: 'chat' })
     for await (const chunk of stream) {
+      trackUsage(chunk)
       const result = await processStreamChunk(chunk, processorState, streamCallbacks)
       processorState = result.state
 

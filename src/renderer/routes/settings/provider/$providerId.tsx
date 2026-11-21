@@ -63,6 +63,7 @@ import platform from '@/platform'
 import { settingsStore, useLanguage, useProviderSettings, useSettingsStore } from '@/stores/settingsStore'
 import { add as addToast } from '@/stores/toastActions'
 import { type ModelTestState, testModelCapabilities } from '@/utils/model-tester'
+import { Sub2ApiBillingCard } from '@/components/settings/Sub2ApiBillingCard'
 
 export const Route = createFileRoute('/settings/provider/$providerId')({
   component: RouteComponent,
@@ -930,6 +931,7 @@ function ProviderSettings({ providerId }: { providerId: string }) {
           </>
         )}
       </SettingsSection>
+      {providerSettings?.apiKey && <SettingsSection title={t('上游账单')}><Sub2ApiBillingCard host={providerId === ModelProviderEnum.Yachiyo ? YACHIYO_API_HOST : providerSettings.apiHost || baseInfo.defaultSettings?.apiHost} apiKey={providerSettings.apiKey} automatic={providerId === ModelProviderEnum.Yachiyo} /></SettingsSection>}
       <SettingsSection title={t('Models')}>
         {/* Models */}
         <Stack gap="xxs">

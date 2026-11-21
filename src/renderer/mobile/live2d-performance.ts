@@ -1,4 +1,4 @@
-export type Live2DRenderQuality = 'performance' | 'balanced' | 'high'
+export type Live2DRenderQuality = 'performance' | 'balanced' | 'high' | 'native' | 'supersample'
 
 const STORAGE_KEY = 'yachiyo.live2d.render-quality.v1'
 export const DEFAULT_LIVE2D_RENDER_QUALITY: Live2DRenderQuality = 'high'
@@ -14,7 +14,7 @@ export function getLive2DRenderQuality(): Live2DRenderQuality {
   if (typeof localStorage === 'undefined') return DEFAULT_LIVE2D_RENDER_QUALITY
   try {
     const value = localStorage.getItem(STORAGE_KEY)
-    return value === 'performance' || value === 'balanced' || value === 'high' ? value : DEFAULT_LIVE2D_RENDER_QUALITY
+    return value === 'performance' || value === 'balanced' || value === 'high' || value === 'native' || value === 'supersample' ? value : DEFAULT_LIVE2D_RENDER_QUALITY
   } catch {
     return DEFAULT_LIVE2D_RENDER_QUALITY
   }
@@ -33,9 +33,9 @@ export function getLive2DResolution(
   devicePixelRatio = 1,
   constraints: Live2DResolutionConstraints = {}
 ): number {
-  const cap = quality === 'performance' ? 1 : quality === 'balanced' ? 1.75 : 2.5
+  const cap = quality === 'performance' ? 1 : quality === 'balanced' ? 1.75 : quality === 'high' ? 2.5 : quality === 'supersample' ? 4 : Number.POSITIVE_INFINITY
   const dpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1
-  const platformCap = constraints.isAndroid ? 1.5 : Number.POSITIVE_INFINITY
+  const requested = quality === 'supersample' ? Math.max(dpr, 4) : dpr
   const maxRenderbufferSize =
     typeof constraints.maxRenderbufferSize === 'number' &&
     Number.isFinite(constraints.maxRenderbufferSize) &&
@@ -51,7 +51,7 @@ export function getLive2DResolution(
       : Number.POSITIVE_INFINITY
 
   // A sub-1 resolution is preferable to asking WebGL for an oversized drawing buffer.
-  return Math.max(0.5, Math.min(dpr, cap, platformCap, viewportCap))
+  return Math.max(0.5, Math.min(requested, cap, viewportCap))
 }
 
 const LIVE2D_URL_PROTOCOL_PATTERN = /^[a-z][a-z\d+.-]*:/i

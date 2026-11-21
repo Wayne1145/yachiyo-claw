@@ -7,6 +7,8 @@ import OpenAI from './models/openai'
 import OpenAIResponses from './models/openai-responses'
 import { YACHIYO_API_HOST, YACHIYO_DEFAULT_MODEL, yachiyoProvider } from './yachiyo'
 
+const DISCOVERED_MODEL = 'gpt-upstream-current'
+
 function createDependencies(apiRequest = vi.fn()): ModelDependencies {
   return {
     request: {
@@ -40,19 +42,19 @@ function createYachiyoModel(
     providerSetting: {},
     formattedApiHost,
     formattedApiPath: '/chat/completions',
-    model: { modelId: YACHIYO_DEFAULT_MODEL, apiStyle },
+    model: { modelId: DISCOVERED_MODEL, apiStyle },
     effectiveApiKey: apiKey,
   })
 }
 
 describe('Yachiyo provider', () => {
-  it('uses the built-in Chat Completions endpoint and gpt-5.6 default', () => {
+  it('uses the built-in endpoint without a hardcoded model catalog', () => {
     expect(yachiyoProvider.id).toBe(ModelProviderEnum.Yachiyo)
     expect(yachiyoProvider.type).toBe(ModelProviderType.OpenAI)
     expect(yachiyoProvider.defaultSettings).toMatchObject({
       apiHost: YACHIYO_API_HOST,
       apiPath: '/chat/completions',
-      models: [{ modelId: YACHIYO_DEFAULT_MODEL, apiStyle: 'openai' }],
+      models: [],
     })
     expect(chatSessionSettings()).toMatchObject({
       provider: ModelProviderEnum.Yachiyo,
@@ -80,7 +82,7 @@ describe('Yachiyo provider', () => {
     expect((model as OpenAI).options).toMatchObject({
       apiKey: 'test-key',
       apiHost: YACHIYO_API_HOST,
-      model: { modelId: YACHIYO_DEFAULT_MODEL },
+      model: { modelId: DISCOVERED_MODEL },
     })
     expect(model.isSupportToolUse()).toBe(true)
   })
@@ -96,14 +98,14 @@ describe('Yachiyo provider', () => {
       new Response(
         JSON.stringify({
           object: 'list',
-          data: [{ id: YACHIYO_DEFAULT_MODEL, object: 'model', created: 0 }],
+          data: [{ id: DISCOVERED_MODEL, object: 'model', created: 0 }],
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
     )
     const model = createYachiyoModel(createDependencies(apiRequest), 'secret-test-key')
 
-    await expect((model as OpenAI).listModels()).resolves.toEqual([{ modelId: YACHIYO_DEFAULT_MODEL, type: 'chat' }])
+    await expect((model as OpenAI).listModels()).resolves.toEqual([{ modelId: DISCOVERED_MODEL, type: 'chat' }])
     expect(apiRequest).toHaveBeenCalledWith({
       url: `${YACHIYO_API_HOST}/models`,
       method: 'GET',

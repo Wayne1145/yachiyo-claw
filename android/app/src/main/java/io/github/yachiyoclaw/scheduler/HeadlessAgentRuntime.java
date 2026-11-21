@@ -149,6 +149,7 @@ final class HeadlessAgentRuntime {
             JSONArray choices = json.optJSONArray("choices");
             if (choices == null || choices.length() == 0) throw new IOException("headless_provider_response_invalid");
             JSONObject raw = choices.getJSONObject(0).getJSONObject("message");
+            io.github.yachiyoclaw.media.YachiyoUsagePlugin.record(context, "headless:" + executionId + ":" + json.optString("id", java.util.UUID.randomUUID().toString()), runtime.optString("provider", "headless"), runtime.getString("model"), json.optJSONObject("usage"), raw.optJSONArray("tool_calls") == null ? 0 : raw.optJSONArray("tool_calls").length());
             JSONObject message = new JSONObject().put("role", "assistant");
             if (raw.has("content") && !raw.isNull("content")) message.put("content", raw.get("content"));
             else message.put("content", "");
