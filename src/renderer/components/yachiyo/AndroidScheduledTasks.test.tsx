@@ -109,7 +109,7 @@ describe('scheduled task agenda', () => {
     fireEvent.click(within(list).getByRole('button', { name: /Paused run/ }))
     const details = screen.getByRole('region', { name: 'Task details' })
     expect((within(details).getByRole('switch') as HTMLInputElement).checked).toBe(true)
-    expect(within(details).getByText(i18n.t('已暂停'))).toBeTruthy()
+    expect(within(details).getByText(String(i18n.t('已暂停')))).toBeTruthy()
   })
 
   it('keeps the selected detail across tab remounts and routes manual execution, history and pause to that schedule only', async () => {

@@ -142,6 +142,13 @@ html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-header {
   box-shadow: none;
   backdrop-filter: none;
 }
+/* Round the paper header against the page and the mode panel around its expanding controls. */
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell[data-active-tab='chat'] .yachiyo-mobile-header {
+  border-radius: 0 0 var(--yachiyo-r-surface) var(--yachiyo-r-surface);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-agent-disclosure {
+  border-radius: var(--yachiyo-r-surface);
+}
 html[data-yachiyo-appearance='moon-paper'] .yachiyo-main-tab-page { background-color: var(--moon-page); }
 html[data-yachiyo-appearance='moon-paper'] .settings-surface {
   --settings-field: var(--chatbox-background-tertiary);
