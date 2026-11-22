@@ -7,6 +7,7 @@ const pagerHeaderSource = fs.readFileSync(path.join(__dirname, 'AndroidPagerHead
 const historySource = fs.readFileSync(path.join(__dirname, 'AndroidConversationHistory.tsx'), 'utf8')
 const shellStyles = fs.readFileSync(path.join(__dirname, 'android-app-shell.css'), 'utf8')
 const flowStyles = fs.readFileSync(path.join(__dirname, 'flow-glass.css'), 'utf8')
+const landscapeStyles = fs.readFileSync(path.join(__dirname, 'landscape-workspace.css'), 'utf8')
 const layoutHeaderSource = fs.readFileSync(path.join(__dirname, '../layout/Header.tsx'), 'utf8')
 const taskSource = fs.readFileSync(path.join(__dirname, '../../routes/task/$taskId.tsx'), 'utf8')
 const messageListSource = fs.readFileSync(path.join(__dirname, '../chat/MessageList.tsx'), 'utf8')
@@ -152,5 +153,12 @@ describe('Android conversation chrome UI contract', () => {
       /@media \(orientation: landscape\) and \(max-height: 700px\)[\s\S]*?\.yachiyo-chat-landing-slot\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/
     )
     expect(shellStyles).toMatch(/\.yachiyo-chat-landing-slot \.yachiyo-chat-landing\s*{[^}]*display:\s*none;/)
+  })
+
+  it('keeps the landscape rail and the workspace independently positioned on the Android 11 WebView', () => {
+    // WebView 83 drops an entire selector containing :is(), then the rail spans the page.
+    expect(landscapeStyles).toMatch(/\[data-shell-layout='rail'\],\s*\.yachiyo-mobile-shell\[data-shell-layout='wide'\]\s*\{[^}]*--workspace-rail:\s*66px;/)
+    expect(landscapeStyles).toMatch(/> \.yachiyo-bottom-nav\s*\{[^}]*left: var\(--workspace-start\);[^}]*width: var\(--workspace-rail\);/)
+    expect(landscapeStyles).toMatch(/> \.yachiyo-mobile-content,\s*[^{}]+> \.yachiyo-mobile-header-drawer\s*\{[^}]*left: var\(--workspace-left\);[^}]*right: var\(--workspace-right\);/)
   })
 })

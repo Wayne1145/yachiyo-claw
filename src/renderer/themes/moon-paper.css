@@ -115,14 +115,23 @@ html[data-yachiyo-appearance='moon-paper'] {
   background-color: var(--moon-page);
 }
 html[data-yachiyo-appearance='moon-paper'][data-theme='dark'] { --moon-gold: #a48d68; }
-html[data-yachiyo-appearance='moon-paper'] :is(.App, .yachiyo-mobile-shell, .yachiyo-interactive-page) {
+html[data-yachiyo-appearance='moon-paper'] .App,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-page {
   background: var(--moon-page);
   color: var(--moon-ink);
 }
-html[data-yachiyo-appearance='moon-paper'] :is(.yachiyo-mobile-title strong, .yachiyo-interactive-title strong,
-  .yachiyo-workspace-heading h1, .settings-page-heading h1, .settings-section-heading h2,
-  .settings-nav-group h2, .yachiyo-chat-landing h1, .coding-project-summary strong, .yachiyo-project-preview-copy strong,
-  .yachiyo-history-heading h2, .yachiyo-preset-caption strong) {
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-title strong,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-title strong,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-workspace-heading h1,
+html[data-yachiyo-appearance='moon-paper'] .settings-page-heading h1,
+html[data-yachiyo-appearance='moon-paper'] .settings-section-heading h2,
+html[data-yachiyo-appearance='moon-paper'] .settings-nav-group h2,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-chat-landing h1,
+html[data-yachiyo-appearance='moon-paper'] .coding-project-summary strong,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-project-preview-copy strong,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-history-heading h2,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-preset-caption strong {
   font-family: var(--moon-serif);
   font-weight: 650;
   text-shadow: none;
@@ -139,8 +148,11 @@ html[data-yachiyo-appearance='moon-paper'] .settings-surface {
   --settings-fill: var(--moon-field);
   --settings-line: var(--moon-line);
 }
-html[data-yachiyo-appearance='moon-paper'] :is(.settings-section-body, .settings-nav-list, .yachiyo-theme-card,
-  .yachiyo-agent-disclosure, .yachiyo-chat-composer-surface) {
+html[data-yachiyo-appearance='moon-paper'] .settings-section-body,
+html[data-yachiyo-appearance='moon-paper'] .settings-nav-list,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-theme-card,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-agent-disclosure,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-chat-composer-surface {
   border: 1px solid var(--moon-line);
   background: var(--moon-field);
   box-shadow: none;
@@ -201,11 +213,17 @@ html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-page .yachiyo-in
 }
 /* The opaque chat header can grow when the Agent controls expand. Keep it in the
    flex flow above chat, first-run setup and calls, between the rail and the history dock. */
-html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait']):is([data-active-tab='chat'], [data-active-tab='interactive']) > :is(.yachiyo-mobile-content, .yachiyo-mobile-header-drawer) {
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait'])[data-active-tab='chat'] > .yachiyo-mobile-content,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait'])[data-active-tab='chat'] > .yachiyo-mobile-header-drawer,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait'])[data-active-tab='interactive'] > .yachiyo-mobile-content,
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait'])[data-active-tab='interactive'] > .yachiyo-mobile-header-drawer {
   position: relative;
-  inset: auto;
-  margin-inline-start: calc(var(--workspace-start) + var(--workspace-rail));
-  margin-inline-end: calc(var(--workspace-history) + var(--workspace-end));
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  margin-left: var(--workspace-left);
+  margin-right: var(--workspace-right);
 }
 /* Tasks have their own agenda clearance. The generic About and Agent workspace
    scroll surfaces still start at the top of the landscape pager. */
