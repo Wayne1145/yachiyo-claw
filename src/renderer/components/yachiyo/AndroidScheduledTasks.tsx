@@ -261,7 +261,8 @@ export function AndroidScheduledTasks() {
   const detailBody = useRef<HTMLDivElement>(null)
   const detailId = useId()
   const clock = useMemo(() => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }), [locale])
-  const activeCount = tasks.filter((task) => !isInactiveSchedule(task)).length
+  // The native scheduler can pause a run while the user's schedule is still enabled.
+  const enabledCount = tasks.filter((task) => task.enabled).length
   const now = new Date()
 
   const selectTask = (id: string) => {
@@ -298,7 +299,7 @@ export function AndroidScheduledTasks() {
           <header className="schedule-plan-heading">
             <div>
               <h1>{t('执行计划')}</h1>
-              <p>{t('已启用 {{active}} / {{total}}', { active: activeCount, total: tasks.length })}</p>
+              <p>{t('已启用 {{active}} / {{total}}', { active: enabledCount, total: tasks.length })}</p>
             </div>
             <Button
               className="yachiyo-primary-button"
