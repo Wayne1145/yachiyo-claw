@@ -1,0 +1,234 @@
+/* Preset swatches preview the material inside the theme picker only. The portrait is the
+   same bundled Yachiyo mark used on the launcher and in conversation avatars. */
+.yachiyo-theme-card.yachiyo-theme-preset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  gap: 10px 8px;
+  text-align: start;
+  color: var(--chatbox-tint-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.yachiyo-theme-preset:focus-visible {
+  outline: 2px solid var(--chatbox-tint-brand);
+  outline-offset: 2px;
+}
+.yachiyo-preset-sample {
+  grid-column: 1 / -1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  isolation: isolate;
+  overflow: hidden;
+  height: 78px;
+  border-radius: 10px;
+  background: linear-gradient(122deg, #eff6ff, #dce8fa 38%, #e8e4f5 70%, #f8fbff);
+}
+.yachiyo-preset-sample::before,
+.yachiyo-preset-sample::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+.yachiyo-theme-preset[data-material='glass'] .yachiyo-preset-sample::before {
+  inset-inline-start: 12%;
+  width: 52%;
+  height: 34%;
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, .95);
+  background: linear-gradient(168deg, #ffffffdf, #e7f3ffa8 42%, #cbdcf0a8);
+  box-shadow: 0 4px 9px #5c779a26, inset 0 -1px 1px #809cba60;
+}
+.yachiyo-preset-sample i {
+  position: absolute;
+  inset-inline-start: 60%;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #fefeff;
+  background: radial-gradient(at 30% 24%, #fff 4%, #e2f3fbad 46%, #a1bbd98c 82%);
+  box-shadow: 0 5px 12px #727db731;
+}
+.yachiyo-theme-preset[data-material='moon'] .yachiyo-preset-sample {
+  background: linear-gradient(105deg, #f8f2e5, #efe5cf);
+}
+.yachiyo-theme-preset[data-material='moon'] .yachiyo-preset-sample::before {
+  width: 130px;
+  height: 130px;
+  inset-inline-end: -22px;
+  border: 1px solid #c5a773;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px #efe5cf, 0 0 0 7px #d5bf98;
+}
+.yachiyo-theme-preset[data-material='moon'] .yachiyo-preset-sample::after {
+  inset-inline-start: 14px;
+  bottom: 15px;
+  width: 26px;
+  height: 2px;
+  background: #ab363c;
+  box-shadow: 9px 5px #bd9e6b;
+}
+.yachiyo-preset-sample img {
+  position: absolute;
+  inset-inline-end: 8%;
+  height: 75px;
+  width: 75px;
+  object-fit: contain;
+}
+.yachiyo-preset-caption { display: grid; gap: 3px; min-width: 0; }
+.yachiyo-preset-caption strong { font-size: 1rem; }
+.yachiyo-preset-caption small { color: var(--chatbox-tint-secondary); line-height: 1.4; }
+.yachiyo-preset-selected { color: var(--chatbox-tint-brand); align-self: center; }
+
+html[data-yachiyo-appearance='moon-paper'] {
+  --moon-serif: 'Noto Serif CJK SC', 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', 'STSong', 'SimSun', serif;
+  --yachiyo-heading-font: var(--moon-serif);
+  --moon-gold: #b69a68;
+  --moon-field: var(--chatbox-background-primary);
+  --moon-page: var(--chatbox-background-secondary);
+  --moon-line: var(--chatbox-border-primary);
+  --moon-ink: var(--chatbox-tint-primary);
+  --moon-cinnabar: var(--chatbox-tint-brand);
+  /* Existing shared settings, project and interactive controls use these material roles. */
+  --flow-text: var(--moon-ink);
+  --flow-text-secondary: var(--chatbox-tint-secondary);
+  --flow-blue: var(--moon-cinnabar);
+  --flow-nav-active-label: var(--moon-cinnabar);
+  --flow-divider: var(--moon-line);
+  --flow-edge-mid: var(--moon-line);
+  --flow-edge-light: var(--chatbox-border-secondary);
+  --flow-content-fill: var(--moon-field);
+  --flow-group-fill: var(--moon-field);
+  --flow-sheet-fill: var(--moon-field);
+  --flow-field-fill: var(--chatbox-background-tertiary);
+  --flow-control-fill: var(--moon-field);
+  --flow-chrome-fill: var(--moon-field);
+  --flow-specular: linear-gradient(transparent, transparent);
+  --flow-shadow-control: none;
+  --flow-shadow-chrome: none;
+  --flow-shadow-sheet: 0 5px 24px rgba(66, 49, 29, .09);
+  /* In portrait paper chrome participates in flex layout. Insets are already taken by its header and tab bar. */
+  --flow-header-height: 0px;
+  --flow-nav-height: 0px;
+  color: var(--moon-ink);
+  background-color: var(--moon-page);
+}
+html[data-yachiyo-appearance='moon-paper'][data-theme='dark'] { --moon-gold: #a48d68; }
+html[data-yachiyo-appearance='moon-paper'] :is(.App, .yachiyo-mobile-shell, .yachiyo-interactive-page) {
+  background: var(--moon-page);
+  color: var(--moon-ink);
+}
+html[data-yachiyo-appearance='moon-paper'] :is(.yachiyo-mobile-title strong, .yachiyo-interactive-title strong,
+  .yachiyo-workspace-heading h1, .settings-page-heading h1, .settings-section-heading h2,
+  .settings-nav-group h2, .yachiyo-chat-landing h1, .coding-project-summary strong, .yachiyo-project-preview-copy strong,
+  .yachiyo-history-heading h2, .yachiyo-preset-caption strong) {
+  font-family: var(--moon-serif);
+  font-weight: 650;
+  text-shadow: none;
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-header {
+  background: var(--moon-field);
+  border-color: var(--moon-line);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-main-tab-page { background-color: var(--moon-page); }
+html[data-yachiyo-appearance='moon-paper'] .settings-surface {
+  --settings-field: var(--chatbox-background-tertiary);
+  --settings-fill: var(--moon-field);
+  --settings-line: var(--moon-line);
+}
+html[data-yachiyo-appearance='moon-paper'] :is(.settings-section-body, .settings-nav-list, .yachiyo-theme-card,
+  .yachiyo-agent-disclosure, .yachiyo-chat-composer-surface) {
+  border: 1px solid var(--moon-line);
+  background: var(--moon-field);
+  box-shadow: none;
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-theme-card[data-active='true'] { border-color: var(--moon-cinnabar); }
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-chat-composer-surface { border-radius: var(--yachiyo-r-surface); }
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-history-item {
+  color: var(--moon-ink);
+  background: var(--moon-field);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-history-item[data-active='true'] {
+  color: var(--moon-ink);
+  background: var(--chatbox-background-brand-secondary);
+  box-shadow: inset 0 0 0 1px var(--moon-line);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-bottom-nav { background: var(--moon-page); }
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-bottom-nav-grid {
+  background: var(--moon-field);
+  box-shadow: none;
+  border-color: var(--moon-line);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-bottom-nav-item[data-active='true'] {
+  background: var(--chatbox-background-brand-secondary);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-page { display: flex; }
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-shared-interactive-chrome-host > .yachiyo-interactive-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  backdrop-filter: none;
+  border: 0;
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-title {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  background: transparent;
+  border: 0;
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-backdrop:not([style]) {
+  background-color: var(--chatbox-background-tertiary);
+  background-image: radial-gradient(circle at 78% 36%, transparent 27%, color-mix(in srgb, var(--moon-gold) 48%, transparent) 27.12%, transparent 27.38%, transparent 30%, color-mix(in srgb, var(--moon-gold) 54%, transparent) 30.12%, transparent 30.36%);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-backdrop::after { content: none; }
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-response {
+  bottom: 12px;
+  background: var(--moon-field);
+  border-color: var(--moon-line);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-response-text { color: var(--moon-ink); }
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-page .yachiyo-interactive-controls {
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--moon-line);
+  background: var(--moon-field);
+  box-shadow: none;
+}
+/* The opaque chat header can grow when the Agent controls expand. Keep it in the
+   flex flow above chat, first-run setup and calls, between the rail and the history dock. */
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait']):is([data-active-tab='chat'], [data-active-tab='interactive']) > :is(.yachiyo-mobile-content, .yachiyo-mobile-header-drawer) {
+  position: relative;
+  inset: auto;
+  margin-inline-start: calc(var(--workspace-start) + var(--workspace-rail));
+  margin-inline-end: calc(var(--workspace-history) + var(--workspace-end));
+}
+/* Tasks have their own agenda clearance. The generic About and Agent workspace
+   scroll surfaces still start at the top of the landscape pager. */
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-workspace:not(.yachiyo-schedule-workspace) {
+  padding-top: calc(var(--flow-header-height) + 12px);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-page .yachiyo-interactive-controls {
+  position: absolute;
+  border: 1px solid var(--moon-line);
+  border-radius: var(--yachiyo-r-control);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-page .yachiyo-live2d-stage {
+  top: 0;
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-interactive-composer-toolbar .mantine-SegmentedControl-indicator {
+  background: var(--chatbox-background-brand-secondary);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-realtime-actions > .yachiyo-realtime-call {
+  color: #fff;
+  background: var(--chatbox-background-brand-primary);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-realtime-volume > span { background: var(--moon-cinnabar); }
+
+@media (forced-colors: active) {
+  .yachiyo-theme-preset[aria-pressed='true'] { outline: 2px solid Highlight; }
+}

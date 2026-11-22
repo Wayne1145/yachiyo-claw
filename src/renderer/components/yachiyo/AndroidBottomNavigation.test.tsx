@@ -107,4 +107,18 @@ describe('AndroidBottomNavigation', () => {
     expect(lens.style.transform).toBe('translate3d(0%, 0, 0)')
     expect(inner.style.transform).toBe('')
   })
+
+  it('moves the same lens down the rail, including when rotating with a selected destination', () => {
+    const items = [
+      { id: 'chat', label: '聊天', icon: IconPuzzle, order: 100, route: '/' },
+      { id: 'settings', label: '设置', icon: IconPuzzle, order: 200, route: '/settings' },
+    ]
+    const props = { activeTab: 'settings' as const, items, onChange: vi.fn(), reducedMotion: true }
+    const view = render(<AndroidBottomNavigation {...props} />)
+    const lens = view.container.querySelector('.yachiyo-bottom-nav-lens') as HTMLElement
+    expect(lens.style.transform).toBe('translate3d(100%, 0, 0)')
+    view.rerender(<AndroidBottomNavigation {...props} vertical />)
+    expect(lens.style.transform).toBe('translate3d(0, 100%, 0)')
+    expect(view.container.querySelector('[aria-current="page"]')).toBeTruthy()
+  })
 })

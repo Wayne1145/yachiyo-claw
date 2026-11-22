@@ -1,0 +1,155 @@
+/* The same route and media surfaces stay mounted when the IME opens or the phone rotates. */
+.yachiyo-mobile-shell:is([data-shell-layout='rail'], [data-shell-layout='wide']) {
+  --workspace-rail: 66px;
+  --workspace-history: 0px;
+  --workspace-start: var(--mobile-safe-area-inset-left, 0px);
+  --workspace-end: var(--mobile-safe-area-inset-right, 0px);
+  --flow-nav-height: var(--mobile-safe-area-inset-bottom, 0px);
+  --flow-header-height: calc(54px + var(--mobile-safe-area-inset-top, 0px));
+}
+.yachiyo-mobile-shell:not([data-shell-layout='portrait']):dir(rtl) {
+  --workspace-start: var(--mobile-safe-area-inset-right, 0px);
+  --workspace-end: var(--mobile-safe-area-inset-left, 0px);
+}
+.yachiyo-mobile-shell[data-shell-layout='wide'][data-history-docked='true'] {
+  --workspace-history: clamp(192px, 23vw, 306px);
+}
+html .yachiyo-mobile-shell:is([data-shell-layout='rail'], [data-shell-layout='wide']) > :is(.yachiyo-mobile-content, .yachiyo-mobile-header-drawer) {
+  position: absolute;
+  left: auto;
+  right: auto;
+  inset-inline-start: calc(var(--workspace-start) + var(--workspace-rail));
+  inset-inline-end: calc(var(--workspace-history) + var(--workspace-end));
+  top: 0;
+  min-width: 0;
+  padding-inline: 0;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) > .yachiyo-mobile-content { bottom: 0; }
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-main-tab-page { padding-inline: 0; }
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-mobile-header-primary {
+  min-height: var(--flow-header-height);
+  padding: calc(4px + var(--mobile-safe-area-inset-top, 0px)) 10px 4px;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) > .yachiyo-bottom-nav {
+  display: flex;
+  position: absolute;
+  inset: 0 auto 0 auto;
+  inset-inline-start: var(--workspace-start);
+  align-items: center;
+  justify-content: center;
+  width: var(--workspace-rail);
+  min-height: 0;
+  padding: calc(6px + var(--mobile-safe-area-inset-top, 0px)) 4px calc(6px + var(--mobile-safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  box-sizing: border-box;
+  z-index: 32;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) > .yachiyo-bottom-nav::before { display: none; }
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-bottom-nav-grid {
+  position: relative;
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  flex-shrink: 0;
+  margin-block: auto;
+  padding: 4px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(var(--yachiyo-tab-count), minmax(44px, min(12vh, 58px)));
+  grid-auto-flow: row;
+  gap: 0;
+  border-radius: var(--yachiyo-r-surface, 20px);
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-bottom-nav-item {
+  padding: 1px;
+  height: 100%;
+  min-height: 44px;
+  min-width: 0;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-bottom-nav-item-content { gap: 2px; }
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-bottom-nav-lens {
+  inset: 4px 4px auto;
+  width: auto;
+  height: calc((100% - 8px) / var(--yachiyo-tab-count));
+  border-radius: var(--yachiyo-r-control, 14px);
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-mobile-input-box-root {
+  width: min(100%, clamp(300px, 58vw, 650px));
+  margin-inline-start: auto;
+  padding-inline: 10px !important;
+  padding-bottom: calc(8px + var(--flow-nav-height)) !important;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-mobile-chat-composer {
+  min-height: 0;
+  padding: 4px 8px;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-agent-header-controls { display: flex; }
+.yachiyo-history-dock {
+  box-sizing: border-box;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: var(--workspace-end);
+  width: var(--workspace-history);
+  z-index: 3;
+  padding: calc(7px + var(--mobile-safe-area-inset-top, 0px)) 6px calc(7px + var(--mobile-safe-area-inset-bottom, 0px));
+}
+.yachiyo-history-sidebar {
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--flow-divider, var(--yachiyo-border));
+  border-radius: var(--yachiyo-r-surface, 20px);
+  background: var(--flow-content-fill, var(--yachiyo-surface));
+  color: var(--yachiyo-text);
+  box-shadow: var(--flow-shadow-control);
+  overflow: hidden;
+}
+.yachiyo-history-sidebar .yachiyo-history-dialog { height: 100%; padding: 8px; gap: 8px; box-sizing: border-box; }
+.yachiyo-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.yachiyo-history-heading h2 { margin: 0; padding-inline-start: 4px; font-size: 16px; font-weight: 650; }
+.yachiyo-history-heading .mantine-ActionIcon-root { width: 40px; height: 40px; }
+.yachiyo-history-sidebar .yachiyo-history-item { min-height: 50px; padding: 5px 6px; padding-inline-end: 36px; gap: 6px; text-align: start; }
+.yachiyo-history-sidebar .yachiyo-history-icon { display: none; }
+.yachiyo-history-sidebar .yachiyo-history-copy strong { font-size: 13px; }
+.yachiyo-history-sidebar .yachiyo-history-copy small { font-size: 10px; }
+.yachiyo-history-sidebar .yachiyo-history-item .mantine-Badge-root { display: none; }
+.yachiyo-history-sidebar .yachiyo-history-overflow { position: absolute; inset-inline-end: 0; inset-block: 0; z-index: 2; width: 36px; height: 100%; }
+.yachiyo-history-sidebar .yachiyo-history-actions { max-width: 100%; grid-template-columns: repeat(var(--yachiyo-history-action-count),minmax(0,1fr)); gap: 1px; }
+.yachiyo-history-sidebar .yachiyo-history-actions button { width: 100%; min-width: 0; }
+html .yachiyo-mobile-shell[data-shell-layout='wide'][data-history-docked='true'] .yachiyo-shared-interactive-chrome-host > .yachiyo-interactive-header {
+  grid-template-columns: minmax(0,1fr) 44px;
+}
+html[data-yachiyo-appearance] .yachiyo-mobile-shell:is([data-shell-layout='wide'], [data-shell-layout='rail']) .yachiyo-interactive-page {
+  display: block;
+  position: relative;
+  isolation: isolate;
+}
+html[data-yachiyo-appearance] .yachiyo-mobile-shell:is([data-shell-layout='wide'], [data-shell-layout='rail']) .yachiyo-interactive-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+html .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-page .yachiyo-live2d-stage {
+  inset-inline: 1% 36%; top: var(--interactive-stage-top, var(--flow-header-height)); bottom: var(--flow-nav-height);
+}
+html[data-yachiyo-appearance] .yachiyo-mobile-shell:is([data-shell-layout='wide'], [data-shell-layout='rail']) .yachiyo-interactive-page > .yachiyo-interactive-controls {
+  position: absolute;
+  inset-inline: auto 8px;
+  bottom: calc(6px + var(--flow-nav-height));
+  width: min(42%, 370px);
+  margin: 0;
+  box-sizing: border-box;
+  padding: 5px;
+  gap: 4px;
+}
+html[data-yachiyo-appearance] .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-page .yachiyo-interactive-response {
+  inset-inline: auto 8px; width: min(42%, 370px); bottom: var(--interactive-stage-bottom, 110px);
+}
+.yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-composer-toolbar { gap: 2px; }
+.yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-composer-toolbar .yachiyo-interactive-mode-control { width: 100%; }
+@media (max-width: 950px) {
+  .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-composer-toolbar { grid-template-columns: minmax(0,1fr); }
+  .yachiyo-mobile-shell:not([data-shell-layout='portrait']) .yachiyo-interactive-model-shortcut { justify-content: center; min-height: 28px; }
+}

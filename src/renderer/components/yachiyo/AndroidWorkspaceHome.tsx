@@ -4,7 +4,6 @@ import {
   IconDeviceMobile,
   IconExternalLink,
   IconFolderOpen,
-  IconListCheck,
   IconPlayerPlay,
   IconRefresh,
   IconShieldLock,
@@ -315,22 +314,9 @@ export function AndroidAgentWorkspace() {
 
 export function AndroidTasksWorkspace() {
   const { t } = useTranslation()
-  const titleId = useId()
 
   return (
-    <main className="yachiyo-workspace" aria-labelledby={titleId}>
-      <section className="yachiyo-workspace-heading">
-        <div className="yachiyo-workspace-icon yachiyo-workspace-icon-amber">
-          <IconListCheck size={28} aria-hidden="true" />
-        </div>
-        <div>
-          <Text className="yachiyo-eyebrow">AUTOMATIONS</Text>
-          <Title id={titleId} order={1}>
-            {t('任务')}
-          </Title>
-        </div>
-      </section>
-
+    <main className="yachiyo-workspace yachiyo-schedule-workspace" aria-label={String(t('任务'))}>
       <AndroidScheduledTasks />
     </main>
   )

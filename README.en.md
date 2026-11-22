@@ -84,7 +84,7 @@ This repository is maintained with assistance from Codex and written with assist
 ### Extensions and themes
 
 - The declarative theme center accepts pasted JSON, a selected file, or a public HTTPS import, with temporary preview, install, switch, and delete actions. Themes can override supported color tokens only and cannot run code.
-- Two built-in, non-removable appearances are available: Yachiyo Light Pink and Yachiyo Liquid Glass. Liquid Glass uses a pure-white chat background and translucent navigation and input controls. Its title row remains visible, while Agent controls and input tools can be expanded or collapsed independently.
+- Choose Yachiyo Flow Glass for translucent navigation and input controls, or Moonlit Paper for warm paper surfaces, vermilion accents and serif headings. Both built-in themes support light, dark and system appearance.
 - Android includes a third-party plugin center, HTTPS or local ZIP installation, declarative pages, settings contributions, Agent-tool contributions, permission management, health state, updates, and complete uninstall.
 - Script plugins run in an opaque-origin Worker without inherited app-origin permissions. They call allowlisted Host APIs through versioned JSON-only RPC; network, storage, and tool access are granted per plugin manifest, while failures are audited and can trigger timeout termination, health circuit breaking, or install rollback.
 - The sample plugin's full Android path has been tested on device: local FunctionGemma tool invocation, top-level approval, isolated Worker execution, result return, and a second model response.
@@ -103,7 +103,7 @@ This repository is maintained with assistance from Codex and written with assist
 
 ### Android application experience
 
-- Light pink-and-white styling, an optional ChatGPT-style Liquid Glass theme, capsule controls, page-transition motion, and portrait/landscape layouts.
+- Flow Glass and Moonlit Paper themes, page transitions and layouts for portrait and landscape.
 - Layouts are tuned for common full-screen ratios and high-resolution devices close to 9:21. Agent and download queues have been checked for input, scrolling, and bottom-navigation boundaries at `1200x2608` and `1440x3200` portrait viewports.
 - Create one-time, daily, or weekly Agent tasks manually; due tasks run when the app is active or becomes active again.
 - Room, WorkManager and boot/app-upgrade receivers persist and wake tasks. Supported OpenAI-compatible jobs can execute headlessly; interactive or unsupported capabilities require foreground takeover.

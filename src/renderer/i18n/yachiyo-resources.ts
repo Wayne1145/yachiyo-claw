@@ -5,8 +5,12 @@ import { yachiyoMiscEnglish } from './yachiyo-resources-misc'
 import { yachiyoSettingsEnglish } from './yachiyo-resources-settings'
 import { yachiyoRealtimeEnglish } from './yachiyo-resources-realtime'
 import { yachiyoUtilityEnglish, yachiyoUtilityTraditionalChinese } from './yachiyo-resources-utility'
+import { workspaceUiEnglish, workspaceUiTraditionalChinese } from './yachiyo-resources-workspace-ui'
+import { scheduleUiEnglish, scheduleUiTraditionalChinese } from './yachiyo-resources-schedule-ui'
 
 const english: Record<string, string> = {
+  ...workspaceUiEnglish,
+  ...scheduleUiEnglish,
   ...yachiyoRealtimeEnglish,
   ...yachiyoSettingsEnglish,
   主导航: 'Main navigation',
@@ -421,6 +425,8 @@ const simplifiedChinese = Object.fromEntries(Object.keys(english).map((key) => [
 const traditionalChinese: Record<string, string> = {
   ...simplifiedChinese,
   ...yachiyoUtilityTraditionalChinese,
+  ...workspaceUiTraditionalChinese,
+  ...scheduleUiTraditionalChinese,
   设置: '設定',
   聊天: '聊天',
   交互式: '互動式',

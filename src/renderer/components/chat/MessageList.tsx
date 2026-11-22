@@ -457,6 +457,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
                 id={msg.id}
                 msg={msg}
                 sessionId={currentSession.id}
+                sessionName={currentSession.name}
                 sessionType={currentSession.type || 'chat'}
                 className={options.isFirstItem ? 'pt-4' : options.isLastItem ? '!pb-4' : ''}
                 collapseThreshold={msg.role === 'system' ? 1 : undefined}

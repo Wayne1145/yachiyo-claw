@@ -141,6 +141,7 @@ export function AndroidMainTabPager({
   onChange,
   onTransitionChange,
   interactionState,
+  verticalNavigation = false,
 }: {
   activeTab: AndroidShellTab
   items: readonly AndroidMainTabPagerItem[]
@@ -150,6 +151,7 @@ export function AndroidMainTabPager({
   onChange: (tab: AndroidShellTab) => Promise<void> | void
   onTransitionChange?: (snapshot: AndroidTabTransitionSnapshot | undefined) => void
   interactionState?: AndroidPagerInteractionState
+  verticalNavigation?: boolean
 }) {
   const reducedMotion = useReducedMotion()
   const gesturesLocked = useAndroidPagerGesturesLocked()
@@ -669,6 +671,7 @@ export function AndroidMainTabPager({
         activeTab={activeTab}
         items={items}
         onChange={requestTab}
+        vertical={verticalNavigation}
         presentationIndex={presentationIndex}
         transition={transitionPair}
         reducedMotion={Boolean(reducedMotion)}

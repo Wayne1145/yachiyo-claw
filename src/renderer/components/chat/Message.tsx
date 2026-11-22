@@ -31,6 +31,7 @@ import { trackJkClickEvent } from '@/analytics/jk'
 import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
 import Markdown from '@/components/Markdown'
 import { useInAndroidAppShell } from '@/components/yachiyo/AndroidAppShellContext'
+import { MessageProjectCards } from '@/components/yachiyo/ProjectPreviewCard'
 import { useFetchBlob } from '@/hooks/useBlob'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { cn } from '@/lib/utils'
@@ -56,6 +57,7 @@ import MessageStatuses from './MessageLoading'
 
 interface Props {
   id?: string
+  sessionName?: string
   sessionId: string
   sessionType: SessionType
   msg: Message
@@ -521,6 +523,7 @@ const _Message: FC<Props> = (props) => {
             </div>
           )}
         </Box>
+        {inAndroidAppShell && msg.role === 'assistant' && <MessageProjectCards message={msg} sessionName={props.sessionName} />}
         {props.sessionType === 'picture' && contentParts.filter((p) => p.type === 'image').length > 0 && (
           <PictureGallery
             pictures={contentParts.filter((p) => p.type === 'image')}

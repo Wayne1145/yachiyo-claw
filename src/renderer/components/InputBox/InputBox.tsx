@@ -255,8 +255,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
 
     const { t } = useTranslation()
     const navigate = useNavigate()
-    const isSmallScreen = useIsSmallScreen()
+    const smallViewport = useIsSmallScreen()
     const inAndroidAppShell = useInAndroidAppShell()
+    const isSmallScreen = smallViewport || inAndroidAppShell
     const toolbarIconSize = isSmallScreen ? 22 : 18
     const { height: viewportHeight } = useViewportSize()
     const pasteLongTextAsAFile = useSettingsStore((state) => state.pasteLongTextAsAFile)

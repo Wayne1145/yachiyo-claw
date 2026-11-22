@@ -27,4 +27,13 @@ describe('Live2D transform persistence', () => {
       scale: 0.25,
     })
   })
+
+  it('applies landscape framing only to unsaved transforms, including after resetting', () => {
+    const wide = { offsetX: 0, offsetY: 0.34, scale: 1.9 }
+    expect(loadLive2DTransform('a', wide)).toEqual(wide)
+    saveLive2DTransform('a', DEFAULT_LIVE2D_TRANSFORM)
+    expect(loadLive2DTransform('a', wide)).toEqual(DEFAULT_LIVE2D_TRANSFORM)
+    clearLive2DTransform('a')
+    expect(loadLive2DTransform('a', wide)).toEqual(wide)
+  })
 })

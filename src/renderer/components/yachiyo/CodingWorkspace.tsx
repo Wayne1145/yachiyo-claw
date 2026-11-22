@@ -64,6 +64,8 @@ import {
   useCodingProjects,
 } from '@/stores/codingProjectStore'
 import type { NativeApkInspection } from '@/platform/native/yachiyo_artifact'
+import { CodingProjectSummary } from './CodingProjectSummary'
+import { MessageProjectCards } from './ProjectPreviewCard'
 import './coding-workspace.css'
 
 const CREATE_TARGETS: BuildTargetId[] = ['web-static', 'web-vite', 'web-pwa', 'android-capacitor', 'android-kotlin']
@@ -387,6 +389,7 @@ function ConversationView({ taskId }: { taskId: string }) {
               <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
                 {getMessageText(message, true, true) || (message.generating ? t('正在工作...') : '')}
               </Text>
+              <MessageProjectCards message={message} sessionName={session.name} />
             </Box>
           ))}
         </Stack>
@@ -637,18 +640,26 @@ function RunView({ projectId }: { projectId: string }) {
             ? profile.category === 'web'
               ? profile.id === 'web-static'
                 ? 'python3 -m http.server 5173 --bind 127.0.0.1'
-                : 'npm run dev -- --host 127.0.0.1'
+                : 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort'
               : ''
             : profile.buildCommand
     if (!command) return
     setBusy(kind)
     try {
-      await startCodingBuildRun(project, kind, command, kind === 'build' ? 900_000 : 600_000)
-      await refetch()
+      const run = await startCodingBuildRun(project, kind, command, kind === 'build' ? 900_000 : 600_000)
       if (kind === 'preview' && platform.registerWorkspacePreview && platform.openWorkspacePreview) {
         const preview = await platform.registerWorkspacePreview({ port: 5173, path: '/' })
-        if (preview.success && preview.id) await platform.openWorkspacePreview(preview.id)
+        if (preview.success && preview.id && preview.url) {
+          // Preserve reconciled job status if polling completed while the registration was in flight.
+          const current = await codingProjectStorage.get<CodingBuildRun>('builds', run.id)
+          await codingProjectStorage.put('builds', {
+            ...(current || run),
+            preview: { id: preview.id, url: preview.url },
+          })
+          await platform.openWorkspacePreview(preview.id)
+        }
       }
+      await refetch()
     } catch (error) {
       setLog(error instanceof Error ? error.message : String(error))
     } finally {
@@ -891,34 +902,37 @@ export function CodingProjectWorkspace() {
           </Button>
         </Alert>
       )}
-      <Tabs value={tab} onChange={setTab} className="coding-tabs">
-        <Tabs.List grow>
-          <Tabs.Tab value="conversation" leftSection={<IconSend size={16} />}>
-            {t('对话')}
-          </Tabs.Tab>
-          <Tabs.Tab value="project" leftSection={<IconFile size={16} />}>
-            {t('项目')}
-          </Tabs.Tab>
-          <Tabs.Tab value="changes" leftSection={<IconGitBranch size={16} />}>
-            {t('改动')}
-          </Tabs.Tab>
-          <Tabs.Tab value="run" leftSection={<IconTerminal2 size={16} />}>
-            {t('运行')}
-          </Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="conversation">
-          <ConversationView taskId={project.taskId} />
-        </Tabs.Panel>
-        <Tabs.Panel value="project">
-          <ProjectView project={project} />
-        </Tabs.Panel>
-        <Tabs.Panel value="changes">
-          <ChangesView projectId={project.id} />
-        </Tabs.Panel>
-        <Tabs.Panel value="run">
-          <RunView projectId={project.id} />
-        </Tabs.Panel>
-      </Tabs>
+      <div className="coding-project-layout">
+        <CodingProjectSummary project={project} onShowRuns={() => setTab('run')} />
+        <Tabs value={tab} onChange={setTab} className="coding-tabs">
+          <Tabs.List grow>
+            <Tabs.Tab value="conversation" leftSection={<IconSend size={16} />}>
+              {t('对话')}
+            </Tabs.Tab>
+            <Tabs.Tab value="project" leftSection={<IconFile size={16} />}>
+              {t('项目')}
+            </Tabs.Tab>
+            <Tabs.Tab value="changes" leftSection={<IconGitBranch size={16} />}>
+              {t('改动')}
+            </Tabs.Tab>
+            <Tabs.Tab value="run" leftSection={<IconTerminal2 size={16} />}>
+              {t('运行')}
+            </Tabs.Tab>
+          </Tabs.List>
+          <Tabs.Panel value="conversation">
+            <ConversationView taskId={project.taskId} />
+          </Tabs.Panel>
+          <Tabs.Panel value="project">
+            <ProjectView project={project} />
+          </Tabs.Panel>
+          <Tabs.Panel value="changes">
+            <ChangesView projectId={project.id} />
+          </Tabs.Panel>
+          <Tabs.Panel value="run">
+            <RunView projectId={project.id} />
+          </Tabs.Panel>
+        </Tabs>
+      </div>
     </main>
   )
 }

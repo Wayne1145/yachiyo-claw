@@ -99,6 +99,7 @@ export const CodingBuildRunSchema = z.object({
   schemaVersion: z.literal(1), id: z.string(), projectId: z.string(), kind: z.enum(['install', 'build', 'test', 'preview']),
   command: z.string(), state: z.enum(['queued', 'running', 'completed', 'failed', 'cancelled', 'needs-check']),
   nativeJobId: z.string().optional(), exitCode: z.number().nullable().optional(), logRef: z.string().optional(),
+  preview: z.object({ id: z.string(), url: z.string() }).optional(),
   startedAt: z.number(), completedAt: z.number().optional(),
 })
 export type CodingBuildRun = z.infer<typeof CodingBuildRunSchema>

@@ -24,14 +24,14 @@ export function normalizeLive2DTransform(value?: Partial<Live2DTransform> | null
   }
 }
 
-export function loadLive2DTransform(modelId: string): Live2DTransform {
+export function loadLive2DTransform(modelId: string, fallback = DEFAULT_LIVE2D_TRANSFORM): Live2DTransform {
   try {
     const stored = localStorage.getItem(`${STORAGE_PREFIX}${modelId}`)
     return stored
       ? normalizeLive2DTransform(JSON.parse(stored) as Partial<Live2DTransform>)
-      : { ...DEFAULT_LIVE2D_TRANSFORM }
+      : { ...fallback }
   } catch {
-    return { ...DEFAULT_LIVE2D_TRANSFORM }
+    return { ...fallback }
   }
 }
 

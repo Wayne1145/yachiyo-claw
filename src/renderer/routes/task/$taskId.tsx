@@ -645,6 +645,7 @@ function TaskChat({ session }: { session: NonNullable<ReturnType<typeof useTaskS
                   key={msg.id}
                   id={msg.id}
                   sessionId={session.linkedSessionId || session.id}
+                  sessionName={linkedChat?.name || session.name}
                   sessionType="chat"
                   msg={msg}
                   buttonGroup="none"

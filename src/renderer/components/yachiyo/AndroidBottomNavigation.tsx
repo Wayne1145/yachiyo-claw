@@ -21,6 +21,7 @@ export function AndroidBottomNavigation({
   presentationIndex,
   transition,
   reducedMotion,
+  vertical = false,
 }: {
   activeTab: AndroidShellTab
   onChange: (tab: AndroidShellTab) => void
@@ -28,6 +29,7 @@ export function AndroidBottomNavigation({
   presentationIndex?: MotionValue<number>
   transition?: BottomNavigationTransition
   reducedMotion?: boolean
+  vertical?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const overrides = useSettingsStore((state) => state.featureOverrides)
@@ -42,11 +44,10 @@ export function AndroidBottomNavigation({
     if (!presentationIndex) fallbackPresentationIndex.set(activeIndex)
   }, [activeIndex, fallbackPresentationIndex, presentationIndex])
   const direction = i18n.dir() === 'rtl' ? -1 : 1
-  const lensTransform = useTransform(
-    resolvedPresentationIndex,
-    (value) => `translate3d(${value * direction * 100}%, 0, 0)`
-  )
-  const reducedLensTransform = `translate3d(${Math.max(0, activeIndex) * direction * 100}%, 0, 0)`
+  const lensPosition = (index: number) =>
+    vertical ? `translate3d(0, ${index * 100}%, 0)` : `translate3d(${index * direction * 100}%, 0, 0)`
+  const lensTransform = useTransform(resolvedPresentationIndex, lensPosition)
+  const reducedLensTransform = lensPosition(Math.max(0, activeIndex))
   const style: BottomNavigationStyle = {
     '--yachiyo-tab-count': Math.max(1, items.length),
   }

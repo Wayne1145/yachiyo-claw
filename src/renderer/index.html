@@ -74,7 +74,11 @@
       }
     </script>
     <script>
-      document.documentElement.setAttribute("data-yachiyo-appearance", "flow-glass");
+      var appearance = "flow-glass";
+      try {
+        if (localStorage.getItem("yachiyo:themes:active:v1") === "yachiyo-moon-paper") appearance = "moon-paper";
+      } catch (error) { /* Storage may be unavailable during WebView recovery. */ }
+      document.documentElement.setAttribute("data-yachiyo-appearance", appearance);
       // The product corner contract is deliberately the regular R corner.
       // Do not let a WebView's optional squircle implementation change it.
       document.documentElement.setAttribute("data-yachiyo-corners", "round");
@@ -120,6 +124,15 @@
       }
       html[data-theme="dark"] .splash-screen {
         background-color: #181d24;
+      }
+
+      html[data-yachiyo-appearance="moon-paper"],
+      html[data-yachiyo-appearance="moon-paper"] .splash-screen {
+        background-color: #f7f5f0;
+      }
+      html[data-yachiyo-appearance="moon-paper"][data-theme="dark"],
+      html[data-yachiyo-appearance="moon-paper"][data-theme="dark"] .splash-screen {
+        background-color: #1d201e;
       }
 
       .splash-screen-top {

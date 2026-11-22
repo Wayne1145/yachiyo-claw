@@ -1,4 +1,6 @@
 export const yachiyoSettingsEnglish: Record<string, string> = {
+  月白流云: 'Moonlit Paper',
+  该标识属于内置主题: 'This ID belongs to a built-in theme',
   '无法清空记忆': 'Could not clear memories',
   '内置 · 明暗配色自动适配': 'Built in · Adapts to light and dark appearance',
   无法读取语音配置: 'Could not load speech settings',

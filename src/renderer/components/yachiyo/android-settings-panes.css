@@ -1,0 +1,41 @@
+.yachiyo-settings-panes,
+.yachiyo-settings-pane-content {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.yachiyo-settings-panes[data-split] {
+  display: grid;
+  grid-template-columns: clamp(11rem, 24%, 17rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.yachiyo-settings-catalog {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-block: calc(var(--flow-header-height, 56px) + 0.5rem) max(0.5rem, var(--mobile-safe-area-inset-bottom, 0px));
+  border-inline-end: 1px solid var(--chatbox-border-primary);
+}
+.yachiyo-settings-catalog .settings-navigation-compact {
+  padding: 0 0.65rem;
+}
+.yachiyo-settings-catalog .settings-page-heading {
+  display: none;
+}
+.yachiyo-settings-catalog .settings-nav-row {
+  min-height: 44px;
+}
+.yachiyo-settings-catalog .settings-nav-group {
+  margin-block: 0.75rem;
+}
+
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-settings-panes[data-split] .yachiyo-settings-detail {
+  box-sizing: border-box;
+  padding-block: calc(var(--flow-header-height) + .65rem) max(.75rem, var(--mobile-safe-area-inset-bottom, 0px));
+  background: var(--moon-page);
+}
+html[data-yachiyo-appearance='moon-paper'] .yachiyo-settings-panes .settings-surface {
+  --settings-page: var(--moon-page);
+  background-color: var(--moon-page);
+}

@@ -55,6 +55,7 @@ import { type Live2DUserError, normalizeLive2DError } from '@/mobile/live2d-erro
 import { getLive2DRenderQuality, type Live2DRenderQuality, setLive2DRenderQuality } from '@/mobile/live2d-performance'
 import {
   clearLive2DTransform,
+  DEFAULT_LIVE2D_TRANSFORM,
   type Live2DTransform,
   loadLive2DTransform,
   saveLive2DTransform,
@@ -88,14 +89,20 @@ import { RealtimeVoiceControls, RealtimeVadControl } from './RealtimeVoiceContro
 import { useNavigate } from '@tanstack/react-router'
 import './interactive-layout.css'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
+import { useAndroidShellLayout } from './android-landscape-layout'
+
+// Frame the built-in full-body artwork from the waist up on a short landscape stage.
+const LANDSCAPE_YACHIYO_FRAME: Live2DTransform = { offsetX: 0, offsetY: 0.34, scale: 1.9 }
 
 export function AndroidInteractive({
   sessionId,
   onSessionChange,
+  historyDock,
   activity = 'active',
 }: {
   sessionId?: string
   onSessionChange: (sessionId: string) => void
+  historyDock?: HTMLElement | null
   activity?: AndroidTabPageActivity
 }) {
   const { t } = useTranslation()
@@ -104,6 +111,8 @@ export function AndroidInteractive({
   // The bundled model never depends on IndexedDB or imported ZIPs being readable.
   const [models, setModels] = useState<Live2DModelDescriptor[]>([BUILT_IN_YACHIYO_MODEL])
   const [selectedModelId, setSelectedModelId] = useState(getSelectedLive2DModelId)
+  const shellLayout = useAndroidShellLayout()
+  const defaultFrame = shellLayout !== 'portrait' && selectedModelId === BUILT_IN_YACHIYO_MODEL.id ? LANDSCAPE_YACHIYO_FRAME : DEFAULT_LIVE2D_TRANSFORM
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [realtimeMode, setRealtimeMode] = useAndroidRetainedState('interactive:realtime-mode', false)
@@ -116,10 +125,7 @@ export function AndroidInteractive({
   const [ttsSpeaking, setTtsSpeaking] = useState(false)
   const [bubbleVisible, setBubbleVisible] = useState(false)
   const [input, setInput] = useAndroidRetainedState(`interactive:${retainedSessionKey}:composer-draft`, '')
-  const [agentMode, setAgentMode] = useAndroidRetainedState(
-    `interactive:${retainedSessionKey}:conversation-mode`,
-    false
-  )
+  const [agentMode, setAgentMode] = useAndroidRetainedState('interactive:agent-mode', false)
   const [taskId, setTaskId] = useAndroidRetainedState<string | undefined>(
     `interactive:${retainedSessionKey}:agent-task`,
     undefined
@@ -135,7 +141,8 @@ export function AndroidInteractive({
   const [background, setBackground] = useState(() => localStorage.getItem('yachiyo.interactive.background') || '')
   const [renderQuality, setRenderQuality] = useState(getLive2DRenderQuality)
   const [renderInfo, setRenderInfo] = useState<{ width: number; height: number; scale: number }>()
-  const [live2dTransform, setLive2dTransform] = useState<Live2DTransform>(() => loadLive2DTransform(selectedModelId))
+  const [live2dTransform, setLive2dTransform] = useState<Live2DTransform>(() => loadLive2DTransform(selectedModelId, defaultFrame))
+  const resetTransformRequested = useRef(false)
   const [live2dMoveMode, setLive2dMoveMode] = useState(false)
   const stageRef = useRef<Live2DStageHandle>(null)
   const pageRef = useRef<HTMLElement>(null)
@@ -186,6 +193,26 @@ export function AndroidInteractive({
   onSessionChangeRef.current = onSessionChange
 
   useEffect(() => {
+    if (historyDock) setHistoryOpen(false)
+  }, [historyDock])
+
+  useEffect(() => {
+    if (!agentMode || !sessionId || taskId || activity !== 'active') return
+    let cancelled = false
+    // Resolve the selected chat's own task. Carry the mode across history, never another project's tool context.
+    void ensureAgentTaskForChat(sessionId)
+      .then((linked) => {
+        if (!cancelled) setTaskId(linked.id)
+      })
+      .catch(() => {
+        if (!cancelled) setNotice(String(t('Agent 会话初始化失败')))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activity, agentMode, sessionId, setTaskId, t, taskId])
+
+  useEffect(() => {
     const page = pageRef.current
     const controls = controlsRef.current
     const header = document.querySelector('.yachiyo-interactive-header')
@@ -219,8 +246,8 @@ export function AndroidInteractive({
 
   useEffect(() => {
     setLive2dMoveMode(false)
-    setLive2dTransform(loadLive2DTransform(selectedModelId))
-  }, [selectedModelId])
+    setLive2dTransform(loadLive2DTransform(selectedModelId, defaultFrame))
+  }, [defaultFrame, selectedModelId])
 
   useEffect(() => {
     const generation = ++sessionCreationGenerationRef.current
@@ -638,6 +665,7 @@ export function AndroidInteractive({
   }
 
   const startLive2DMoveMode = () => {
+    resetTransformRequested.current = false
     live2dTransformSnapshotRef.current = stageRef.current?.getTransform() ?? live2dTransform
     setLive2dMoveMode(true)
   }
@@ -651,27 +679,34 @@ export function AndroidInteractive({
 
   const saveLive2DMoveMode = () => {
     const current = stageRef.current?.getTransform() ?? live2dTransform
-    setLive2dTransform(saveLive2DTransform(selectedModelId, current))
+    if (resetTransformRequested.current && current.scale === defaultFrame.scale && current.offsetX === defaultFrame.offsetX && current.offsetY === defaultFrame.offsetY) {
+      clearLive2DTransform(selectedModelId)
+      setLive2dTransform(defaultFrame)
+    } else {
+      setLive2dTransform(saveLive2DTransform(selectedModelId, current))
+    }
     setLive2dMoveMode(false)
   }
 
   const resetLive2DMoveMode = () => {
-    const reset = clearLive2DTransform(selectedModelId)
-    stageRef.current?.resetTransform()
-    setLive2dTransform(reset)
+    resetTransformRequested.current = true
+    stageRef.current?.setTransform(defaultFrame)
+    setLive2dTransform(defaultFrame)
   }
 
   const interactiveChrome = (
     <AndroidInteractiveChrome>
-      <ActionIcon
-        size={44}
-        variant="subtle"
-        aria-label={String(t('会话记录'))}
-        title={t('会话记录')}
-        onClick={() => setHistoryOpen(true)}
-      >
-        <IconHistory size={21} />
-      </ActionIcon>
+      {!historyDock && (
+        <ActionIcon
+          size={44}
+          variant="subtle"
+          aria-label={String(t('会话记录'))}
+          title={t('会话记录')}
+          onClick={() => setHistoryOpen(true)}
+        >
+          <IconHistory size={21} />
+        </ActionIcon>
+      )}
       <button
         type="button"
         className="yachiyo-interactive-title"
@@ -1153,13 +1188,16 @@ export function AndroidInteractive({
         </div>
       </AdaptiveModal>
 
-      <AndroidConversationHistory
-        opened={historyOpen}
-        mode={agentMode ? 'agent' : 'chat'}
-        currentId={sessionId}
-        onClose={() => setHistoryOpen(false)}
-        onSelectSession={onSessionChange}
-      />
+      {(historyOpen || historyDock) && (
+        <AndroidConversationHistory
+          opened={historyOpen || Boolean(historyDock)}
+          dock={historyDock}
+          mode={agentMode ? 'agent' : 'chat'}
+          currentId={sessionId}
+          onClose={() => setHistoryOpen(false)}
+          onSelectSession={onSessionChange}
+        />
+      )}
 
       <AdaptiveModal
         opened={modelPickerOpen}

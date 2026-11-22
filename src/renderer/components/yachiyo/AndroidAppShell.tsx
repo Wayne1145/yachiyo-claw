@@ -64,7 +64,7 @@ import { AndroidFlowGlassEnvironment, FlowGlassFilterDefinitions } from './Andro
 import { AndroidInteractive } from './AndroidInteractive'
 import { AndroidMainTabPager, type AndroidTabTransitionSnapshot } from './AndroidMainTabPager'
 import { AndroidPagerHeaderActions, AndroidPagerHeaderTitle } from './AndroidPagerHeaderTransition'
-import { AndroidSettingsHome } from './AndroidSettingsHome'
+import { AndroidSettingsHome, AndroidSettingsPanes } from './AndroidSettingsHome'
 import {
   AndroidSettingsChromeTransition,
   type AndroidSettingsStackHandle,
@@ -74,6 +74,7 @@ import { AndroidSharedChromeHostProvider, AndroidStandardChromeLayer } from './A
 import { AndroidTabPagePreview } from './AndroidTabPagePreview'
 import { AndroidAboutWorkspace, AndroidTasksWorkspace } from './AndroidWorkspaceHome'
 import { AndroidPagerGestureLockProvider } from './android-pager-gesture-lock'
+import { useAndroidShellLayout } from './android-landscape-layout'
 import { AndroidRetainedTabSurface } from './android-retained-state'
 import type { AndroidTabPageActivity } from './android-tab-page-activity'
 import { YachiyoApiOnboarding } from './YachiyoApiOnboarding'
@@ -83,6 +84,7 @@ import './android-app-shell.css'
 import './flow-glass.css'
 import './local-model-center.css'
 import '@/components/settings/settings.css'
+import './landscape-workspace.css'
 
 const SETTINGS_HEADER_TITLES: Readonly<Record<string, string>> = {
   provider: 'Model Provider',
@@ -115,6 +117,7 @@ function resolveSettingsHeaderTitle(pathname: string, translate: (key: string) =
 
 export function AndroidAppShell({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
+  const layout = useAndroidShellLayout()
   const location = useLocation()
   const lastConversationPathname = useRef(
     location.pathname === '/' || location.pathname.startsWith('/session/') || location.pathname.startsWith('/task/')
@@ -209,6 +212,12 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
   const isAgentTaskPath = location.pathname === '/task' || location.pathname.startsWith('/task/')
   const isSettingsDetail = activeTab === 'settings' && location.pathname !== '/settings'
   const isInteractive = activeTab === 'interactive'
+  const dockHistory = layout === 'wide' && (isInteractive || (activeTab === 'chat' && (hasProvider || isAgentTaskPath)))
+  const [historyDock, setHistoryDock] = useState<HTMLElement | null>(null)
+  const showChatHistory = activeTab === 'chat' && (historyOpened || (dockHistory && Boolean(historyDock)))
+  useEffect(() => {
+    if (dockHistory) setHistoryOpened(false)
+  }, [dockHistory])
   const settingsHeaderTitle =
     activePlugin && !activePluginHasShellTab
       ? activePlugin.manifest.displayName
@@ -521,7 +530,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       }
       void router.navigate({ to: '/settings/chat', search: {} })
     }
-    return [
+    const actions: AdaptiveActionDescriptor[] = [
       {
         id: 'search',
         label: String(t('Search')),
@@ -619,7 +628,8 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
         ),
       },
     ]
-  }, [location.pathname, location.search, setOpenSearchDialog, showConversationTools, t, toolbarSessionId])
+    return dockHistory ? actions.filter((action) => action.id !== 'history') : actions
+  }, [dockHistory, location.pathname, location.search, setOpenSearchDialog, showConversationTools, t, toolbarSessionId])
 
   const handleAgentToggle = async (enabled: boolean) => {
     if (enabled) {
@@ -679,13 +689,15 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
           <div className="yachiyo-settings-detail settings-surface">{children}</div>
         )
       return (
-        <AndroidSettingsStackSurface
-          ref={settingsStackRef}
-          pathname={location.pathname}
-          search={location.search as Record<string, unknown>}
-        >
-          {settingsPage}
-        </AndroidSettingsStackSurface>
+        <AndroidSettingsPanes home={workspaceView === 'settings'}>
+          <AndroidSettingsStackSurface
+            ref={settingsStackRef}
+            pathname={location.pathname}
+            search={location.search as Record<string, unknown>}
+          >
+            {settingsPage}
+          </AndroidSettingsStackSurface>
+        </AndroidSettingsPanes>
       )
     }
     if (isAgentTaskPath) return children
@@ -706,6 +718,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
       return (
         <AndroidInteractive
           sessionId={interactiveSessionId}
+          historyDock={dockHistory ? historyDock : null}
           onSessionChange={(sessionId) =>
             void router.navigate({ to: '/interactive', search: { sessionId }, replace: true })
           }
@@ -728,7 +741,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
     <AndroidAppShellContext.Provider value={true}>
       <AndroidPagerGestureLockProvider>
         <AndroidSharedChromeHostProvider host={sharedChromeHost}>
-          <div className="yachiyo-mobile-shell" data-active-tab={activeTab}>
+          <div className="yachiyo-mobile-shell" data-active-tab={activeTab} data-shell-layout={layout} data-history-docked={dockHistory}>
             <AndroidFlowGlassEnvironment pathname={location.pathname} />
             {pagerTransition && pagerTargetPath && (
               <AndroidFlowGlassEnvironment pathname={pagerTargetPath} transitionOpacity={pagerTransition.progress} />
@@ -737,12 +750,14 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
             {shellOverlays.map((Overlay, index) => (
               <Overlay key={`${Overlay.displayName || Overlay.name || 'feature-overlay'}-${index}`} />
             ))}
-            <AndroidConversationHistory
-              opened={historyOpened}
+            {dockHistory && <div ref={setHistoryDock} className="yachiyo-history-dock" />}
+            {showChatHistory && <AndroidConversationHistory
+              opened={historyOpened || dockHistory}
+              dock={dockHistory ? historyDock : null}
               mode={isAgentTaskPath ? 'agent' : 'chat'}
               currentId={location.pathname.split('/').at(-1)}
               onClose={() => setHistoryOpened(false)}
-            />
+            />}
             <div className="yachiyo-mobile-header-drawer">
               <div className="yachiyo-mobile-header-drawer-inner">
                 <header className="yachiyo-mobile-header" data-shell-tab={activeTab}>
@@ -901,6 +916,7 @@ export function AndroidAppShell({ children }: { children: ReactNode }) {
               onChange={handleTabChange}
               onTransitionChange={setPagerTransition}
               interactionState={interactionState}
+              verticalNavigation={layout !== 'portrait'}
             >
               {content}
             </AndroidMainTabPager>

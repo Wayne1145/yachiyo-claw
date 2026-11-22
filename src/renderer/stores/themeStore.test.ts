@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { applyActiveTheme, BUILT_IN_LIQUID_GLASS_THEME, BUILT_IN_LIQUID_GLASS_THEME_ID, useThemeStore } from './themeStore'
+import { MOON_PAPER_THEME_ID } from '@/themes/moon-paper'
+import { applyActiveTheme, BUILT_IN_LIQUID_GLASS_THEME, BUILT_IN_LIQUID_GLASS_THEME_ID, loadActiveThemeId, useThemeStore } from './themeStore'
 import { uiStore } from './uiStore'
 
 function theme(id: string, color: string) {
@@ -40,6 +41,32 @@ describe('themeStore', () => {
     expect(brand()).toBe('#0a84ff')
     expect(background()).toBe('#181d24')
     expect(document.documentElement.dataset.yachiyoAppearance).toBe('flow-glass')
+  })
+
+  it('restores Moonlit Paper from storage without installing a manifest and follows scheme changes', () => {
+    useThemeStore.getState().setActive(MOON_PAPER_THEME_ID)
+    expect(loadActiveThemeId([])).toBe(MOON_PAPER_THEME_ID)
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('moon-paper')
+    expect(brand()).toBe('#AB363C')
+    uiStore.setState({ realTheme: 'dark' })
+    applyActiveTheme()
+    expect(background()).toBe('#262826')
+    expect(brand()).toBe('#F1ACA4')
+    useThemeStore.getState().remove(MOON_PAPER_THEME_ID)
+    expect(useThemeStore.getState().activeThemeId).toBe(MOON_PAPER_THEME_ID)
+  })
+
+  it('uses glass for an imported preview and restores paper on dismissal without leaking tokens', () => {
+    useThemeStore.getState().setActive(MOON_PAPER_THEME_ID)
+    useThemeStore.getState().preview(theme('mint', '#4a9b8e'))
+    expect(brand()).toBe('#4a9b8e')
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('flow-glass')
+    expect(document.documentElement.style.getPropertyValue('--chatbox-tint-placeholder')).toBe('')
+    useThemeStore.getState().clearPreview()
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('moon-paper')
+    expect(brand()).toBe('#AB363C')
+    expect(() => useThemeStore.getState().install(theme(MOON_PAPER_THEME_ID, '#000000'))).toThrow(/reserved/)
+    expect(() => useThemeStore.getState().preview(theme(MOON_PAPER_THEME_ID, '#000000'))).toThrow(/reserved/)
   })
 
   it('persists installed and active themes and applies their safe variables over the glass base', () => {

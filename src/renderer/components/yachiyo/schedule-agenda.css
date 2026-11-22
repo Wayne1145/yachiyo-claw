@@ -1,0 +1,365 @@
+.yachiyo-workspace.yachiyo-schedule-workspace {
+  max-width: 86rem;
+  box-sizing: border-box;
+  scrollbar-gutter: stable;
+}
+
+/* In landscape both materials place the app bar above the page. Portrait paper
+   already reserves its header and bottom bar in the shell's normal flex flow. */
+html .yachiyo-mobile-shell[data-shell-layout='wide'] .yachiyo-schedule-workspace,
+html .yachiyo-mobile-shell[data-shell-layout='rail'] .yachiyo-schedule-workspace {
+  padding-top: calc(64px + var(--mobile-safe-area-inset-top, 0px));
+  padding-bottom: calc(12px + var(--mobile-safe-area-inset-bottom, 0px));
+}
+
+.schedule-layout {
+  --schedule-stacked: 1;
+  --schedule-line: var(--yachiyo-border);
+  --schedule-fill: var(--yachiyo-surface);
+  --schedule-detail-fill: var(--yachiyo-surface);
+  --schedule-heading-font: var(--yachiyo-heading-font, inherit);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 0.85rem;
+  min-width: 0;
+  color: var(--yachiyo-text);
+}
+
+html[data-yachiyo-appearance="flow-glass"] .schedule-layout {
+  --schedule-line: var(--flow-divider, var(--yachiyo-border));
+  --schedule-fill: var(--flow-specular), var(--flow-group-fill);
+  --schedule-detail-fill: var(--flow-specular), var(--flow-group-fill);
+}
+
+.schedule-plan,
+.schedule-detail {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--schedule-line);
+  border-radius: var(--yachiyo-r-surface, 1.15rem);
+  background: var(--schedule-fill);
+}
+
+.schedule-detail {
+  background: var(--schedule-detail-fill);
+  scroll-margin-block: 1rem;
+}
+
+.schedule-plan-heading,
+.schedule-detail-body,
+.schedule-agenda {
+  padding: 1rem 1.1rem;
+}
+
+.schedule-plan-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 0.85rem;
+  border-block-end: 1px solid var(--schedule-line);
+}
+
+.schedule-layout h1,
+.schedule-layout h2,
+.schedule-layout h3,
+.schedule-layout p,
+.schedule-layout dl,
+.schedule-layout dd,
+.schedule-layout ul {
+  margin: 0;
+}
+
+.schedule-plan-heading h1,
+.schedule-detail-heading h2,
+.schedule-empty h2,
+.schedule-day h2 {
+  font-family: var(--schedule-heading-font);
+}
+
+.schedule-plan-heading h1,
+.schedule-detail-heading h2 {
+  font-size: 1.35rem;
+  font-weight: 680;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.schedule-plan-heading p {
+  margin-block-start: 0.25rem;
+  color: var(--yachiyo-text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.schedule-plan-heading button,
+.schedule-action-row button {
+  min-height: 44px;
+}
+
+.schedule-agenda {
+  box-sizing: border-box;
+  max-block-size: clamp(14rem, 43dvh, 31rem);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.schedule-day + .schedule-day {
+  margin-block-start: 1.1rem;
+}
+.schedule-day h2 {
+  padding-block-end: 0.4rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.schedule-day ul {
+  list-style: none;
+  padding: 0;
+}
+.schedule-day li {
+  position: relative;
+}
+.schedule-row {
+  display: grid;
+  grid-template-columns: minmax(4.8rem, max-content) 0.85rem minmax(0, 1fr) 1rem;
+  gap: 0.45rem;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.45rem 0.55rem;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--yachiyo-r-control, 0.72rem);
+  background: transparent;
+  color: var(--yachiyo-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 140ms ease-out;
+}
+.schedule-row time {
+  font-size: 0.96rem;
+  font-variant-numeric: tabular-nums;
+}
+.schedule-row-copy {
+  display: grid;
+  gap: 0.09rem;
+  min-width: 0;
+}
+.schedule-row-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.schedule-row-copy small {
+  font-size: 0.76rem;
+  color: var(--yachiyo-text-muted);
+}
+.schedule-row-dot {
+  position: relative;
+  justify-self: center;
+  width: 0.54rem;
+  height: 0.54rem;
+  border: 1.5px solid var(--yachiyo-text-muted);
+  border-radius: 50%;
+}
+.schedule-row-dot::before,
+.schedule-row-dot::after {
+  position: absolute;
+  inset-inline-start: 50%;
+  width: 1px;
+  height: 1.9rem;
+  background: var(--schedule-line);
+  content: "";
+}
+.schedule-row-dot::before {
+  bottom: calc(100% + 2px);
+}
+.schedule-row-dot::after {
+  top: calc(100% + 2px);
+}
+.schedule-day li:first-child .schedule-row-dot::before,
+.schedule-day li:last-child .schedule-row-dot::after {
+  display: none;
+}
+.schedule-row[aria-current="true"] {
+  background: var(--yachiyo-surface-soft);
+}
+.schedule-row[aria-current="true"] .schedule-row-dot {
+  border-color: var(--yachiyo-accent);
+  background: var(--yachiyo-accent);
+}
+.schedule-row[aria-current="true"] .schedule-chevron {
+  color: var(--yachiyo-accent);
+}
+.schedule-row:active {
+  background: var(--yachiyo-surface-muted);
+}
+.schedule-row:focus-visible,
+.schedule-agenda:focus-visible {
+  outline: 2px solid var(--yachiyo-accent);
+  outline-offset: -2px;
+}
+.schedule-chevron {
+  color: var(--yachiyo-text-muted);
+}
+[dir="rtl"] .schedule-chevron {
+  transform: scaleX(-1);
+}
+
+.schedule-detail-body {
+  min-width: 0;
+}
+.schedule-detail-body > * + * {
+  margin-block-start: 1rem;
+}
+.schedule-detail-heading {
+  display: grid;
+  justify-items: start;
+  gap: 0.44rem;
+}
+.schedule-kicker,
+.schedule-run-history h3,
+.schedule-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+.schedule-kicker,
+.schedule-detail h3 {
+  margin: 0;
+  font-size: 0.83rem;
+  font-weight: 580;
+  color: var(--yachiyo-text-muted);
+}
+.schedule-status {
+  color: var(--yachiyo-text-muted);
+  font-size: 0.84rem;
+}
+.schedule-status::before {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+.schedule-status[data-tone="active"] {
+  color: var(--yachiyo-accent);
+}
+.schedule-status[data-tone="error"],
+.schedule-detail .schedule-last-error {
+  color: var(--chatbox-tint-error, #b7353e);
+}
+.schedule-instruction,
+.schedule-run-history {
+  border-block-start: 1px solid var(--schedule-line);
+  padding-block-start: 0.85rem;
+}
+.schedule-instruction p,
+.schedule-run-history p {
+  margin-block-start: 0.4rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+.schedule-facts {
+  padding-block: 0.5rem;
+  border-block: 1px solid var(--schedule-line);
+}
+.schedule-facts > div {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 0.3rem;
+}
+.schedule-facts dt,
+.schedule-run-history time {
+  font-size: 0.86rem;
+  color: var(--yachiyo-text-muted);
+}
+.schedule-facts dd {
+  font-size: 0.9rem;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.schedule-facts .mantine-Switch-body {
+  min-height: 44px;
+  align-items: center;
+}
+.schedule-action-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  align-items: center;
+}
+.schedule-run-history time {
+  display: block;
+  margin-block-start: 0.5rem;
+}
+.schedule-run-history .mantine-Button-root {
+  margin-block-start: 0.4rem;
+  min-height: 44px;
+}
+.schedule-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.55rem;
+  padding: 2.25rem 1rem;
+  min-height: 9rem;
+  text-align: center;
+}
+.schedule-empty svg {
+  color: var(--yachiyo-accent);
+}
+.schedule-empty h2 {
+  font-size: 1.08rem;
+}
+.schedule-empty p {
+  color: var(--yachiyo-text-muted);
+  font-size: 0.88rem;
+}
+.schedule-delete-prompt {
+  overflow-wrap: anywhere;
+}
+
+/* The shell's wide breakpoint also works on Android 11 WebViews without container queries. */
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-layout {
+      --schedule-stacked: 0;
+}
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-layout[data-has-tasks="true"] {
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      align-content: stretch;
+      min-height: 0;
+      flex: 1 1 0;
+}
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-plan,
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-detail {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+}
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-plan-heading {
+      flex: none;
+      padding: 0.75rem 1rem;
+}
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-agenda,
+.yachiyo-mobile-shell[data-shell-layout="wide"] .schedule-detail-body {
+      min-height: 0;
+      max-block-size: none;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+      padding: 0.75rem 1rem;
+}
+@media (hover: hover) {
+  .schedule-row:hover {
+    background: var(--yachiyo-surface-soft);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .schedule-row {
+    transition: none;
+  }
+}

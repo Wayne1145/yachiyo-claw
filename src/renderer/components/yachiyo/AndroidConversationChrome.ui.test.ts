@@ -36,9 +36,13 @@ describe('Android conversation chrome UI contract', () => {
     expect(shellSource).toContain('<AndroidSharedChromeHostProvider host={sharedChromeHost}>')
     expect(shellSource).toContain('className="yachiyo-shared-interactive-chrome-host"')
     expect(shellSource).toContain('<AndroidStandardChromeLayer activeInteractive={isInteractive}')
-    expect(shellSource).not.toContain('{!isInteractive && (')
+    // Both header layers remain siblings even if the interactive history uses its own portal.
+    expect(shellSource).toMatch(/<div className="yachiyo-mobile-header-primary">\s*<AndroidStandardChromeLayer/)
+    expect(shellSource).toMatch(
+      /<\/AndroidStandardChromeLayer>\s*<div\s+ref=\{setSharedChromeHost\}\s+className="yachiyo-shared-interactive-chrome-host"/
+    )
     expect(shellStyles).toMatch(
-      /\.yachiyo-shared-interactive-chrome-host\s*{[^}]*display:\s*grid;[^}]*grid-area:\s*1 \/ 1;/s,
+      /\.yachiyo-shared-interactive-chrome-host\s*{[^}]*display:\s*grid;[^}]*grid-area:\s*1 \/ 1;/s
     )
   })
 
@@ -66,13 +70,13 @@ describe('Android conversation chrome UI contract', () => {
     expect(historySource).toContain('onRename={() => openRename(record)}')
     expect(shellStyles).toMatch(/\.yachiyo-history-list\s*{[^}]*flex:\s*1 1 auto;[^}]*overflow-y:\s*auto;/s)
     expect(shellStyles).toMatch(
-      /\.yachiyo-history-actions\s*{[^}]*width:\s*var\(--yachiyo-history-action-width\);[^}]*grid-template-columns:\s*repeat\(var\(--yachiyo-history-action-count\), 44px\);[^}]*gap:\s*6px;/s,
+      /\.yachiyo-history-actions\s*{[^}]*width:\s*var\(--yachiyo-history-action-width\);[^}]*grid-template-columns:\s*repeat\(var\(--yachiyo-history-action-count\), 44px\);[^}]*gap:\s*6px;/s
     )
     expect(shellStyles).toMatch(
-      /\.yachiyo-history-actions\[aria-hidden=["']true["']\]\s*{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s,
+      /\.yachiyo-history-actions\[aria-hidden=["']true["']\]\s*{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
     )
     expect(shellStyles).toMatch(
-      /\.yachiyo-history-item\[data-active=["']true["']\]\s*{[^}]*background:\s*rgb\(231, 242, 253\)/s,
+      /\.yachiyo-history-item\[data-active=["']true["']\]\s*{[^}]*background:\s*rgb\(231, 242, 253\)/s
     )
     expect(historySource).toContain('opened={opened}')
     expect(historySource).toContain('getAndroidHistoryActionWidth(actions.length)')
@@ -81,14 +85,14 @@ describe('Android conversation chrome UI contract', () => {
     expect(historySource).toContain('onLostPointerCapture={(event) => finishPointerGesture(event, true)}')
     expect(historySource).not.toContain('current < -56')
     expect(historySource).toMatch(
-      /useEffect\(\(\) => \{[\s\S]*?offset\.set\(0\)[\s\S]*?\}, \[opened, active, offset, stopAnimation\]\)/,
+      /useEffect\(\(\) => \{[\s\S]*?offset\.set\(0\)[\s\S]*?\}, \[opened, active, offset, stopAnimation\]\)/
     )
   })
 
   it('limits top-drawer behavior to the liquid-glass theme and respects reduced motion', () => {
     expect(shellSource).toMatch(/yachiyo-mobile-header-primary[\s\S]*?yachiyo-mobile-header-collapsible/)
     expect(flowStyles).toMatch(
-      /html\[data-yachiyo-appearance=["']flow-glass["']\][\s\S]*?\.yachiyo-mobile-header-collapsible/,
+      /html\[data-yachiyo-appearance=["']flow-glass["']\][\s\S]*?\.yachiyo-mobile-header-collapsible/
     )
     expect(shellSource).toContain('data-state="expanded"')
     expect(flowStyles).toContain('@media (prefers-reduced-motion: reduce)')
@@ -97,7 +101,7 @@ describe('Android conversation chrome UI contract', () => {
 
   it('disables per-token GPU effects in reduced liquid-glass quality', () => {
     expect(flowStyles).toMatch(
-      /data-yachiyo-liquid-glass-quality=['"]reduced['"][\s\S]*?\.yachiyo-stream-token\s*\{[^}]*animation:\s*none !important;[^}]*filter:\s*none !important;[^}]*transform:\s*none !important;[^}]*will-change:\s*auto;/s,
+      /data-yachiyo-liquid-glass-quality=['"]reduced['"][\s\S]*?\.yachiyo-stream-token\s*\{[^}]*animation:\s*none !important;[^}]*filter:\s*none !important;[^}]*transform:\s*none !important;[^}]*will-change:\s*auto;/s
     )
   })
 
@@ -113,31 +117,31 @@ describe('Android conversation chrome UI contract', () => {
       inputBoxSource.indexOf('<Menu.Dropdown className="yachiyo-composer-menu yachiyo-composer-popover">'),
       inputBoxSource.indexOf(
         '</Menu.Dropdown>',
-        inputBoxSource.indexOf('<Menu.Dropdown className="yachiyo-composer-menu yachiyo-composer-popover">'),
-      ),
+        inputBoxSource.indexOf('<Menu.Dropdown className="yachiyo-composer-menu yachiyo-composer-popover">')
+      )
     )
     expect(mobileMenuSource).not.toContain("t('New Thread')")
     expect(mobileMenuSource.indexOf("t('Attach Link')")).toBeLessThan(mobileMenuSource.indexOf("t('Web Search')"))
     expect(mobileMenuSource).not.toContain('<ModelSelector')
     expect(inputBoxSource).toContain('className="yachiyo-composer-model"')
     expect(inputBoxSource.indexOf('className="yachiyo-composer-model"')).toBeLessThan(
-      inputBoxSource.indexOf('<ReasoningStrengthControl'),
+      inputBoxSource.indexOf('<ReasoningStrengthControl')
     )
     expect(inputBoxSource).toContain('opened={mobileToolsOpened}')
     expect(inputBoxSource).toContain('onClick={() => setMobileToolsOpened(false)}')
     expect(flowStyles).toMatch(
-      /\.yachiyo-mobile-composer-row \.yachiyo-composer-primary\s*\{[^}]*background:\s*#202124;[^}]*backdrop-filter:\s*none;/s,
+      /\.yachiyo-mobile-composer-row \.yachiyo-composer-primary\s*\{[^}]*background:\s*#202124;[^}]*backdrop-filter:\s*none;/s
     )
     expect(flowStyles).toMatch(/--flow-composer-height:\s*116px;/)
     expect(shellStyles).toMatch(
-      /\.yachiyo-mobile-composer-row\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\) 74px 0 48px;/s,
+      /\.yachiyo-mobile-composer-row\s*\{[^}]*grid-template-columns:\s*44px minmax\(0, 1fr\) 74px 0 48px;/s
     )
     expect(shellStyles).toMatch(
-      /\.yachiyo-composer-model\s*\{[^}]*max-width:\s*none;[^}]*justify-content:\s*flex-start;/s,
+      /\.yachiyo-composer-model\s*\{[^}]*max-width:\s*none;[^}]*justify-content:\s*flex-start;/s
     )
     expect(shellStyles).toMatch(/\.yachiyo-composer-reasoning\s*\{[^}]*width:\s*74px;[^}]*white-space:\s*nowrap;/s)
     expect(flowStyles).toMatch(
-      /\.yachiyo-adaptive-sheet\s*\{[^}]*max-height:\s*calc\(100dvh - var\(--mobile-safe-area-inset-top, 0px\) - var\(--mobile-safe-area-inset-bottom, 0px\) - 16px\);/s,
+      /\.yachiyo-adaptive-sheet\s*\{[^}]*max-height:\s*calc\(100dvh - var\(--mobile-safe-area-inset-top, 0px\) - var\(--mobile-safe-area-inset-bottom, 0px\) - 16px\);/s
     )
   })
 
@@ -145,7 +149,7 @@ describe('Android conversation chrome UI contract', () => {
     expect(newChatSource).toContain("className={inAndroidAppShell ? 'yachiyo-chat-landing-slot' : undefined}")
     expect(inputBoxSource).toContain('minRows={isSmallScreen ? 1 : 2}')
     expect(shellStyles).toMatch(
-      /@media \(orientation: landscape\) and \(max-height: 700px\)[\s\S]*?\.yachiyo-chat-landing-slot\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/,
+      /@media \(orientation: landscape\) and \(max-height: 700px\)[\s\S]*?\.yachiyo-chat-landing-slot\s*{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/
     )
     expect(shellStyles).toMatch(/\.yachiyo-chat-landing-slot \.yachiyo-chat-landing\s*{[^}]*display:\s*none;/)
   })

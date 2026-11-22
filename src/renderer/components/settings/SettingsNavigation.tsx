@@ -21,7 +21,7 @@ import {
 } from './settings-catalog'
 import './settings.css'
 
-export function SettingsNavigation({ compact = false }: { compact?: boolean }) {
+export function SettingsNavigation({ compact = false, selectedRoute }: { compact?: boolean; selectedRoute?: string }) {
   const { t } = useTranslation()
   const [query, setQuery] = useAndroidRetainedState(`settings-search:${compact ? 'sidebar' : 'home'}`, '')
   const pathname = useRouterState({ select: (state) => state.location.pathname })
@@ -94,7 +94,7 @@ export function SettingsNavigation({ compact = false }: { compact?: boolean }) {
                 {items.map((item) => {
                   const Icon = item.icon
                   const active =
-                    pathname === item.route ||
+                    (selectedRoute || pathname) === item.route ||
                     (item.route === '/settings/provider' &&
                       pathname.startsWith('/settings/provider/') &&
                       pathname !== '/settings/provider/yachiyo')

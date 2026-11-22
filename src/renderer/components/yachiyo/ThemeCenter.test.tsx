@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n from '@/i18n'
 import { applyActiveTheme, useThemeStore } from '@/stores/themeStore'
+import { MOON_PAPER_THEME_ID } from '@/themes/moon-paper'
 import { ThemeCenter } from './ThemeCenter'
 
 vi.mock('@/router', () => ({ router: { navigate: vi.fn() } }))
@@ -57,12 +58,24 @@ describe('ThemeCenter', () => {
 
     expect(screen.getByText('Yachiyo 流光玻璃')).toBeTruthy()
     expect(screen.queryByText('Yachiyo 浅粉')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '恢复默认' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yachiyo 流光玻璃' }))
 
     expect(useThemeStore.getState().activeThemeId).toBeNull()
     expect(document.documentElement.dataset.yachiyoAppearance).toBe('flow-glass')
     expect(document.documentElement.style.getPropertyValue('--chatbox-tint-brand')).toBe('#007aff')
     expect(useThemeStore.getState().installed).toHaveLength(1)
+  })
+
+  it('shows exactly two selectable presets and remembers Moonlit Paper after leaving the picker', () => {
+    const { unmount, container } = renderCenter()
+    expect(container.querySelectorAll('button.yachiyo-theme-preset')).toHaveLength(2)
+    const moon = screen.getByRole('button', { name: '月白流云' })
+    fireEvent.click(moon)
+    expect(moon.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Yachiyo 流光玻璃' }).getAttribute('aria-pressed')).toBe('false')
+    unmount()
+    expect(document.documentElement.dataset.yachiyoAppearance).toBe('moon-paper')
+    expect(localStorage.getItem('yachiyo:themes:active:v1')).toBe(MOON_PAPER_THEME_ID)
   })
 
   it('previews safely without persisting, then installs and activates explicitly', () => {

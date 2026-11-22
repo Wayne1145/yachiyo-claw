@@ -1,0 +1,63 @@
+import { parseThemeManifest } from '@shared/themes/theme'
+
+export const MOON_PAPER_THEME_ID = 'yachiyo-moon-paper'
+
+/** Uses the same bounded colour contract as imported themes. Only built-ins can select a material. */
+export const moonPaperTheme = parseThemeManifest({
+  schemaVersion: 1,
+  id: MOON_PAPER_THEME_ID,
+  name: 'Moonlit Paper',
+  version: '1.0.0',
+  author: { name: 'NewDreamStudio' },
+  mode: 'both',
+  light: {
+    tokens: {
+      'tint-primary': '#26353D',
+      'tint-secondary': '#525950',
+      'tint-tertiary': '#706757',
+      'tint-placeholder': '#716A60',
+      'tint-brand': '#AB363C',
+      'border-primary': '#D9D0BF',
+      'border-secondary': '#E6DFD2',
+      'border-brand': '#AB363C',
+      'background-primary': '#FFFDF9',
+      'background-primary-hover': '#FAF7F1',
+      'background-secondary': '#F7F5F0',
+      'background-secondary-hover': '#EFEADF',
+      'background-tertiary': '#EDE7DC',
+      'background-tertiary-hover': '#E6DDCE',
+      'background-brand-primary': '#AB363C',
+      'background-brand-primary-hover': '#912830',
+      'background-brand-secondary': '#F2E2DC',
+      'background-brand-secondary-hover': '#EAD3C9',
+      'background-gray-secondary': '#EFEAE1',
+      'background-gray-secondary-hover': '#E8E0D3',
+      'background-mask-overlay': 'rgba(43, 38, 34, 0.38)',
+    },
+  },
+  dark: {
+    tokens: {
+      'tint-primary': '#F2EADD',
+      'tint-secondary': '#D2C8B8',
+      'tint-tertiary': '#B1A798',
+      'tint-placeholder': '#B1A798',
+      'tint-brand': '#F1ACA4',
+      'border-primary': '#514B42',
+      'border-secondary': '#393A35',
+      'border-brand': '#D88E86',
+      'background-primary': '#262826',
+      'background-primary-hover': '#2D302C',
+      'background-secondary': '#1D201E',
+      'background-secondary-hover': '#292B27',
+      'background-tertiary': '#35362F',
+      'background-tertiary-hover': '#414037',
+      'background-brand-primary': '#A03941',
+      'background-brand-primary-hover': '#B23E48',
+      'background-brand-secondary': '#493331',
+      'background-brand-secondary-hover': '#57413C',
+      'background-gray-secondary': '#33352E',
+      'background-gray-secondary-hover': '#414037',
+      'background-mask-overlay': 'rgba(10, 13, 11, 0.54)',
+    },
+  },
+})

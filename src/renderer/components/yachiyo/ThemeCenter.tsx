@@ -12,6 +12,7 @@ import type { TFunction } from 'i18next'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '@/stores/themeStore'
+import { MOON_PAPER_THEME_ID } from '@/themes/moon-paper'
 import { consumeRecoveredThemeImport, downloadRemoteTheme } from '@/themes/remote-theme'
 import { AdaptiveActionCluster, type AdaptiveActionDescriptor } from './AdaptiveActionCluster'
 import { useInAndroidAppShell } from './AndroidAppShellContext'
@@ -35,6 +36,7 @@ function swatches(theme: ThemeManifest): string[] {
 function themeErrorMessage(cause: unknown, t: TFunction): string {
   if (!(cause instanceof Error)) return t('主题清单无效，请检查文件后重试')
   const message = cause.message
+  if (/reserved for a built-in/i.test(message)) return t('该标识属于内置主题')
   if (/exceeds/i.test(message)) return t('主题文件不能超过 {{size}} KB', { size: MAX_THEME_MANIFEST_BYTES / 1024 })
   if (/not valid JSON|JSON-serializable/i.test(message)) return t('主题文件不是有效的 JSON')
   if (/not a valid CSS color|unsafe/i.test(message)) return t('主题包含无效或不安全的颜色值')
@@ -158,32 +160,33 @@ export function ThemeCenter() {
       <section className="yachiyo-theme-library" aria-label={String(t('已安装主题'))}>
         <Text className="yachiyo-section-label">{t('主题库')}</Text>
         <div className="yachiyo-theme-grid">
-          <article className="yachiyo-theme-card" data-active={activeThemeId === null ? 'true' : 'false'}>
-            <div className="yachiyo-theme-card-preview yachiyo-theme-card-preview-liquid">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="yachiyo-theme-card-heading">
-              <div>
-                <Text fw={650}>{t('Yachiyo 流光玻璃')}</Text>
-                <Text size="xs" c="dimmed">
-                  {t('内置 · 明暗配色自动适配')}
-                </Text>
-              </div>
-              {activeThemeId === null && !previewingTheme && (
-                <Badge color="chatbox-brand" leftSection={<IconCheck size={12} />}>
-                  {t('使用中')}
-                </Badge>
-              )}
-            </div>
-            {activeThemeId !== null && (
-              <Button size="compact-sm" variant="default" onClick={() => setActive(null)}>
-                {t('恢复默认')}
-              </Button>
-            )}
-          </article>
+          {[
+            { id: null, name: 'Yachiyo 流光玻璃', material: 'glass' },
+            { id: MOON_PAPER_THEME_ID, name: '月白流云', material: 'moon' },
+          ].map(({ id, name, material }) => {
+            const selected = activeThemeId === id && !previewingTheme
+            return (
+              <button
+                key={material}
+                type="button"
+                className="yachiyo-theme-card yachiyo-theme-preset"
+                data-material={material}
+                data-active={selected}
+                aria-pressed={selected}
+                aria-label={String(t(name))}
+                onClick={() => setActive(id)}
+              >
+                <span className="yachiyo-preset-sample" aria-hidden="true">
+                  {id === MOON_PAPER_THEME_ID ? <img src="/yachiyo-avatar.png" alt="" /> : <i />}
+                </span>
+                <span className="yachiyo-preset-caption">
+                  <strong>{t(name)}</strong>
+                  <small>{t('内置 · 明暗配色自动适配')}</small>
+                </span>
+                {selected && <IconCheck size={18} className="yachiyo-preset-selected" aria-hidden="true" />}
+              </button>
+            )
+          })}
 
           {installed.map((theme) => {
             const isActive = activeThemeId === theme.id

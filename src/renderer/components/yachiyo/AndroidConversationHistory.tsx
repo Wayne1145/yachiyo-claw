@@ -1,6 +1,7 @@
-import { Badge, Button, Flex, Loader, Modal, Stack, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Badge, Button, Flex, Loader, Menu, Modal, Stack, Text, TextInput } from '@mantine/core'
 import {
   IconGitFork,
+  IconDots,
   IconMessageCircle,
   IconPencil,
   IconPlus,
@@ -11,6 +12,7 @@ import {
 } from '@tabler/icons-react'
 import { animate, motion, useMotionValue, useReducedMotion } from 'framer-motion'
 import { type CSSProperties, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AdaptiveModal } from '@/components/common/AdaptiveModal'
 import {
@@ -29,6 +31,7 @@ import {
   useSessionList,
 } from '@/stores/chatStore'
 import { createEmpty, switchCurrentSession } from '@/stores/sessionActions'
+import { initEmptyChatSession } from '@/stores/sessionHelpers'
 import {
   deleteTaskSession,
   taskSessionStore,
@@ -54,12 +57,14 @@ export function AndroidConversationHistory({
   currentId,
   onClose,
   onSelectSession,
+  dock,
 }: {
   opened: boolean
   mode: ConversationMode
   currentId?: string
   onClose: () => void
   onSelectSession?: (sessionId: string) => void | Promise<void>
+  dock?: HTMLElement | null
 }) {
   const { t, i18n } = useTranslation()
   const [search, setSearch] = useState('')
@@ -67,19 +72,23 @@ export function AndroidConversationHistory({
   const [renameTarget, setRenameTarget] = useState<HistoryRecord | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [renaming, setRenaming] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<HistoryRecord | null>(null)
   const chats = useSessionList()
   const tasks = useTaskSessionHistory(50)
   const taskItems = useMemo(() => tasks.data?.pages.flatMap((page) => page.items) || [], [tasks.data?.pages])
 
   useEffect(() => {
     if (!opened) return
+    // Continuous history updates in a dock must never prune a live conversation or draft.
+    if (dock) return
     const protectedIds = new Set(
       taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
     )
+    if (currentId) protectedIds.add(currentId)
     void pruneAbandonedEmptySessions(60_000, protectedIds)
-  }, [opened, taskItems])
+  }, [opened, dock, currentId, taskItems])
 
-  const records = useMemo(() => {
+  const records = useMemo<HistoryRecord[]>(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase()
     const chatRecords = (chats.sessionMetaList || []).map((session) => ({
       id: session.id,
@@ -142,7 +151,7 @@ export function AndroidConversationHistory({
         taskItems.map((task) => task.linkedSessionId).filter((id): id is string => Boolean(id))
       )
       await pruneAbandonedEmptySessions(0, protectedIds)
-      const session = await createEmpty('chat')
+      const session = onSelectSession ? await createSession(initEmptyChatSession()) : await createEmpty('chat')
       if (onSelectSession) {
         await onSelectSession(session.id)
         onClose()
@@ -192,8 +201,18 @@ export function AndroidConversationHistory({
       deleteAgentSessionConfig(record.id)
     }
     if (record.id === currentId || record.linkedTaskId === currentId) {
-      const { router } = await import('@/router')
-      await router.navigate({ to: '/', replace: true })
+      if (onSelectSession) {
+        const next = records.find((item) => item.id !== record.id)
+        const id = next
+          ? next.kind === 'task'
+            ? await ensureChatSessionForTask(next.id)
+            : next.id
+          : (await createSession(initEmptyChatSession())).id
+        await onSelectSession(id)
+      } else {
+        const { router } = await import('@/router')
+        await router.navigate({ to: '/', replace: true })
+      }
       onClose()
     }
   }
@@ -221,17 +240,32 @@ export function AndroidConversationHistory({
     }
   }
 
-  return (
-    <AdaptiveModal opened={opened} onClose={onClose} title={t('会话记录')} centered size="lg">
-      <Stack gap="md" className="yachiyo-history-dialog">
-        <Flex gap="sm">
-          <TextInput
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            leftSection={<IconSearch size={17} />}
-            placeholder={String(t('搜索会话'))}
-            className="yachiyo-history-search"
-          />
+  const historyContent = (
+    <Stack gap="md" className="yachiyo-history-dialog">
+      {dock && (
+        <div className="yachiyo-history-heading">
+          <h2>{t('会话记录')}</h2>
+          <ActionIcon
+            variant="subtle"
+            aria-label={String(t('新建'))}
+            title={String(t('新建'))}
+            loading={openingId === 'new'}
+            onClick={() => void createConversation()}
+          >
+            <IconPlus size={19} />
+          </ActionIcon>
+        </div>
+      )}
+      <Flex gap="sm">
+        <TextInput
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+          leftSection={<IconSearch size={17} />}
+          placeholder={String(t('搜索会话'))}
+          aria-label={String(t('搜索会话'))}
+          className="yachiyo-history-search"
+        />
+        {!dock && (
           <Button
             leftSection={<IconPlus size={17} />}
             loading={openingId === 'new'}
@@ -239,50 +273,67 @@ export function AndroidConversationHistory({
           >
             {t('新建')}
           </Button>
+        )}
+      </Flex>
+
+      {!chats.sessionMetaList && !tasks.data ? (
+        <Flex justify="center" py="xl">
+          <Loader size="sm" />
         </Flex>
+      ) : records.length === 0 ? (
+        <Text c="dimmed" ta="center" py="xl">
+          {t('暂无会话')}
+        </Text>
+      ) : (
+        <Stack gap={6} className="yachiyo-history-list">
+          {records.map((record) => (
+            <SwipeHistoryItem
+              key={`${record.kind}:${record.id}`}
+              record={record}
+              opened={opened}
+              docked={Boolean(dock)}
+              active={record.id === currentId || record.linkedTaskId === currentId}
+              loading={openingId === record.id}
+              disabled={Boolean(openingId)}
+              onOpen={() => void openRecord(record)}
+              onFavorite={() => void favoriteRecord(record)}
+              onRename={() => openRename(record)}
+              onFork={() => void forkRecord(record)}
+              onDelete={() => setDeleteTarget(record)}
+              locale={i18n.resolvedLanguage || i18n.language}
+            />
+          ))}
+        </Stack>
+      )}
 
-        {!chats.sessionMetaList && !tasks.data ? (
-          <Flex justify="center" py="xl">
-            <Loader size="sm" />
-          </Flex>
-        ) : records.length === 0 ? (
-          <Text c="dimmed" ta="center" py="xl">
-            {t('暂无会话')}
-          </Text>
-        ) : (
-          <Stack gap={6} className="yachiyo-history-list">
-            {records.map((record) => (
-              <SwipeHistoryItem
-                key={`${record.kind}:${record.id}`}
-                record={record}
-                opened={opened}
-                active={record.id === currentId || record.linkedTaskId === currentId}
-                loading={openingId === record.id}
-                disabled={Boolean(openingId)}
-                onOpen={() => void openRecord(record)}
-                onFavorite={() => void favoriteRecord(record)}
-                onRename={() => openRename(record)}
-                onFork={() => void forkRecord(record)}
-                onDelete={() => void deleteRecord(record)}
-                locale={i18n.resolvedLanguage || i18n.language}
-              />
-            ))}
-          </Stack>
-        )}
-
-        {(chats.hasNextPage || tasks.hasNextPage) && (
-          <Button
-            variant="subtle"
-            loading={chats.isFetchingNextPage || tasks.isFetchingNextPage}
-            onClick={() => {
-              if (chats.hasNextPage) void chats.fetchNextPage()
-              if (tasks.hasNextPage) void tasks.fetchNextPage()
-            }}
-          >
-            {t('加载更多')}
-          </Button>
-        )}
-      </Stack>
+      {(chats.hasNextPage || tasks.hasNextPage) && (
+        <Button
+          variant="subtle"
+          loading={chats.isFetchingNextPage || tasks.isFetchingNextPage}
+          onClick={() => {
+            if (chats.hasNextPage) void chats.fetchNextPage()
+            if (tasks.hasNextPage) void tasks.fetchNextPage()
+          }}
+        >
+          {t('加载更多')}
+        </Button>
+      )}
+    </Stack>
+  )
+  return (
+    <>
+      {dock ? (
+        createPortal(
+          <aside aria-label={String(t('会话记录'))} className="yachiyo-history-sidebar">
+            {historyContent}
+          </aside>,
+          dock
+        )
+      ) : (
+        <AdaptiveModal opened={opened} onClose={onClose} title={t('会话记录')} centered size="lg">
+          {historyContent}
+        </AdaptiveModal>
+      )}
       <Modal
         opened={Boolean(renameTarget)}
         onClose={() => setRenameTarget(null)}
@@ -311,7 +362,26 @@ export function AndroidConversationHistory({
           </Flex>
         </Stack>
       </Modal>
-    </AdaptiveModal>
+      <Modal opened={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} title={t('Confirm Delete?')} centered>
+        <Stack>
+          <Text>{deleteTarget?.name}</Text>
+          <Flex justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setDeleteTarget(null)}>
+              {t('取消')}
+            </Button>
+            <Button
+              color="red"
+              onClick={() => {
+                if (deleteTarget) void deleteRecord(deleteTarget)
+                setDeleteTarget(null)
+              }}
+            >
+              {t('删除')}
+            </Button>
+          </Flex>
+        </Stack>
+      </Modal>
+    </>
   )
 }
 
@@ -341,6 +411,7 @@ type HistorySwipePhase = 'idle' | 'tracking' | 'settling'
 function SwipeHistoryItem({
   record,
   opened,
+  docked,
   active,
   loading,
   disabled,
@@ -353,6 +424,7 @@ function SwipeHistoryItem({
 }: {
   record: HistoryRecord
   opened: boolean
+  docked: boolean
   active: boolean
   loading: boolean
   disabled: boolean
@@ -554,6 +626,7 @@ function SwipeHistoryItem({
         type="button"
         className="yachiyo-history-item"
         data-active={active ? 'true' : 'false'}
+        aria-current={active ? 'page' : undefined}
         disabled={disabled}
         style={{ x: offset }}
         onPointerDown={pointerDown}
@@ -580,6 +653,32 @@ function SwipeHistoryItem({
           {record.shared ? t('Agent 可用') : t('聊天')}
         </Badge>
       </motion.button>
+      {docked && !actionsVisible && (
+        <Menu position="bottom-end" withinPortal>
+          <Menu.Target>
+            <ActionIcon
+              className="yachiyo-history-overflow"
+              variant="subtle"
+              aria-label={`${t('More')} · ${record.name}`}
+              disabled={disabled}
+            >
+              <IconDots size={17} />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {actions.map((action) => (
+              <Menu.Item
+                key={action.id}
+                leftSection={action.icon}
+                color={action.id === 'delete' ? 'red' : undefined}
+                onClick={() => runAction(action.run)}
+              >
+                {action.label}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+      )}
     </div>
   )
 }

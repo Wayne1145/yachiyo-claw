@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { parseThemeManifest, resolveThemeVariables, ThemeManifestError, type ThemeManifest } from '@shared/themes/theme'
+import { MOON_PAPER_THEME_ID, moonPaperTheme } from '@/themes/moon-paper'
 import { uiStore } from './uiStore'
 
 /**
@@ -12,7 +13,7 @@ import { uiStore } from './uiStore'
 
 const STORAGE_INSTALLED = 'yachiyo:themes:installed:v1'
 const STORAGE_ACTIVE = 'yachiyo:themes:active:v1'
-/** Kept so persisted selections from the two-built-in era resolve back to the default (`null`). */
+/** Old explicit selections of Flow Glass and the implicit default share one identity. */
 export const BUILT_IN_LIQUID_GLASS_THEME_ID = 'yachiyo-liquid-glass'
 
 export const BUILT_IN_LIQUID_GLASS_THEME: ThemeManifest = parseThemeManifest({
@@ -83,8 +84,8 @@ const BUILT_IN_FLOW_GLASS_DARK_VARIABLES: Record<string, string> = {
   '--chatbox-background-brand-secondary-hover': 'rgba(10, 132, 255, 0.24)',
 }
 
-function isBuiltInThemeId(id: string | null | undefined): id is typeof BUILT_IN_LIQUID_GLASS_THEME_ID {
-  return id === BUILT_IN_LIQUID_GLASS_THEME_ID
+function isBuiltInThemeId(id: string): boolean {
+  return id === BUILT_IN_LIQUID_GLASS_THEME_ID || id === MOON_PAPER_THEME_ID
 }
 
 function loadInstalled(): ThemeManifest[] {
@@ -108,12 +109,12 @@ function loadInstalled(): ThemeManifest[] {
   }
 }
 
-/** Reads the persisted selection; the retired built-in id means "default" and is normalised to `null`. */
-function loadActiveThemeId(): string | null {
+/** Validate against the installed list before applying a persisted material or palette. */
+export function loadActiveThemeId(installed: readonly ThemeManifest[]): string | null {
   try {
     const stored = localStorage.getItem(STORAGE_ACTIVE) || null
-    if (!isBuiltInThemeId(stored)) return stored
-    localStorage.removeItem(STORAGE_ACTIVE)
+    if (stored === MOON_PAPER_THEME_ID || installed.some((item) => item.id === stored)) return stored
+    if (stored) localStorage.removeItem(STORAGE_ACTIVE)
     return null
   } catch {
     return null
@@ -159,11 +160,7 @@ interface ThemeStoreState {
 }
 
 const initialInstalled = loadInstalled()
-const storedActiveThemeId = loadActiveThemeId()
-const initialActiveThemeId = initialInstalled.some((theme) => theme.id === storedActiveThemeId)
-  ? storedActiveThemeId
-  : null
-if (storedActiveThemeId && !initialActiveThemeId) persistActive(null)
+const initialActiveThemeId = loadActiveThemeId(initialInstalled)
 
 export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   installed: initialInstalled,
@@ -191,14 +188,15 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   },
   setActive(id) {
     // The built-in flow-glass theme is the `null` default; its legacy id is accepted as an alias.
-    const nextId = isBuiltInThemeId(id) ? null : id
-    if (nextId && !get().installed.some((existing) => existing.id === nextId)) return
+    const nextId = id === BUILT_IN_LIQUID_GLASS_THEME_ID ? null : id
+    if (nextId && nextId !== MOON_PAPER_THEME_ID && !get().installed.some((existing) => existing.id === nextId)) return
     persistActive(nextId)
     set({ activeThemeId: nextId, previewingTheme: null })
     applyActiveTheme()
   },
   preview(json) {
     const theme = parseThemeManifest(json)
+    if (isBuiltInThemeId(theme.id)) throw new ThemeManifestError('Invalid theme: this id is reserved for a built-in theme.')
     set({ previewingTheme: theme })
     applyActiveTheme()
     return theme
@@ -244,20 +242,25 @@ function resolveAndroidThemeVariables(theme: ThemeManifest): Record<string, stri
 }
 
 /**
- * Applies the flow-glass base palette for the current light/dark scheme, then any third-party theme
- * that supports that scheme on top of it. The glass material itself is always on; themes only recolor.
+ * Imported palettes retain the Flow Glass base that their public colour contract was designed for.
+ * Previewing one temporarily changes the material and clearPreview restores the selected built-in.
  */
 export function applyActiveTheme(): void {
   const { activeThemeId, installed, previewingTheme } = useThemeStore.getState()
   const installedTheme = activeThemeId ? installed.find((existing) => existing.id === activeThemeId) : undefined
   const selectedTheme = previewingTheme ?? installedTheme
   const scheme = currentScheme()
+  const moonPaper = activeThemeId === MOON_PAPER_THEME_ID && !previewingTheme
+  if (typeof document !== 'undefined') document.documentElement.dataset.yachiyoAppearance = moonPaper ? 'moon-paper' : 'flow-glass'
+  if (moonPaper) {
+    applyVariables(resolveThemeVariables(moonPaperTheme, scheme))
+    return
+  }
   const themeSupportsScheme = selectedTheme?.mode === 'both' || selectedTheme?.mode === scheme
   const selectedVariables =
     selectedTheme && !isBuiltInThemeId(selectedTheme.id) && themeSupportsScheme
       ? resolveAndroidThemeVariables(selectedTheme)
       : {}
-  if (typeof document !== 'undefined') document.documentElement.dataset.yachiyoAppearance = 'flow-glass'
   applyVariables({
     ...(scheme === 'dark' ? BUILT_IN_FLOW_GLASS_DARK_VARIABLES : BUILT_IN_FLOW_GLASS_LIGHT_VARIABLES),
     ...selectedVariables,
